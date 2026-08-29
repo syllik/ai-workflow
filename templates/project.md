@@ -1,5 +1,7 @@
 # Project
 
+## Repository
+
 ## Purpose
 
 ## Current state
@@ -15,3 +17,5 @@
 ## Known issues
 
 ## Current priorities
+
+## Canonical files in target repository

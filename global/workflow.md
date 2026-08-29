@@ -2,43 +2,70 @@
 
 ## Основной процесс
 
+`FLOW.md` — короткий bootstrap. Полный рабочий путь:
+
 ```text
-Idea / Problem
+User task
 ↓
-GPT-5.6 Sol
+GPT-5.6 Sol читает canonical context
 ↓
-Research / Analysis
+Определение target project и проверка target repository
 ↓
-Architecture / Decision
+Research / architecture / decisions / validation
 ↓
-Implementation Plan
+Один self-contained execution prompt
 ↓
-Final Luna Prompt
+Luna xhigh читает target instructions и реализует scope
 ↓
-Luna xhigh implementation
+Tests/checks → diff review → commit → push по разрешению
 ↓
-Luna review / verification
-↓
-Result
-↓
-Update canonical project context
+При необходимости обновление canonical project context
 ```
 
-GPT-5.6 Sol — planner, architect и research-агент. Luna xhigh — executor, coder и reviewer. Luna не должна самостоятельно расширять scope или перепроектировать систему, если это явно не указано в prompt.
+Порядок чтения: `FLOW.md` → `global/context.md` → `global/workflow.md` →
+`projects/index.md` → context выбранного проекта → релевантный `decisions.md` →
+актуальный target repository. Не загружайте весь storage или history без
+необходимости.
 
-Subagents не используются. Токены расходуются экономно: уже зафиксированные решения не исследуются повторно без причины.
+## Роли
+
+Sol — planner, architect и research agent. Он определяет target, scope,
+решения и validation, затем выдаёт один self-contained prompt для Luna.
+
+Luna — executor, coder и reviewer. Она читает `AGENTS.md` и local instructions
+target repository, проверяет необходимые предположения, реализует prompt,
+запускает relevant checks, смотрит итоговый diff, исправляет проблемы и делает
+commit/push только в пределах разрешённого workflow.
+
+Subagents запрещены. Luna не повторяет broad research Sol, не перечитывает весь
+`my-prompt-storage`, не перепроектирует задачу и не делает unrelated refactoring.
 
 ## Lifecycle задачи
 
-1. Создать task.
-2. Sol анализирует задачу.
-3. Sol обновляет `context.md` задачи.
-4. Sol создает `plan.md`.
-5. Sol создает `prompt.md` для Luna.
-6. Luna реализует.
-7. Luna проверяет изменения.
-8. Результат записывается в `result.md`.
-9. Устойчивые знания переносятся в project context или decisions.
-10. Task остается историей конкретной работы.
+### Lightweight task — default
+
+Для обычной задачи не создавайте task directory и четыре файла. Достаточно:
+
+```text
+User task → Sol context/research → один Luna prompt → Luna implementation/review
+```
+
+### Persisted task — по необходимости
+
+Создавайте `projects/<project>/tasks/<task>/` только для большой,
+архитектурной, длительной, межсессионной или audit-значимой работы:
+
+```text
+plan.md
+prompt.md
+result.md
+```
+
+Task `context.md` optional и нужен только при реальной причине, если сведения
+нельзя ясно держать в `plan.md`.
+
+После завершения переносите в project context или `decisions.md` только знания,
+которые устойчивы и полезны для будущих задач. Не сохраняйте credentials,
+secrets, tokens, private keys или `.env`.
 
 Если задача изменила архитектуру, workflow, conventions или другое устойчивое состояние, обновите `projects/<project>/context.md` или `projects/<project>/decisions.md`. Не превращайте task в постоянный source of truth.

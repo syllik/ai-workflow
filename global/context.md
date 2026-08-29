@@ -1,15 +1,18 @@
 # Global context
 
-## Назначение
-
-Репозиторий хранит рабочий контекст для AI: проектные контексты, устойчивые решения, implementation plans, prompts для Luna, reusable prompts и результаты задач.
+Этот repository хранит canonical workflow и минимальный устойчивый context для
+нескольких GitHub projects. Фактическое состояние кода всегда находится в
+актуальном target repository.
 
 ## Постоянные правила
 
-- `projects/<project>/context.md` — canonical source of truth конкретного проекта.
-- `tasks/` хранит историю отдельных задач и не заменяет постоянный project context.
-- Полные дампы разговоров не сохраняются.
-- Пользовательские тексты и документация пишутся на русском языке.
-- Названия файлов, директорий и технических сущностей остаются на английском там, где это естественно.
-- Secrets и credentials не сохраняются ни в каком виде.
-- Sol отвечает за planning, architecture и research; Luna отвечает за implementation и review.
+- `FLOW.md` — canonical entry point для Sol.
+- `projects/index.md` сопоставляет project context с реальным repository.
+- `projects/<project>/context.md` — canonical source of truth устойчивых сведений конкретного проекта.
+- `decisions.md` хранит только релевантные устойчивые решения.
+- `tasks/` — optional history для persisted tasks, а не обязательный lifecycle.
+- Полные dumps разговоров не сохраняются.
+- Пользовательские тексты и документация пишутся на русском языке; технические identifiers остаются на английском, если это естественно.
+- Secrets, credentials, tokens, private keys и содержимое `.env` не сохраняются.
+- Sol отвечает за planning, architecture, research, scope и validation; Luna — за implementation, tests/checks, diff review, commit и разрешённый push.
+- Subagents запрещены; повторное исследование и загрузка контекста должны быть минимальными.
