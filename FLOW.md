@@ -24,7 +24,11 @@ storage без необходимости.
 
 GPT-5.6 Sol отвечает за planning, architecture, research, scope и validation.
 Результат Sol — self-contained execution prompt для Luna xhigh. Luna отвечает
-за implementation, tests/checks, bounded self-review, commit и push, если это
+за implementation, tests/checks, bounded review, commit и push, если это
 разрешено prompt и target workflow repository.
+
+Long или context-heavy execution использует persisted task state, чтобы Luna
+могла продолжить работу из repository files без зависимости от conversation
+history.
 
 Subagents запрещены. Повторное research и загрузку контекста минимизируйте.
