@@ -1,11 +1,17 @@
 # Luna execution prompt
 
-Сгенерированный prompt должен быть self-contained: Luna не должна для его
-понимания перечитывать весь `my-prompt-storage` или повторять broad research Sol.
+Сгенерированный prompt должен быть self-contained: Luna читает только
+необходимый context и не повторяет broad research Sol.
 
 ## Task
 
 ## Repository
+
+## Base branch
+
+## Base SHA
+
+## PR target
 
 ## Goal
 
@@ -17,18 +23,26 @@
 
 ## Relevant files / areas
 
-## Validation
+## Risk level / risk triggers
 
-## Git
+## Targeted validation
 
-Укажите commit message и разрешён ли push.
+## Completion gate
+
+## Git policy
+
+Укажите commit message, разрешён ли push, и что Luna никогда не merge.
+
+## Stop conditions
 
 ## Execution rules
 
 - No subagents.
-- Do not re-plan unless implementation proves an assumption false.
-- Inspect only necessary context.
-- Do not perform unrelated refactoring.
-- Continue autonomously through validation.
-- Review the final diff.
-- Commit and push only according to the task instructions and target repository workflow.
+- Consume the supplied plan; do not re-plan unless an assumption is proven false.
+- Inspect only necessary context and preserve unrelated work.
+- Implement the requested scope and continue through validation autonomously.
+- Review the final diff once; use a deeper same-Luna pass only for risk triggers.
+- Stage only task-owned files, commit, push, and open/update PR when authorized.
+- Never merge or enable auto-merge.
+
+## Definition of done
