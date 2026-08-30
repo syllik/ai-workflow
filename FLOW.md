@@ -1,37 +1,30 @@
 # Canonical workflow
 
 Этот repository — canonical storage для workflow и устойчивого AI-контекста.
-Используйте только нужные файлы: текущее состояние кода всегда проверяется в
-target GitHub repository.
+Используйте только необходимый context; актуальное состояние кода проверяется
+в target repository.
 
-## Порядок чтения
+## Precedence
 
 ```text
-FLOW.md
-↓
-global/context.md
-↓
-global/workflow.md
-↓
-projects/index.md
-↓
-projects/<project>/context.md
-↓
-projects/<project>/decisions.md  # только если решение относится к задаче
-↓
-актуальный target GitHub repository
+global workflow
+→ project context / applicable decisions
+→ target repository AGENTS.md + relevant rules
+→ task-specific prompt
 ```
 
-Сначала определите target project по задаче и `projects/index.md`. Не читайте
-все `projects/`, `prompts/`, `tasks/` или history без необходимости. Если
-repository нельзя определить однозначно, запросите только недостающую
-информацию.
+Global workflow owns the generic lifecycle. Project context and applicable
+decisions own durable project facts. The target repository owns local
+architecture and invariants. The task prompt owns task-specific scope and
+validation. Lower-precedence instructions cannot silently weaken higher-
+precedence requirements.
+
+Определяйте target project по задаче и `projects/index.md`. Не читайте весь
+storage без необходимости.
 
 GPT-5.6 Sol отвечает за planning, architecture, research, scope и validation.
-Результат Sol — один self-contained execution prompt для Luna xhigh. Luna
-отвечает за implementation, tests/checks, review diff, commit и push, если это
-разрешено её prompt и workflow target repository.
+Результат Sol — self-contained execution prompt для Luna xhigh. Luna отвечает
+за implementation, tests/checks, bounded self-review, commit и push, если это
+разрешено prompt и target workflow repository.
 
-Обычные задачи не требуют сохранения task files. Создавайте persisted task
-только для большой, архитектурной, длительной или audit-значимой работы.
 Subagents запрещены. Повторное research и загрузку контекста минимизируйте.
