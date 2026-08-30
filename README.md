@@ -1,6 +1,3 @@
-## `README.md`
-
-````markdown
 # Рабочий контекст для AI
 
 Этот repository хранит canonical workflow, устойчивый project context, решения
@@ -32,19 +29,19 @@ session без зависимости от conversation history.
 
 ## Структура
 
-- [`global/context.md`](global/context.md) — постоянные правила для всех проектов.
-- [`global/workflow.md`](global/workflow.md) — роли и lifecycle задач.
-- [`projects/index.md`](projects/index.md) — registry GitHub repositories и contexts.
-- `projects/<project>/` — устойчивый context и только необходимые persisted tasks.
-- `prompts/` — короткие reusable prompts.
-- `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
-- [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь.
+* [`global/context.md`](global/context.md) — постоянные правила для всех проектов.
+* [`global/workflow.md`](global/workflow.md) — роли и lifecycle задач.
+* [`projects/index.md`](projects/index.md) — registry GitHub repositories и contexts.
+* `projects/<project>/` — устойчивый context и только необходимые persisted tasks.
+* `prompts/` — короткие reusable prompts.
+* `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
+* [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь.
 
 ### Reusable prompts
 
-- [`implementation.md`](prompts/implementation.md) — базовые execution rules для Luna.
-- [`code-review.md`](prompts/code-review.md) — bounded findings-first review для Luna.
-- [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
+* [`implementation.md`](prompts/implementation.md) — базовые execution rules для Luna.
+* [`code-review.md`](prompts/code-review.md) — bounded findings-first review для Luna.
+* [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
 
 ## Как работать
 
@@ -69,7 +66,7 @@ projects/<project>/tasks/<task>/
 ├── prompt.md
 ├── state.md
 └── result.md
-````
+```
 
 Назначение файлов:
 
@@ -155,6 +152,3 @@ repository без такой bootstrap instruction.
 
 Не сохраняйте API keys, passwords, access tokens, refresh tokens, private keys,
 содержимое `.env` или другие credentials. См. также [`.gitignore`](.gitignore).
-
-```
-```
