@@ -24,28 +24,16 @@ storage без необходимости.
 
 GPT-5.6 Sol отвечает за planning, architecture, research, scope и validation.
 Результат Sol — self-contained execution prompt для Luna xhigh. Luna отвечает
-за implementation, tests/checks, bounded self-review, commit, push task branch
-и PR, если это разрешено prompt и target workflow repository.
+за implementation, tests/checks, bounded review, commit и push, если это
+разрешено prompt и target workflow repository.
 
-Короткая integration sequence:
+Интеграционная и PR target branch определяется project context и правилами
+target repository. GitHub repository default branch нельзя молча принимать за
+integration branch. Подробный lifecycle и gate policy находятся в
+`global/workflow.md`.
 
-```text
-task branch → implementation → targeted validation → bounded diff review
-→ cross-file integration review → full local completion gate → commit
-→ pre-push repeats the local gate → push task branch → open/update PR
-→ required remote CI green
-→ READY FOR HUMAN MERGE → human merges into integration branch
-```
-
-Local completion gate проверяет task в checkout до commit/push. Authoritative
-remote integration gate — это существующий PR в integration branch и green
-required CI; local green сам по себе не означает readiness to merge.
-
-Integration branch берётся из project context и target repository rules, а не из
-GitHub repository default branch. Для `ChipIn-one/chipin-frontend` integration
-branch — `dev`, хотя repository default branch остаётся `main`.
-
-Luna never merges integration branches and never pushes directly to `dev` или
-`main`. Human performs the merge after the authoritative remote gate is green.
+Long или context-heavy execution использует persisted task state, чтобы Luna
+могла продолжить работу из repository files без зависимости от conversation
+history.
 
 Subagents запрещены. Повторное research и загрузку контекста минимизируйте.
