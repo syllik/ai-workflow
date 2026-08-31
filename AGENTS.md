@@ -36,6 +36,7 @@ prompts, tasks или history без необходимости.
 - Task `context.md` optional и не должен дублировать `plan.md`.
 - Если существует утверждённый `plan.md`, не меняйте архитектуру без явной причины.
 - Не используйте subagents, не повторяйте broad research и не расширяйте scope.
+- Luna может commit, push task branch и открыть/update PR только при разрешении; Luna never merges и never pushes directly to `dev`/`main`.
 - Не создавайте лишнюю документацию и unrelated refactoring.
 - Обновляйте canonical project context только при появлении устойчивого знания.
 - Никогда не сохраняйте secrets, credentials, tokens, private keys или содержимое `.env`.
@@ -73,8 +74,25 @@ storage без необходимости.
 
 GPT-5.6 Sol отвечает за planning, architecture, research, scope и validation.
 Результат Sol — self-contained execution prompt для Luna xhigh. Luna отвечает
-за implementation, tests/checks, bounded review, commit и push, если это
-разрешено prompt и target workflow repository.
+за implementation, tests/checks, bounded review, commit, push task branch и PR,
+если это разрешено prompt и target workflow repository.
+
+Короткая integration sequence:
+
+```text
+task branch → implementation → targeted validation → bounded diff review
+→ cross-file integration review → full local completion gate → commit
+→ pre-push repeats the local gate → push task branch → open/update PR
+→ required remote CI green
+→ READY FOR HUMAN MERGE → human merges into integration branch
+```
+
+Local completion gate проверяет task в checkout до commit/push. Authoritative
+remote integration gate — это существующий PR в integration branch и green
+required CI; local green сам по себе не означает readiness to merge.
+
+Luna never merges integration branches and never pushes directly to `dev` или
+`main`. Human performs the merge after the authoritative remote gate is green.
 
 Long или context-heavy execution использует persisted task state, чтобы Luna
 могла продолжить работу из repository files без зависимости от conversation
@@ -103,10 +121,15 @@ User task
 → targeted validation and fixes
 → bounded diff review
 → short cross-file integration pass when needed
-→ full completion gate
+→ full local completion gate
 → stage task-owned files
 → commit
-→ push / PR when authorized
+→ pre-push repeats the local gate
+→ push task branch
+→ open/update PR into integration branch
+→ wait/check required remote CI
+→ if green: READY FOR HUMAN MERGE
+→ human merges integration branch
 ````
 
 Для небольшой задачи implementation и review могут оставаться одним bounded
@@ -121,14 +144,48 @@ phase. Не создавайте ceremony там, где задача помещ
 Sol — planner, architect и research agent. Он выдаёт self-contained prompt.
 
 Luna — executor, coder и reviewer: реализует scope, валидирует, исправляет,
-просматривает полный task-owned diff, делает commit/push и PR только при
-разрешении.
+просматривает полный task-owned diff, делает commit, push task branch и PR
+только при разрешении. Luna never merges integration branches and never pushes
+directly to `dev`/`main`; human performs the merge.
 
 Subagents запрещены. Luna не повторяет broad research Sol, не перечитывает весь
 storage, не перепроектирует задачу и не делает unrelated refactoring.
 
 Обычный lifecycle не требует user-controlled staging, staged approval,
 subagent review или обязательного ручного approval в середине реализации.
+
+## Gates
+
+### Local completion gate
+
+Target repository's full local command checks the task before commit/push. A
+tracked `pre-push` hook may repeat this command and must block the push on a
+non-zero result. Local green is necessary but does not authorize integration.
+
+### Authoritative remote integration gate
+
+The task branch must be pushed and have an open or updated PR into the
+integration branch. Required CI for that PR must be green before the task is
+reported as ready for integration. Remote CI is authoritative for integration
+readiness; preview/deployment signals do not replace it. Only a human merges
+the integration branch.
+
+## Bounded failure diagnosis
+
+If targeted validation, the local completion gate, a pre-push hook, or required
+remote CI fails, Luna performs one bounded diagnosis pass only. It may read the
+failed command's stdout/stderr, `git status`, the task diff, files named in the
+error stack, and directly related touched files; make one obvious task-local
+correction; rerun the specific failed check; and, after a fix, rerun the
+necessary completion gate.
+
+Without a separate user/Sol request, Luna must not do web research, broad
+GitHub/repository exploration, reread all prompt storage, investigate unrelated
+modules, perform architecture research, make multiple speculative fix attempts,
+or use subagents. If the cause is not obvious, environment-specific and needs
+separate investigation, unrelated, or the first bounded correction does not
+help, Luna stops and reports the failing check, key error, suspected file/root
+cause, checks performed, attempted correction, and escalation reason.
 
 ## Lightweight и persisted tasks
 
