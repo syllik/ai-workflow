@@ -11,7 +11,7 @@
 
 ## Base SHA
 
-## PR target
+## PR target / integration branch
 
 ## Goal
 
@@ -50,11 +50,38 @@ execution state.
 
 ## Targeted validation
 
-## Completion gate
+## Local completion gate
 
-## Git policy
+Укажите полную локальную команду, критерий успеха и scope того, что она проверяет.
 
-Укажите commit message, разрешён ли push, и что Luna никогда не merge.
+## Pre-push gate
+
+Укажите target-repository pre-push validation, если она определена, и повторяет
+ли она local completion gate.
+
+## Required remote CI / integration readiness gate
+
+Укажите required remote CI, PR target, критерии green/readiness и тот факт, что
+local green или preview/deployment signals не заменяют required remote gate,
+если это применимо.
+
+## Git publication policy
+
+Укажите commit message, разрешены ли stage/commit/push и open/update PR, имя
+authorized task branch, а также запрет на merge и auto-merge.
+
+## No-direct-push restrictions
+
+Укажите protected integration/release branches, в которые Luna не может push
+напрямую, если такие ограничения определены supplied workflow.
+
+## Bounded failure diagnosis / escalation
+
+Укажите, что при падении targeted validation, local completion gate,
+target-repository pre-push gate или required remote CI Luna делает один bounded
+diagnosis pass: inspect failure and task-local context, make one obvious
+task-local correction, rerun the specific check, then escalate instead of
+starting broad research or speculative debugging.
 
 ## Stop conditions
 
@@ -69,7 +96,13 @@ execution state.
 * Keep a small diff as one bounded review.
 * Partition a non-trivial diff into coherent batches and finish with a short cross-file integration pass.
 * Do not rely on conversation context as the only source of persisted execution state.
-* Stage only task-owned files, commit, push, and open/update PR when authorized.
-* Never merge or enable auto-merge.
+* Run the local completion gate.
+* Push only an authorized task branch.
+* Open/update the PR into the declared PR target.
+* Check required remote CI when applicable.
+* Never push directly to protected integration/release branches when forbidden by supplied workflow.
+* Never merge.
+* Never enable auto-merge.
+* Use one bounded failure-diagnosis pass before escalation.
 
 ## Definition of done

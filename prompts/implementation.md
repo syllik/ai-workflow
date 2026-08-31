@@ -13,10 +13,19 @@
 8. Просмотри полный task-owned diff. Маленький diff review как одну bounded unit; non-trivial diff разбей на coherent batches по architecture или data-flow.
 9. Для persisted task после каждого review batch запиши reviewed files и confirmed findings в `state.md`.
 10. После всех review batches сделай короткий cross-file integration pass по связанным рискам и зависимостям.
-11. Запусти full completion gate.
+11. Запусти full local completion gate.
 12. Для persisted task запиши финальный outcome в `result.md`.
-13. При авторизации stage только task-owned files, commit, push и открой/update PR.
-14. Не используй subagents и milestone approval ceremony. Luna никогда не merge.
+13. При авторизации:
+    1. stage только task-owned files;
+    2. commit;
+    3. выполни target-repository pre-push gate, если он определён;
+    4. push только authorized task branch;
+    5. открой или обнови PR в supplied/project-declared PR target;
+    6. проверь required remote CI, если он определён project/target workflow;
+    7. сообщай `READY FOR HUMAN MERGE` только после выполнения required remote integration gate;
+    8. никогда не merge;
+    9. никогда не enable auto-merge.
+14. Не используй subagents и milestone approval ceremony.
 
 Не пытайся одновременно удерживать весь большой diff, все findings и весь
 repository context в conversation context.
@@ -33,6 +42,23 @@ batch.
 Если lightweight task фактически становится context-heavy, следуй promotion
 policy из task-specific prompt. Не придумывай persisted task path, если он не
 задан.
+
+## Bounded failure diagnosis
+
+Если targeted validation, local completion gate, target-repository pre-push
+validation или required remote CI завершается ошибкой, выполни только один
+bounded diagnosis pass:
+
+1. inspect stdout/stderr failed check, `git status`, task-owned diff и напрямую связанные файлы;
+2. make one obvious task-local correction;
+3. rerun specific failed check и после correction необходимый completion gate;
+4. если проблема сохраняется, её причина неочевидна, environment-specific или
+   требует broad research, остановись и сообщи failing check, key error,
+   suspected root cause, checks performed, attempted correction и escalation
+   reason.
+
+Не начинай broad research, speculative debugging, повторные correction attempts
+или работу с unrelated scope без отдельного запроса пользователя/Sol.
 
 Остановись только при destructive ambiguity involving unknown user work, missing
 publication capability, irreconcilable instruction conflict или genuinely unsafe
