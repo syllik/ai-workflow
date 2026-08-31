@@ -33,6 +33,7 @@ prompts, tasks или history без необходимости.
 * Task `context.md` optional и не должен дублировать `plan.md`.
 * Если существует утверждённый `plan.md`, не меняйте архитектуру без явной причины.
 * Не используйте subagents, не повторяйте broad research и не расширяйте scope.
+* Luna может stage task-owned files, commit, push an authorized task branch и open/update PR, если это разрешено task/project workflow; Luna never merges и never enables auto-merge.
 * Не создавайте лишнюю документацию и unrelated refactoring.
 * Обновляйте canonical project context только при появлении устойчивого знания.
 * Никогда не сохраняйте secrets, credentials, tokens, private keys или содержимое `.env`.

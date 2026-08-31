@@ -10,12 +10,17 @@ User task
 → Luna reads necessary context
 → bounded implementation phases
 → targeted validation and fixes
-→ bounded diff review
+→ bounded full task-owned diff review
 → short cross-file integration pass when needed
-→ full completion gate
+→ full local completion gate
 → stage task-owned files
 → commit
-→ push / PR when authorized
+→ target-repository pre-push gate when defined
+→ push authorized task branch
+→ open/update PR into project-declared integration branch
+→ required remote CI
+→ READY FOR HUMAN MERGE
+→ human merge
 ```
 
 Для небольшой задачи implementation и review могут оставаться одним bounded
@@ -30,14 +35,58 @@ phase. Не создавайте ceremony там, где задача помещ
 Sol — planner, architect и research agent. Он выдаёт self-contained prompt.
 
 Luna — executor, coder и reviewer: реализует scope, валидирует, исправляет,
-просматривает полный task-owned diff, делает commit/push и PR только при
-разрешении.
+просматривает полный task-owned diff, делает commit, push authorized task
+branch и открывает или обновляет PR только при разрешении task/project workflow.
+Luna never merges и never enables auto-merge.
 
 Subagents запрещены. Luna не повторяет broad research Sol, не перечитывает весь
 storage, не перепроектирует задачу и не делает unrelated refactoring.
 
 Обычный lifecycle не требует user-controlled staging, staged approval,
 subagent review или обязательного ручного approval в середине реализации.
+
+## Gates
+
+### Local completion gate
+
+Target repository's full local command checks the task before commit/push. A
+tracked `pre-push` gate may repeat this command and must block the push on a
+non-zero result. Local green is necessary but does not by itself establish
+integration readiness.
+
+### Authoritative remote integration gate
+
+The task branch must have an open or updated PR into the integration branch
+declared by project context and target repository rules. If the project or
+target repository defines required remote CI, that deterministic CI must be
+green before the task is reported as ready for integration. Remote CI is
+authoritative for integration readiness; preview/deployment signals do not
+replace it. The GitHub repository default branch does not implicitly define the
+PR target. Only a human merges the integration branch.
+
+## Bounded failure diagnosis
+
+If targeted validation, the local completion gate, target-repository pre-push
+validation, or required remote CI fails, Luna performs one bounded diagnosis
+pass only. It may read the failed command's stdout/stderr, `git status`, the
+task-owned diff, files named in the error stack, and directly related touched
+files; make one obvious task-local correction; rerun the specific failed check;
+and, after a fix, rerun the necessary completion gate.
+
+Without a separate user/Sol request, Luna must not:
+
+* perform web research;
+* perform broad GitHub/repository exploration;
+* reread all prompt storage;
+* inspect unrelated modules;
+* perform architecture research;
+* make multiple speculative fix attempts;
+* use subagents.
+
+If the cause is not obvious, environment-specific and needs separate
+investigation, unrelated, or the first bounded correction does not help, Luna
+stops and reports the failing check, key error, suspected file/root cause,
+checks performed, attempted correction, and escalation reason.
 
 ## Lightweight и persisted tasks
 
@@ -81,7 +130,7 @@ state для persisted task.
 ## Promotion to persisted
 
 Lightweight task может быть promoted to persisted во время выполнения, если
-фактический scope оказывается существенно больше ожидаемого: растёт repository
+фактический scope становится существенно больше ожидаемого: растёт repository
 exploration, количество связанных изменений, validation/fix cycles или review
 scope.
 
@@ -130,8 +179,8 @@ state/data-flow или другой реальной связи. Не делит
 После каждого batch persisted task фиксирует reviewed files и confirmed findings
 в `state.md`.
 
-После завершения всех batches выполняется короткий cross-file integration pass
-только по зависимостям и рискам между уже reviewed areas. Не нужно повторно
+После завершения всех review batches выполняется короткий cross-file integration
+pass только по зависимостям и рискам между уже reviewed areas. Не нужно повторно
 читать весь diff без причины.
 
 ## Recovery

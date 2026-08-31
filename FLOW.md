@@ -27,6 +27,11 @@ GPT-5.6 Sol отвечает за planning, architecture, research, scope и val
 за implementation, tests/checks, bounded review, commit и push, если это
 разрешено prompt и target workflow repository.
 
+Интеграционная и PR target branch определяется project context и правилами
+target repository. GitHub repository default branch нельзя молча принимать за
+integration branch. Подробный lifecycle и gate policy находятся в
+`global/workflow.md`.
+
 Long или context-heavy execution использует persisted task state, чтобы Luna
 могла продолжить работу из repository files без зависимости от conversation
 history.
