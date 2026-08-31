@@ -1,6 +1,8 @@
 # ChipIn frontend decisions
 
 - `dev` is the permanent integration branch; `main` is the release branch.
+- The frontend repository default branch is `main`, but normal task PRs must
+  explicitly target integration branch `dev`.
 - Normal work is `task/*` → `dev`; normal release is `dev` → `main`.
 - The user always performs merges; auto-merge is disabled.
 - No subagents. Luna implements and performs one bounded self-review.

@@ -41,6 +41,10 @@ Local completion gate проверяет task в checkout до commit/push. Auth
 remote integration gate — это существующий PR в integration branch и green
 required CI; local green сам по себе не означает readiness to merge.
 
+Integration branch берётся из project context и target repository rules, а не из
+GitHub repository default branch. Для `ChipIn-one/chipin-frontend` integration
+branch — `dev`, хотя repository default branch остаётся `main`.
+
 Luna never merges integration branches and never pushes directly to `dev` или
 `main`. Human performs the merge after the authoritative remote gate is green.
 

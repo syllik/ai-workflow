@@ -6,6 +6,9 @@ Scope: frontend only.
 
 Integration branch: `dev`
 Release branch: `main`
+Repository default branch: `main`
+
+Normal task PR base: `dev`; do not infer it from the repository default branch.
 
 Normal development: `task/*` → `dev`
 

@@ -44,8 +44,9 @@ non-zero result. Local green is necessary but does not authorize integration.
 The task branch must be pushed and have an open or updated PR into the
 integration branch. Required CI for that PR must be green before the task is
 reported as ready for integration. Remote CI is authoritative for integration
-readiness; preview/deployment signals do not replace it. Only a human merges
-the integration branch.
+readiness; preview/deployment signals do not replace it. The PR base must be
+the integration branch declared by the target project's rules, never the
+GitHub repository default branch. Only a human merges the integration branch.
 
 ## Bounded failure diagnosis
 
