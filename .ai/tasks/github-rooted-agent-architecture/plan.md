@@ -87,7 +87,7 @@ Existing `AGENTS.md` не перезаписывается. Generator управ
 
 - стабильный `id`;
 - canonical `repository` в формате `owner/name`;
-- `localPath` относительно `~/Desktop/Work`;
+- `localPath` относительно `~/Desktop/WORK`;
 - purpose-first `group`;
 - `access: managed | read-only`;
 - `status: onboarding | active`;
