@@ -10,9 +10,8 @@
 - Removed one validated clean worktree, moved 8 broken worktree directories to
   `/Users/mihaildovgun/Desktop/Worktree-Recovery-20260903/`, and pruned only
   registered stale worktree records.
-- Renamed `syllik/my-prompt-storage` to `syllik/ai-workflow` and
-  `syllik/Youtube-video-meta-translator` to
-  `syllik/youtube-metadata-translator`.
+- Renamed the workflow repository to `syllik/ai-workflow` and the YouTube
+  repository to `syllik/youtube-metadata-translator`.
 - Placed all eight approved repositories in the canonical purpose-first tree.
 - Added profile navigation and workspace documentation; aligned canonical
   workflow and YouTube repository references.
