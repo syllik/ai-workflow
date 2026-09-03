@@ -2,7 +2,7 @@
 
 ## Current phase
 
-FINAL_REVIEW_PASS.
+READY_FOR_HUMAN_MERGE.
 
 ## Scope
 
@@ -30,7 +30,7 @@ Remove five Phase 1A blockers in `syllik/ai-workflow` on
 
 ## Next
 
-Push the authorized branch, verify/update PR #4, write `result.md`, rerun final gates, and stop at `READY_FOR_HUMAN_MERGE`.
+Sol review and human merge of PR #4 into `master`.
 
 ## Blockers
 
