@@ -11,7 +11,7 @@ READY_FOR_HUMAN_MERGE.
 - Implemented strict manifest/budget core, deterministic renderers, exact markers, isolated safe operations, and CLI exit boundaries.
 - Added tests for schema, budgets, rendering, Git/filesystem safety, read-only rules, idempotency, drift, and CLI codes.
 - Added canonical manifest, AI/FLOW route, global role files, `.ai` contract, migration pointer, generated index, compatibility pointers, README, and AGENTS routing block.
-- Published implementation commit `69920bb80570d4cbb5a3a33c5fdea6dec159bd6c` and opened PR #4 into `master`.
+- Published implementation commit `69920bb80570d4cbb5a3a33c5fdea6dec159bd6c` and persistence commit `61fde33f13c45b61d0986ad7e9b74a4a242664a6`; PR #4 is open into `master`.
 
 ## Changed / reviewed files
 
@@ -32,7 +32,7 @@ READY_FOR_HUMAN_MERGE.
 
 ## Next
 
-Commit and push `result.md` and this final checkpoint, then recheck PR #4 and leave merge to the human.
+Human reviews and merges PR #4 into `master`.
 
 ## Blockers
 
