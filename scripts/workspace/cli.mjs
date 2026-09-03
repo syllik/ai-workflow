@@ -40,7 +40,7 @@ function printFindings(findings) {
   if (findings.length > 0) process.stderr.write(`${JSON.stringify(findings)}\n`);
 }
 
-function run(args) {
+function run(args, dependencies = {}) {
   let options;
   try {
     options = parseArgs(args);
@@ -73,15 +73,31 @@ function run(args) {
     return findings.length > 0 ? 1 : 0;
   }
 
-  const plan = planWorkspace({ root: options.root, manifestPath: options.manifestPath, manifest });
+  const planOptions = { root: options.root, manifestPath: options.manifestPath, manifest, ...dependencies };
+  const plan = planWorkspace(planOptions);
   printFindings(plan.findings);
   if (plan.validationFailed) return 1;
   if (plan.blocked) return 2;
   if (options.command === 'plan') return plan.operations.length > 0 || plan.drift ? 1 : 0;
   if (plan.drift) return 1;
-  const applied = applyOperations({ root: options.root, plan });
-  printFindings(applied.findings);
-  return applied.blocked ? 2 : 0;
+  let currentPlan = plan;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const applied = applyOperations({ root: options.root, plan: currentPlan, ...dependencies });
+    printFindings(applied.findings);
+    if (applied.blocked) return 2;
+
+    const verification = planWorkspace(planOptions);
+    printFindings(verification.findings);
+    if (verification.validationFailed) return 1;
+    if (verification.blocked) return 2;
+    if (verification.operations.length === 0 && !verification.drift) return verification.findings.length === 0 ? 0 : 1;
+    if (pass === 1) {
+      printFindings([{ code: 'APPLY_NOT_CONVERGED', path: 'workspace' }]);
+      return 2;
+    }
+    currentPlan = verification;
+  }
+  return 2;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) process.exitCode = run(process.argv.slice(2));

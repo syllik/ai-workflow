@@ -49,7 +49,19 @@ function expectedRemote(repository) {
   return `https://github.com/${repository}.git`;
 }
 
-function repositorySafety(destination, repository, localPath, findings) {
+function resolveExpectedRemote(repository, options = {}) {
+  if (typeof options.expectedRemote === 'function') return options.expectedRemote(repository);
+  if (options.expectedRemote && typeof options.expectedRemote === 'object') return options.expectedRemote[repository] ?? expectedRemote(repository);
+  return expectedRemote(repository);
+}
+
+function resolveCloneSource(repository, options = {}) {
+  if (typeof options.cloneSource === 'function') return options.cloneSource(repository);
+  if (options.cloneSource && typeof options.cloneSource === 'object') return options.cloneSource[repository] ?? null;
+  return null;
+}
+
+function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), allowedUntrackedPaths = []) {
   const gitPath = path.join(destination, '.git');
   if (!existsSync(gitPath)) {
     findings.push(finding('DESTINATION_COLLISION', localPath));
@@ -66,11 +78,14 @@ function repositorySafety(destination, repository, localPath, findings) {
     valid = false;
   }
   const origin = command(destination, ['config', '--get', 'remote.origin.url']);
-  if (normalizedRemote(origin) !== normalizedRemote(expectedRemote(repository))) {
+  if (normalizedRemote(origin) !== normalizedRemote(expectedOrigin)) {
     findings.push(finding('ORIGIN_MISMATCH', localPath));
     valid = false;
   }
-  if ((command(destination, ['status', '--porcelain']) ?? '') !== '') {
+  const status = command(destination, ['status', '--porcelain', '--untracked-files=all']) ?? '';
+  const statusPaths = status.split('\n').filter(Boolean).map((line) => line.slice(3).trim());
+  const unexpectedStatusPaths = statusPaths.filter((statusPath) => !lineIsUntracked(statusPath, status, allowedUntrackedPaths));
+  if (unexpectedStatusPaths.length > 0) {
     findings.push(finding('DIRTY_REPOSITORY', localPath));
     valid = false;
   }
@@ -81,6 +96,16 @@ function repositorySafety(destination, repository, localPath, findings) {
     valid = false;
   }
   return valid;
+}
+
+function lineIsUntracked(statusPath, status, allowedUntrackedPaths) {
+  const line = status.split('\n').find((candidate) => candidate.slice(3).trim() === statusPath);
+  return line?.startsWith('?? ') && allowedUntrackedPaths.includes(statusPath);
+}
+
+function allowedUntrackedPaths(project) {
+  if (project.access !== 'managed') return [];
+  return ['AGENTS.md', project.contextPath, '.ai/decisions.md'];
 }
 
 function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository) {
@@ -201,14 +226,17 @@ export function planWorkspace(options = {}) {
       continue;
     }
     if (!existsSync(destination)) {
-      operations.push({ kind: 'clone', repository: project.repository, path: project.localPath, destination });
+      const source = resolveCloneSource(project.repository, options);
+      const operation = { kind: 'clone', repository: project.repository, path: project.localPath, destination };
+      if (source !== null) operation.source = source;
+      operations.push(operation);
       continue;
     }
     if (!lstatSync(destination).isDirectory()) {
       findings.push(finding('DESTINATION_COLLISION', project.localPath));
       continue;
     }
-    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings);
+    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), allowedUntrackedPaths(project));
     if (!safeRepository) continue;
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository };
@@ -224,7 +252,7 @@ export function planWorkspace(options = {}) {
   return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
 }
 
-function preflightOperation(root, operation, plan, findings) {
+function preflightOperation(root, operation, plan, findings, options = {}) {
   if (!OPERATION_KINDS.includes(operation.kind)) {
     findings.push(finding('UNSUPPORTED_OPERATION', operation.path ?? 'operation'));
     return;
@@ -264,7 +292,10 @@ function preflightOperation(root, operation, plan, findings) {
   }
   if (operation.repositoryPath && existsSync(resolveInside(root, operation.repositoryPath))) {
     const repositoryDestination = resolveInside(root, operation.repositoryPath);
-    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings);
+    const repositoryRelativePath = path.posix.relative(operation.repositoryPath, operation.path);
+    const allowed = ['AGENTS.md', '.ai/decisions.md'];
+    if (repositoryRelativePath.endsWith('.ai/context.md')) allowed.push(repositoryRelativePath);
+    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), allowed);
   }
 }
 
@@ -274,7 +305,7 @@ export function applyOperations(options = {}) {
   const findings = [];
   if (!plan || !Array.isArray(plan.operations)) return { root, applied: [], findings: [finding('INVALID_PLAN', 'plan')], blocked: true };
   if (!existsSync(root) || !lstatSync(root).isDirectory()) return { root, applied: [], findings: [finding('ROOT_NOT_DIRECTORY', root)], blocked: true };
-  for (const operation of plan.operations) preflightOperation(root, operation, { ...plan, fingerprints: options.expectedFingerprints ?? plan.fingerprints }, findings);
+  for (const operation of plan.operations) preflightOperation(root, operation, { ...plan, fingerprints: options.expectedFingerprints ?? plan.fingerprints }, findings, options);
   if (findings.length > 0) return { root, applied: [], findings, blocked: true };
 
   const applied = [];
@@ -283,7 +314,7 @@ export function applyOperations(options = {}) {
       const destination = path.resolve(operation.destination);
       if (operation.kind === 'clone') {
         mkdirSync(path.dirname(destination), { recursive: true });
-        execFileSync('git', ['clone', '--quiet', expectedRemote(operation.repository), destination], { stdio: 'pipe' });
+        execFileSync('git', ['clone', '--quiet', operation.source ?? resolveExpectedRemote(operation.repository, options), destination], { stdio: 'pipe' });
       } else {
         mkdirSync(path.dirname(destination), { recursive: true });
         writeFileSync(destination, normalizeText(operation.content), 'utf8');

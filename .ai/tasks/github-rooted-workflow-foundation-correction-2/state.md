@@ -2,7 +2,7 @@
 
 ## Current phase
 
-CORRECTION_2_COMPLETE.
+CORRECTION_3_COMPLETE.
 
 ## Scope
 
@@ -31,6 +31,8 @@ Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-r
 - Focused renderer and workspace-operation tests cover preservation, idempotency, and oversized context.
 - Profile and target routing now uses canonical absolute GitHub `HEAD` URLs for central workflow files and role files.
 - Focused renderer tests reject ambiguous relative central paths and confirm the managed block budget.
+- One CLI `apply` now performs a bounded clone/scaffold/re-plan convergence pass; local fixture remotes cover managed and read-only targets.
+- Clone safety continues to validate containment, Git root, origin, cleanliness, and worktree state before contract writes.
 
 ## Safety
 
@@ -38,7 +40,7 @@ No subagents or dependency changes. Preserve unrelated work. Modify no other rep
 
 ## Next
 
-Implement bounded one-apply convergence for missing repositories and keep the next checkpoint bounded to correction 3.
+Replace broad budget walking with known central and managed artifact collection, including human-only plan budgets.
 
 ## Blockers
 

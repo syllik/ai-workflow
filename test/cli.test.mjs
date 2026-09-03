@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
-import { parseArgs } from '../scripts/workspace/cli.mjs';
+import { planWorkspace } from '../scripts/workspace/operations.mjs';
+import { parseArgs, run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
 
 const cli = path.resolve('scripts/workspace/cli.mjs');
 
@@ -93,6 +94,56 @@ describe('workspace CLI', () => {
       assert.equal(result.status, 0, result.stderr);
     } finally {
       removeFixtureRoot(manifestRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('one apply invocation clones and scaffolds a missing managed repository to convergence', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const remote = path.join(remoteRoot, 'syllik');
+      initFixtureRepo(remote, `https://github.com/${project.repository}.git`);
+      const manifestPath = writeFixtureManifest(root, manifest);
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+      const repositoryPath = path.join(root, project.localPath);
+
+      assert.equal(status, 0);
+      assert.equal(readFileSync(path.join(repositoryPath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.match(readFileSync(path.join(repositoryPath, project.contextPath), 'utf8'), /^# Project\n/u);
+      assert.equal(readFileSync(path.join(repositoryPath, '.ai/decisions.md'), 'utf8'), '# Decisions\n\nRecord durable decisions for this repository here.\n');
+      assert.deepEqual(planWorkspace({ root, manifestPath, manifest, expectedRemote: () => remote }).operations, []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('one apply invocation clones a missing read-only repository without writing contracts', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[2];
+      const manifest = fixtureManifest({ projects: [project] });
+      const remote = path.join(remoteRoot, 'backend');
+      initFixtureRepo(remote, `https://github.com/${project.repository}.git`);
+      const manifestPath = writeFixtureManifest(root, manifest);
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+      const repositoryPath = path.join(root, project.localPath);
+
+      assert.equal(status, 0);
+      assert.deepEqual(readdirSync(repositoryPath).sort(), ['.git', '.keep']);
+      assert.deepEqual(planWorkspace({ root, manifestPath, manifest, expectedRemote: () => remote }).operations, []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
       removeFixtureRoot(root);
     }
   });
