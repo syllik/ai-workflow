@@ -2,7 +2,7 @@
 
 ## Current phase
 
-CORRECTION_3_COMPLETE.
+CORRECTION_4_COMPLETE.
 
 ## Scope
 
@@ -33,6 +33,8 @@ Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-r
 - Focused renderer tests reject ambiguous relative central paths and confirm the managed block budget.
 - One CLI `apply` now performs a bounded clone/scaffold/re-plan convergence pass; local fixture remotes cover managed and read-only targets.
 - Clone safety continues to validate containment, Git root, origin, cleanliness, and worktree state before contract writes.
+- Budget checks now read only known central artifacts and managed-target context, decisions, task files, and AGENTS blocks; read-only and unrelated trees are excluded.
+- Human `plan.md` files are included in the bounded artifact budget scan.
 
 ## Safety
 
@@ -40,7 +42,7 @@ No subagents or dependency changes. Preserve unrelated work. Modify no other rep
 
 ## Next
 
-Replace broad budget walking with known central and managed artifact collection, including human-only plan budgets.
+Remove contradictory executable plan-reading instructions and add the final documentation regression check.
 
 ## Blockers
 

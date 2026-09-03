@@ -278,4 +278,48 @@ describe('workspace operations', () => {
       removeFixtureRoot(root);
     }
   });
+
+  test('checks only known central and managed artifacts, including human plan budgets', () => {
+    const manifestRoot = makeFixtureRoot();
+    const root = makeFixtureRoot();
+    try {
+      const managed = fixtureManifest().projects[0];
+      const readOnly = fixtureManifest().projects[2];
+      const manifest = fixtureManifest({ projects: [managed, readOnly] });
+      const manifestPath = writeFixtureManifest(manifestRoot, manifest);
+      mkdirSync(path.join(manifestRoot, 'global'), { recursive: true });
+      mkdirSync(path.join(manifestRoot, '.ai/tasks/central-task'), { recursive: true });
+      writeFileSync(path.join(manifestRoot, 'global/architect.md'), 'x'.repeat(6145), 'utf8');
+      writeFileSync(path.join(manifestRoot, '.ai/tasks/central-task/plan.md'), 'x'.repeat(16385), 'utf8');
+      mkdirSync(path.join(manifestRoot, 'projects'), { recursive: true });
+      writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+
+      const managedPath = path.join(root, managed.localPath);
+      initFixtureRepo(managedPath, `https://github.com/${managed.repository}.git`);
+      mkdirSync(path.join(managedPath, '.ai/tasks/target-task'), { recursive: true });
+      writeFileSync(path.join(managedPath, managed.contextPath), 'x'.repeat(8193), 'utf8');
+      writeFileSync(path.join(managedPath, '.ai/tasks/target-task/prompt.md'), 'x'.repeat(8193), 'utf8');
+      writeFileSync(path.join(managedPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(managedPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+
+      const readOnlyPath = path.join(root, readOnly.localPath);
+      initFixtureRepo(readOnlyPath, `https://github.com/${readOnly.repository}.git`);
+      mkdirSync(path.join(readOnlyPath, '.ai/tasks/should-not-read'), { recursive: true });
+      writeFileSync(path.join(readOnlyPath, '.ai/tasks/should-not-read/result.md'), 'x'.repeat(4097), 'utf8');
+      mkdirSync(path.join(root, 'unrelated/build-output'), { recursive: true });
+      writeFileSync(path.join(root, 'unrelated/build-output/unrelated.bin'), 'x'.repeat(100000), 'utf8');
+
+      const findings = checkGeneratedFiles(root, manifest, manifestPath);
+      const budgetPaths = findings.filter(({ code }) => code === 'BUDGET_EXCEEDED').map(({ path: findingPath }) => findingPath);
+      assert.equal(budgetPaths.includes('global/architect.md'), true);
+      assert.equal(budgetPaths.includes('.ai/tasks/central-task/plan.md'), true);
+      assert.equal(budgetPaths.includes(`${managed.localPath}/${managed.contextPath}`), true);
+      assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/tasks/target-task/prompt.md`), true);
+      assert.equal(budgetPaths.some((findingPath) => findingPath.includes(readOnly.localPath)), false);
+      assert.equal(budgetPaths.includes('unrelated/build-output/unrelated.bin'), false);
+    } finally {
+      removeFixtureRoot(manifestRoot);
+      removeFixtureRoot(root);
+    }
+  });
 });

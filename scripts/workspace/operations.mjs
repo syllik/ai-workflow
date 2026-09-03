@@ -328,48 +328,124 @@ export function applyOperations(options = {}) {
   return { root, applied, findings, blocked: false };
 }
 
-function walkFiles(directory, relative = '') {
-  const output = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
-    if (entry.name === '.git' || entry.name === 'node_modules') continue;
-    if (relative === '' && entry.name === 'projects') continue;
-    const entryRelative = path.posix.join(relative, entry.name);
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) output.push(...walkFiles(entryPath, entryRelative));
-    else if (entry.isFile() && entry.name !== 'plan.md') output.push({ path: entryRelative, text: readFileSync(entryPath, 'utf8') });
+const TASK_ARTIFACT_NAMES = new Set(['plan.md', 'prompt.md', 'state.md', 'result.md']);
+
+function isRegularFile(filePath) {
+  try {
+    return lstatSync(filePath).isFile();
+  } catch {
+    return false;
   }
+}
+
+function isDirectory(directoryPath) {
+  try {
+    return lstatSync(directoryPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function readKnownArtifact(root, relativePath) {
+  const filePath = resolveInside(root, relativePath);
+  if (!filePath || !isRegularFile(filePath)) return null;
+  try {
+    return { path: relativePath, text: readFileSync(filePath, 'utf8') };
+  } catch {
+    return null;
+  }
+}
+
+function collectTaskArtifacts(root, taskRootRelative) {
+  const taskRoot = resolveInside(root, taskRootRelative);
+  if (!taskRoot || !isDirectory(taskRoot)) return [];
+  const output = [];
+  function visit(directoryPath, relativeDirectory) {
+    let entries;
+    try {
+      entries = readdirSync(directoryPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isSymbolicLink()) continue;
+      const entryRelative = path.posix.join(relativeDirectory, entry.name);
+      const entryPath = path.join(directoryPath, entry.name);
+      if (entry.isDirectory()) visit(entryPath, entryRelative);
+      else if (entry.isFile() && TASK_ARTIFACT_NAMES.has(entry.name)) {
+        const artifact = readKnownArtifact(root, entryRelative);
+        if (artifact) output.push(artifact);
+      }
+    }
+  }
+  visit(taskRoot, taskRootRelative);
   return output;
 }
 
-export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
-  const findings = [];
-  const indexPath = path.join(path.dirname(path.resolve(manifestPath)), 'projects/index.md');
-  if (!existsSync(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+function collectKnownBudgetArtifacts(root, manifest, manifestPath) {
+  const manifestRoot = path.dirname(path.resolve(manifestPath));
+  const entries = [];
+  for (const relativePath of ['AI.md', 'FLOW.md']) {
+    const artifact = readKnownArtifact(manifestRoot, relativePath);
+    if (artifact) entries.push(artifact);
+  }
+
+  const globalDirectory = path.join(manifestRoot, 'global');
+  if (isDirectory(globalDirectory)) {
+    try {
+      for (const entry of readdirSync(globalDirectory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+        if (entry.isSymbolicLink() || !entry.isFile() || !entry.name.endsWith('.md')) continue;
+        const artifact = readKnownArtifact(manifestRoot, path.posix.join('global', entry.name));
+        if (artifact) entries.push(artifact);
+      }
+    } catch {
+      // Unreadable optional central artifacts are skipped safely.
+    }
+  }
+  entries.push(...collectTaskArtifacts(manifestRoot, '.ai/tasks'));
+
   for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
     const repository = resolveInside(root, project.localPath);
-    if (!repository || !existsSync(repository) || !lstatSync(repository).isDirectory()) continue;
+    if (!repository || !isDirectory(repository)) continue;
+    for (const relativePath of [project.contextPath, '.ai/decisions.md']) {
+      const artifact = readKnownArtifact(repository, relativePath);
+      if (artifact) entries.push({ path: path.posix.join(project.localPath, artifact.path), text: artifact.text });
+    }
+    entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks')));
+  }
+  return entries;
+}
+
+export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
+  const workspaceRoot = path.resolve(root);
+  const findings = [];
+  const indexPath = path.join(path.dirname(path.resolve(manifestPath)), 'projects/index.md');
+  if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
+    const repository = resolveInside(workspaceRoot, project.localPath);
+    if (!repository || !isDirectory(repository)) continue;
     const agentsPath = path.join(repository, 'AGENTS.md');
     const desiredAgents = renderAgentsBlock(manifest);
-    if (!existsSync(agentsPath) || !lstatSync(agentsPath).isFile()) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
+    if (!isRegularFile(agentsPath)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
     else {
       const current = readFileSync(agentsPath, 'utf8');
       const state = markerState(current, 'agents-routing');
       if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desiredAgents) !== normalizeText(current)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
     }
     const contextPath = resolveInside(repository, project.contextPath);
-    if (!contextPath || !existsSync(contextPath) || !lstatSync(contextPath).isFile()) {
+    if (!contextPath || !isRegularFile(contextPath)) {
       findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, project.contextPath)));
     }
     const decisionsPath = path.join(repository, '.ai/decisions.md');
-    if (!existsSync(decisionsPath) || !lstatSync(decisionsPath).isFile()) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
+    if (!isRegularFile(decisionsPath)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
   }
-  const budgetEntries = walkFiles(root).filter(({ path: filePath }) => filePath === 'AI.md' || filePath === 'FLOW.md' || filePath.startsWith('global/') || filePath.endsWith('/.ai/context.md') || filePath.endsWith('/decisions.md') || filePath.endsWith('/prompt.md') || filePath.endsWith('/state.md') || filePath.endsWith('/result.md'));
+  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath);
   findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
   for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
-    const repository = resolveInside(root, project.localPath);
-    if (!repository || !existsSync(repository) || !lstatSync(repository).isDirectory()) continue;
+    const repository = resolveInside(workspaceRoot, project.localPath);
+    if (!repository || !isDirectory(repository)) continue;
     const agentsPath = path.join(repository, 'AGENTS.md');
-    if (!existsSync(agentsPath) || !lstatSync(agentsPath).isFile()) continue;
+    if (!isRegularFile(agentsPath)) continue;
     const agents = readFileSync(agentsPath, 'utf8');
     const state = markerState(agents, 'agents-routing');
     if (state.kind === 'valid') {
