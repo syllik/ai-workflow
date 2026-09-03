@@ -31,6 +31,8 @@ Planning artifacts only:
 - Base branch: `master`
 - Approved base SHA: `1c2d4831ff84aea7a4d63135dc2c2ff4952e4c46`
 - Authorized branch: `task/github-rooted-agent-architecture`
+- Canonical local root: `~/Desktop/WORK`; target checkout: `~/Desktop/WORK/workflows/ai/ai-workflow`.
+- The clean checkout is currently on `task/workspace-navigation`; switching after fetch is expected and allowed when no worktree collision exists.
 - Current runner is fixed to `chipin-frontend`; Phase 1A requires manual Luna execution.
 - Phase 1A may modify only `syllik/ai-workflow`.
 
