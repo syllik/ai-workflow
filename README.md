@@ -123,7 +123,7 @@ task-specific prompt. Не создавайте storage location по догад
 После context compaction, interruption или новой Luna session:
 
 1. прочитайте `prompt.md`;
-2. прочитайте утверждённый `plan.md`;
+2. пользователь проверяет human-only `plan.md`; Luna его не читает;
 3. прочитайте актуальный `state.md`;
 4. проверьте текущий target repository `git status` и task-owned diff;
 5. продолжите с `state.md` → `Next`.

@@ -2,7 +2,7 @@
 
 ## Current phase
 
-READY_FOR_HUMAN_MERGE.
+SUPERSEDED_BY_GITHUB_ROOTED_WORKFLOW_FOUNDATION_CORRECTION_2.
 
 ## Anchors
 
@@ -27,7 +27,7 @@ READY_FOR_HUMAN_MERGE.
 
 ## Next
 
-Sol review and human merge of PR #4 into `master`.
+Correction 2 is the current source of truth for PR #4; see its task state.
 
 ## Blockers
 

@@ -12,9 +12,9 @@ storage. Before working, read:
 5. `AGENTS.md` and `.ai/context.md` in the target repository;
 6. only relevant `.ai/decisions.md` and task files.
 
-For a persisted task, also use its `prompt.md` and current `state.md`. Read a
-human-only `plan.md` only when the task prompt permits it. Do not reread task
-history without a concrete reason.
+For a persisted task, also use its `prompt.md` and current `state.md`. The
+human-only `plan.md` is reviewed by the user; Luna never reads it. Do not reread
+task history without a concrete reason.
 
 The GitHub organization at `https://github.com/syllik` and the task prompt are
 sufficient bootstrap. Do not require external project settings or read every

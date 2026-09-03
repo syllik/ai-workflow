@@ -1,5 +1,8 @@
 # GitHub-rooted workflow foundation correction result
 
+This result is superseded by `.ai/tasks/github-rooted-workflow-foundation-correction-2/`.
+The historical outcome and validation claims below are preserved.
+
 ## Outcome
 
 Corrected Phase 1A in the existing `task/github-rooted-agent-architecture` branch and PR #4.
@@ -26,4 +29,4 @@ Corrected Phase 1A in the existing `task/github-rooted-agent-architecture` branc
 - Updated existing PR [#4](https://github.com/syllik/ai-workflow/pull/4) only; it is open, non-draft, and targets `master`.
 - Current branch/PR head is mutable and was verified from Git and GitHub; no remote checks are configured.
 
-Status: `READY_FOR_HUMAN_MERGE`.
+Status: `SUPERSEDED_BY_CORRECTION_2`.

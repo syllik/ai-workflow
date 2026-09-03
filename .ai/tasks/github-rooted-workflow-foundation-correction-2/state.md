@@ -2,7 +2,7 @@
 
 ## Current phase
 
-CORRECTION_4_COMPLETE.
+CORRECTION_5_COMPLETE.
 
 ## Scope
 
@@ -35,6 +35,8 @@ Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-r
 - Clone safety continues to validate containment, Git root, origin, cleanliness, and worktree state before contract writes.
 - Budget checks now read only known central artifacts and managed-target context, decisions, task files, and AGENTS blocks; read-only and unrelated trees are excluded.
 - Human `plan.md` files are included in the bounded artifact budget scan.
+- README, AGENTS, and the reusable Luna implementation prompt now keep `plan.md` human-only; a regression test enforces the boundary.
+- Correction 1 state/result are marked superseded by correction 2 without rewriting their historical claims.
 
 ## Safety
 
@@ -42,7 +44,7 @@ No subagents or dependency changes. Preserve unrelated work. Modify no other rep
 
 ## Next
 
-Remove contradictory executable plan-reading instructions and add the final documentation regression check.
+Run the full local completion gates, review the task-owned diff, verify PR #4, and create the final result.
 
 ## Blockers
 
