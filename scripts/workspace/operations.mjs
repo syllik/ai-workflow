@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { markerState, renderAgentsBlock, renderDecisionsScaffold, renderManagedContextBlock, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block']);
 
@@ -94,6 +94,10 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock, ...repository });
     return;
   }
+  if (!lstatSync(destination).isFile()) {
+    findings.push(finding('DESTINATION_COLLISION', relativePath));
+    return;
+  }
   const state = markerState(current, name);
   if (state.kind === 'duplicate') {
     findings.push(finding('DUPLICATE_MARKER', relativePath));
@@ -147,8 +151,9 @@ function addContextOperation(root, operations, findings, project) {
     findings.push(finding('UNSAFE_PATH', relativePath));
     return;
   }
-  const desired = renderManagedContextBlock(project);
+  const desired = renderContextScaffold(project);
   if (!existsSync(destination)) {
+    findings.push(...checkBudget({ path: relativePath, text: desired }, BUDGETS));
     operations.push({
       kind: 'create-file',
       path: relativePath,
@@ -163,7 +168,7 @@ function addContextOperation(root, operations, findings, project) {
     findings.push(finding('DESTINATION_COLLISION', relativePath));
     return;
   }
-  if (readFileSync(destination, 'utf8') !== desired) findings.push(finding('POPULATED_CONTEXT', relativePath));
+  findings.push(...checkBudget({ path: relativePath, text: readFileSync(destination, 'utf8') }, BUDGETS));
 }
 
 export function planWorkspace(options = {}) {
@@ -213,7 +218,7 @@ export function planWorkspace(options = {}) {
     }
   }
 
-  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'POPULATED_CONTEXT', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH']);
+  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED']);
   const blocked = findings.some(({ code }) => blockedCodes.has(code));
   const fingerprints = Object.fromEntries(operations.map((operation) => [operation.path, fingerprint(operation.destination)]));
   return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
@@ -321,7 +326,7 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
       if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desiredAgents) !== normalizeText(current)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
     }
     const contextPath = resolveInside(repository, project.contextPath);
-    if (!contextPath || !existsSync(contextPath) || !lstatSync(contextPath).isFile() || readFileSync(contextPath, 'utf8') !== renderManagedContextBlock(project)) {
+    if (!contextPath || !existsSync(contextPath) || !lstatSync(contextPath).isFile()) {
       findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, project.contextPath)));
     }
     const decisionsPath = path.join(repository, '.ai/decisions.md');

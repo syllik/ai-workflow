@@ -74,14 +74,30 @@ export function renderAgentsBlock(manifest) {
   return rendered;
 }
 
-export function renderManagedContextBlock(project) {
-  return renderManagedBlock('context', [
-    `Repository: ${project.repository}`,
-    `Access: ${project.access}`,
-    `Status: ${project.status}`,
-    `Workspace group: ${project.group}`,
+export function renderContextScaffold(project) {
+  return finalNewline([
+    '# Project',
     '',
-    'This file is the target repository context entry for the GitHub-rooted workflow.'
+    '## Repository',
+    project.repository,
+    '',
+    '## Purpose',
+    '',
+    '## Current state',
+    '',
+    '## Stack',
+    '',
+    '## Architecture',
+    '',
+    '## Constraints',
+    '',
+    '## Conventions',
+    '',
+    '## Known issues',
+    '',
+    '## Current priorities',
+    '',
+    '## Canonical files in target repository'
   ].join('\n'));
 }
 

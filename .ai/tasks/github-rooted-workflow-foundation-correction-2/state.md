@@ -2,7 +2,7 @@
 
 ## Current phase
 
-READY_FOR_LUNA.
+CORRECTION_1_COMPLETE.
 
 ## Scope
 
@@ -24,13 +24,19 @@ Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-r
 - Check only known central/managed artifacts, including human plan budgets.
 - Keep every plan file human-only and unread by Luna.
 
+## Completed
+
+- Missing managed contexts now use a template-shaped scaffold without managed markers.
+- Existing regular context files are preserved byte-for-byte; collisions and UTF-8 budget violations block.
+- Focused renderer and workspace-operation tests cover preservation, idempotency, and oversized context.
+
 ## Safety
 
 No subagents or dependency changes. Preserve unrelated work. Modify no other repository. Never write to backend. Do not run real apply against `/Users/mihaildovgun/Desktop/WORK`. No reset, rebase, stash, force-push, merge, auto-merge, branch deletion, or direct push to `master`.
 
 ## Next
 
-Luna reads `prompt.md`, implements test-first corrections, runs all gates, updates state/result and PR #4, then stops at `READY_FOR_HUMAN_MERGE`.
+Implement canonical GitHub routing and keep the next checkpoint bounded to correction 2.
 
 ## Blockers
 

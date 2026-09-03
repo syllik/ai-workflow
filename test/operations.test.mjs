@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
-import { applyOperations, planWorkspace } from '../scripts/workspace/operations.mjs';
-import { renderAgentsBlock, renderManagedBlock, renderManagedContextBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { applyOperations, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
@@ -149,7 +149,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('blocks populated managed context and malformed or duplicate marker blocks', () => {
+  test('preserves populated managed context while still blocking malformed or duplicate marker blocks', () => {
     const root = makeFixtureRoot();
     try {
       const target = path.join(root, 'workflows/ai/ai-workflow');
@@ -162,9 +162,63 @@ describe('workspace operations', () => {
       git(target, 'add', 'AGENTS.md');
       git(target, 'commit', '--quiet', '-m', 'malformed routing block');
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root), manifest: fixtureManifest() });
-      assert.equal(result.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), true);
+      assert.equal(result.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), false);
       assert.equal(result.findings.some(({ code }) => code === 'DUPLICATE_MARKER'), true);
       assert.equal(result.blocked, true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('accepts and preserves a non-generated context through apply and the next plan', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
+      const context = '# Project\n\n## Repository\nsyllik/syllik\n\n## Purpose\nDurable project facts.\n';
+      writeFileSync(path.join(repositoryPath, project.contextPath), context, 'utf8');
+      writeFileSync(path.join(repositoryPath, '.ai/decisions.md'), '# Decisions\n\nRecord durable decisions for this repository here.\n', 'utf8');
+      writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      git(repositoryPath, 'add', 'AGENTS.md', '.ai');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'existing project contract');
+
+      const manifestPath = writeFixtureManifest(root, manifest);
+      mkdirSync(path.join(root, 'projects'), { recursive: true });
+      writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      const plan = planWorkspace({ root, manifestPath, manifest });
+
+      assert.equal(plan.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), false);
+      assert.equal(plan.operations.some(({ path: operationPath }) => operationPath === `${project.localPath}/${project.contextPath}`), false);
+      assert.equal(plan.blocked, false);
+      const applied = applyOperations({ root, plan });
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(repositoryPath, project.contextPath), 'utf8'), context);
+      assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
+      assert.deepEqual(planWorkspace({ root, manifestPath, manifest }).operations, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks an oversized existing context by UTF-8 bytes without reporting populated drift', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(repositoryPath, project.contextPath), `# Project\n${'🙂'.repeat(2048)}\n`, 'utf8');
+      git(repositoryPath, 'add', '.ai/context.md');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'oversized context');
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(plan.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), false);
+      assert.equal(plan.findings.some(({ code, path: findingPath }) => code === 'BUDGET_EXCEEDED' && findingPath === `${project.localPath}/${project.contextPath}`), true);
+      assert.equal(plan.blocked, true);
     } finally {
       removeFixtureRoot(root);
     }
@@ -179,7 +233,7 @@ describe('workspace operations', () => {
         initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`);
         if (project.access === 'managed') {
           mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
-          writeFileSync(path.join(projectPath, project.contextPath), renderManagedContextBlock(project), 'utf8');
+          writeFileSync(path.join(projectPath, project.contextPath), renderContextScaffold(project), 'utf8');
           git(projectPath, 'add', project.contextPath);
           git(projectPath, 'commit', '--quiet', '-m', 'context');
         }

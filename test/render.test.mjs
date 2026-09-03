@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { renderAgentsBlock, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest } from './helpers.mjs';
 
 describe('renderers', () => {
@@ -26,6 +26,14 @@ describe('renderers', () => {
     assert.match(output, /target AGENTS\.md/);
     assert.equal(output.endsWith('\n'), true);
     assert.equal(output.includes('\r'), false);
+  });
+
+  test('render context scaffold follows the project template without a managed marker', () => {
+    const output = renderContextScaffold(fixtureManifest().projects[0]);
+    assert.match(output, /^# Project\n/u);
+    assert.match(output, /## Repository\nsyllik\/syllik\n/u);
+    assert.match(output, /## Current priorities\n/u);
+    assert.doesNotMatch(output, /ai-workflow:context/u);
   });
 
   test('render managed blocks use exact markers and are idempotent', () => {

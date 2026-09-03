@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
-import { renderAgentsBlock, renderManagedContextBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { parseArgs } from '../scripts/workspace/cli.mjs';
 
 const cli = path.resolve('scripts/workspace/cli.mjs');
@@ -83,7 +83,7 @@ describe('workspace CLI', () => {
       const projectPath = path.join(root, manifest.projects[0].localPath);
       initFixtureRepo(projectPath, 'https://github.com/ChipIn-one/chipin-frontend.git');
       mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
-      writeFileSync(path.join(projectPath, manifest.projects[0].contextPath), renderManagedContextBlock(manifest.projects[0]), 'utf8');
+      writeFileSync(path.join(projectPath, manifest.projects[0].contextPath), renderContextScaffold(manifest.projects[0]), 'utf8');
       writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n\nRecord durable decisions for this repository here.\n', 'utf8');
       writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       const manifestPath = writeFixtureManifest(manifestRoot, manifest);
