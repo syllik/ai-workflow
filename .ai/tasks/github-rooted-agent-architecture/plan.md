@@ -90,9 +90,12 @@ Existing `AGENTS.md` не перезаписывается. Generator управ
 - `localPath` относительно `~/Desktop/Work`;
 - purpose-first `group`;
 - `access: managed | read-only`;
+- `status: onboarding | active`;
 - `contextPath: .ai/context.md` только для `managed`.
 
 Default branch, integration branch, completion gates и project-specific conventions хранятся в target `.ai/context.md`, а не дублируются в manifest.
+
+Новый approved managed repository начинается со `status: onboarding`: generator может подготовить contract, но runner не принимает для него задачи. После merge onboarding PR и успешной проверки status меняется на `active`. Queue разрешена только для `access: managed` вместе со `status: active`.
 
 Repositories вне explicit allowlist не обнаруживаются и не добавляются автоматически. Tangem repositories и любые другие excluded repositories не перемещаются, не изменяются и не документируются новым workflow.
 
@@ -197,7 +200,7 @@ prompt: .ai/tasks/<task-id>/prompt.md
 
 До платного запуска runner проверяет:
 
-- target имеет manifest access `managed`;
+- target имеет manifest `access: managed` и `status: active`;
 - SHA, branch и prompt существуют и согласованы;
 - base не устарел;
 - hard budgets соблюдены;
