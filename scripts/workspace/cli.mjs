@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { loadManifest, validateManifest } from './manifest.mjs';
+import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from './operations.mjs';
 
-const CHECKOUT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const DEFAULT_MANIFEST_PATH = path.join(CHECKOUT_ROOT, 'workspace.yaml');
 const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
 
 function parseArgs(args) {

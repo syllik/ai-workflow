@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
-import { loadManifest, validateManifest } from './manifest.mjs';
+import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { markerState, renderAgentsBlock, renderDecisionsScaffold, renderManagedContextBlock, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block']);
@@ -168,7 +168,7 @@ function addContextOperation(root, operations, findings, project) {
 
 export function planWorkspace(options = {}) {
   const root = path.resolve(options.root ?? process.cwd());
-  const manifestPath = options.manifestPath ?? path.join(root, 'workspace.yaml');
+  const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST_PATH;
   let manifest = options.manifest;
   const findings = [];
   if (!manifest) {
@@ -305,7 +305,7 @@ function walkFiles(directory, relative = '') {
   return output;
 }
 
-export function checkGeneratedFiles(root, manifest, manifestPath = path.join(root, 'workspace.yaml')) {
+export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
   const findings = [];
   const indexPath = path.join(path.dirname(path.resolve(manifestPath)), 'projects/index.md');
   if (!existsSync(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));

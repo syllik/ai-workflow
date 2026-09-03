@@ -7,6 +7,17 @@ import { renderAgentsBlock, renderManagedBlock, renderManagedContextBlock, rende
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
+  test('defaults direct workspace options to the checkout manifest, not the target root', () => {
+    const root = makeFixtureRoot();
+    try {
+      const result = planWorkspace({ root });
+      assert.equal(result.manifestPath, path.resolve('workspace.yaml'));
+      assert.equal(result.validationFailed, false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('plans a clone only for a missing managed project', () => {
     const root = makeFixtureRoot();
     try {

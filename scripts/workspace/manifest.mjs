@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+
+export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
 
 export const HARD_BUDGETS = Object.freeze({
   'AI.md': 1024,
