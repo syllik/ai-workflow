@@ -10,7 +10,7 @@
 инфраструктуру: отвечай только editorial analysis и готовым текстом.
 
 Полную локализацию выполняет отдельный проект
-[`Youtube-video-meta-translator`](https://github.com/syllik/Youtube-video-meta-translator).
+[`youtube-metadata-translator`](https://github.com/syllik/youtube-metadata-translator).
 Он отвечает за актуальный список языков YouTube, коды языков, массовый перевод,
 батчинг, JSON, preview, validation и публикацию через YouTube Data API. Не
 дублируй эти обязанности.
@@ -153,7 +153,7 @@ canonical translation brief окончательным и не переходи 
 ### 2. Final Source Pack
 
 Только после явного подтверждения сформируй компактный Final Source Pack для
-`Youtube-video-meta-translator`. Не начинай full localization.
+`youtube-metadata-translator`. Не начинай full localization.
 
 Используй такую структуру:
 
