@@ -37,7 +37,7 @@ node scripts/workspace/cli.mjs apply --root <path>
 
 ### Manifest
 
-Create `workspace.yaml` with schema version, canonical root `~/Desktop/Work`, byte budgets, and exactly these projects:
+Create `workspace.yaml` with schema version, canonical root `~/Desktop/WORK`, byte budgets, and exactly these projects:
 
 ```text
 syllik/syllik                         managed  onboarding  profile/syllik
@@ -96,7 +96,7 @@ The only operation kinds are `clone`, `create-file`, and `replace-managed-block`
 
 Before mutation, prove root containment and recheck destination, Git root, origin, clean status, worktrees, and operation preconditions. Never plan/execute move, delete, reset, clean, stash, overwrite, force push, branch deletion, read-only writes, or replacement of populated context/decisions. Updates stay inside valid markers; first drift safe-stops.
 
-Phase 1A must not run real `apply` against `~/Desktop/Work`. Test plan/apply only with isolated fixtures.
+Phase 1A must not run real `apply` against `~/Desktop/WORK`. Test plan/apply only with isolated fixtures.
 
 CLI exit codes:
 
