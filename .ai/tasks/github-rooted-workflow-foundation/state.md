@@ -2,7 +2,7 @@
 
 ## Current phase
 
-READY_FOR_HUMAN_MERGE.
+SUPERSEDED_BY_GITHUB_ROOTED_WORKFLOW_FOUNDATION_CORRECTION.
 
 ## Completed
 
@@ -11,7 +11,7 @@ READY_FOR_HUMAN_MERGE.
 - Implemented strict manifest/budget core, deterministic renderers, exact markers, isolated safe operations, and CLI exit boundaries.
 - Added tests for schema, budgets, rendering, Git/filesystem safety, read-only rules, idempotency, drift, and CLI codes.
 - Added canonical manifest, AI/FLOW route, global role files, `.ai` contract, migration pointer, generated index, compatibility pointers, README, and AGENTS routing block.
-- Published implementation commit `69920bb80570d4cbb5a3a33c5fdea6dec159bd6c` and persistence commit `61fde33f13c45b61d0986ad7e9b74a4a242664a6`; PR #4 is open into `master`.
+- Published implementation commit `69920bb80570d4cbb5a3a33c5fdea6dec159bd6c` and persistence commit `61fde33f13c45b61d0986ad7e9b74a4a242664a6`; that result is superseded by the correction task in the same PR.
 
 ## Changed / reviewed files
 
@@ -20,19 +20,20 @@ READY_FOR_HUMAN_MERGE.
 ## Validation
 
 - Focused manifest/render and operations/CLI tests passed.
-- `npm test`, manifest-only check, and `npm run verify` passed; `git diff --check` is clean.
-- Five requested review batches and the cross-file route pass completed with no findings; PR is open, non-draft, `CLEAN`, with no configured remote checks.
-- No real workspace apply has run.
+- The pre-correction local gates passed; the correction task is the current source of truth for validation and PR status.
+- No real canonical workspace apply has run.
 
 ## Confirmed findings
 
-- Handoff commit `2fca3e40ec86c76cf3e2e581bf08f164c2f920c6` is the local and remote target HEAD.
+- Original immutable handoff: `2fca3e40ec86c76cf3e2e581bf08f164c2f920c6`.
+- Pre-correction implementation head: `06b293d9e1de1697c07efec6fd5dc0907c1d025b`.
+- Correction handoff and current starting head: `84232d4589c4fde9713015d83aeefc75a2f567dd`; the current PR head is mutable and must be verified from Git/GitHub.
 - No worktree collision; local branch tracks the authorized remote.
 - Russian plan files were not read.
 
 ## Next
 
-Human reviews and merges PR #4 into `master`.
+The correction task updates PR #4 and finishes at `READY_FOR_HUMAN_MERGE`.
 
 ## Blockers
 

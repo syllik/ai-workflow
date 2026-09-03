@@ -23,8 +23,8 @@ node scripts/workspace/cli.mjs plan --root <path>
 node scripts/workspace/cli.mjs apply --root <path>
 ```
 
-Phase 1A supports isolated fixture apply only. It never applies to the real
-`~/Desktop/WORK` workspace.
+Phase 1A includes isolated fixture apply tests. The product supports canonical
+apply after normal safety checks; canonical apply was not executed in Phase 1A.
 
 ## Что читает Sol
 
@@ -142,31 +142,33 @@ Conversation history не является source of truth для persisted exec
 project context или `decisions.md`; `tasks/` остаётся историей конкретной работы,
 а не постоянным source of truth проекта.
 
-## ChatGPT Web bootstrap
+## GitHub-only bootstrap
 
-Один раз вставьте следующий текст в Project Instructions ChatGPT Web:
+Для software-development tasks достаточно task prompt и canonical workflow
+repository. Внешняя project configuration не требуется:
 
 ```text
-Для software-development tasks используй canonical workflow/context storage:
+Use this canonical workflow/context storage for software-development tasks:
 https://github.com/syllik/ai-workflow
 
-Перед planning прочитай FLOW.md из текущего default branch и следуй его reading
-order. Определи target project через projects/index.md, загрузи только relevant
-project context и проверь актуальный target GitHub repository по необходимости.
+Before planning, read FLOW.md from the current default branch and follow its
+reading order. Determine the target project through projects/index.md, load
+only relevant project context, and verify the current target GitHub repository
+when needed.
 
 GPT-5.6 Sol — planner, architect и research agent.
 Luna xhigh — executor, coder и reviewer.
 
-Sol должен выдать один self-contained execution prompt для Luna. Для long или
-context-heavy work используй persisted task state, чтобы выполнение можно было
-продолжить без зависимости от conversation history.
+Sol must issue one self-contained execution prompt for Luna. For long or
+context-heavy work, use persisted task state so execution can continue without
+depending on conversation history.
 
-Не используй subagents, минимизируй повторное research и context/token usage.
-Пользовательские объяснения пиши на русском языке.
+Do not use subagents; minimize repeated research and context/token usage.
+The task prompt plus this GitHub repository are sufficient bootstrap.
 ```
 
-ChatGPT Web не следует считать автоматически распознающим `AGENTS.md` в этом
-repository без такой bootstrap instruction.
+The task prompt and `https://github.com/syllik/ai-workflow` are sufficient to
+bootstrap the workflow; do not depend on automatic loading of repository files.
 
 Не сохраняйте API keys, passwords, access tokens, refresh tokens, private keys,
 содержимое `.env` или другие credentials. См. также [`.gitignore`](.gitignore).

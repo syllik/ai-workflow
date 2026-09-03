@@ -5,4 +5,4 @@
 - `read-only` records cannot receive context writes or generated updates.
 - Hard byte budgets are measured in UTF-8 bytes and violations are blocking.
 - Managed edits are deterministic, LF-only, idempotent, and limited to valid `ai-workflow` markers.
-- Phase 1A validates isolated fixtures; it does not apply to `~/Desktop/WORK`.
+- Canonical apply is supported after normal safety checks; Phase 1A used isolated fixtures and did not execute it against `~/Desktop/WORK`.
