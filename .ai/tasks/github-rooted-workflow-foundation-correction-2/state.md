@@ -2,49 +2,30 @@
 
 ## Current phase
 
-CORRECTION_5_COMPLETE.
+FINAL_LOCAL_GATES_PASS.
 
 ## Scope
 
-Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-rooted-agent-architecture`; update existing PR #4 only.
-
-## Anchors
-
-- Original Phase 1A handoff: `2fca3e40ec86c76cf3e2e581bf08f164c2f920c6`.
-- Correction 1 handoff: `84232d4589c4fde9713015d83aeefc75a2f567dd`.
-- Pre-correction-2 implementation head: `656d3d4cefddef771c2aa205c878009b5fd8eff0`.
-- Correction 2 handoff: launcher-pinned commit introducing this state.
-- Current PR head is mutable and must be verified from Git/GitHub.
-
-## Required work
-
-- Preserve populated project contexts and enforce their budgets.
-- Use absolute canonical GitHub routing from profile and target repositories.
-- Make one apply clone and fully scaffold a missing managed repository.
-- Check only known central/managed artifacts, including human plan budgets.
-- Keep every plan file human-only and unread by Luna.
+Remove five Phase 1A blockers in `syllik/ai-workflow` on
+`task/github-rooted-agent-architecture`; update PR #4 only.
 
 ## Completed
 
-- Missing managed contexts now use a template-shaped scaffold without managed markers.
-- Existing regular context files are preserved byte-for-byte; collisions and UTF-8 budget violations block.
-- Focused renderer and workspace-operation tests cover preservation, idempotency, and oversized context.
-- Profile and target routing now uses canonical absolute GitHub `HEAD` URLs for central workflow files and role files.
-- Focused renderer tests reject ambiguous relative central paths and confirm the managed block budget.
-- One CLI `apply` now performs a bounded clone/scaffold/re-plan convergence pass; local fixture remotes cover managed and read-only targets.
-- Clone safety continues to validate containment, Git root, origin, cleanliness, and worktree state before contract writes.
-- Budget checks now read only known central artifacts and managed-target context, decisions, task files, and AGENTS blocks; read-only and unrelated trees are excluded.
-- Human `plan.md` files are included in the bounded artifact budget scan.
-- README, AGENTS, and the reusable Luna implementation prompt now keep `plan.md` human-only; a regression test enforces the boundary.
-- Correction 1 state/result are marked superseded by correction 2 without rewriting their historical claims.
+- Managed contexts use a template-shaped scaffold only when missing; regular context is preserved and budgeted.
+- Profile/target routing uses absolute canonical GitHub `HEAD` URLs.
+- One CLI apply performs bounded clone/scaffold/re-plan convergence; read-only clones receive no writes.
+- Checks inspect only known central and managed artifacts, including human `plan.md` budgets.
+- README, AGENTS, and Luna implementation docs keep `plan.md` human-only; correction 1 state/result are superseded by this task.
 
-## Safety
+## Validation
 
-No subagents or dependency changes. Preserve unrelated work. Modify no other repository. Never write to backend. Do not run real apply against `/Users/mihaildovgun/Desktop/WORK`. No reset, rebase, stash, force-push, merge, auto-merge, branch deletion, or direct push to `master`.
+- Focused correction tests pass; `npm test` and `npm run verify` pass all 41 tests and generated checks.
+- `node scripts/workspace/cli.mjs check --manifest-only`, `check`, and `git diff --check` pass.
+- No real canonical apply or backend write ran.
 
 ## Next
 
-Run the full local completion gates, review the task-owned diff, verify PR #4, and create the final result.
+Review the task-owned diff, verify/publish PR #4, write `result.md`, and stop at `READY_FOR_HUMAN_MERGE`.
 
 ## Blockers
 
