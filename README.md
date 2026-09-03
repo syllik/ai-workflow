@@ -144,8 +144,8 @@ project context или `decisions.md`; `tasks/` остаётся историе�
 
 ## GitHub-only bootstrap
 
-Для software-development tasks достаточно task prompt и canonical workflow
-repository. Внешняя project configuration не требуется:
+Для software-development tasks достаточно task prompt и GitHub organization
+`https://github.com/syllik`; внешняя project configuration не требуется:
 
 ```text
 Use this canonical workflow/context storage for software-development tasks:

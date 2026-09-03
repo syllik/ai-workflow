@@ -16,9 +16,9 @@ For a persisted task, also use its `prompt.md` and current `state.md`. Read a
 human-only `plan.md` only when the task prompt permits it. Do not reread task
 history without a concrete reason.
 
-The GitHub workflow repository and the task prompt are sufficient bootstrap.
-Do not require external project settings or read every project, prompt, task,
-or history file without a concrete reason.
+The GitHub organization at `https://github.com/syllik` and the task prompt are
+sufficient bootstrap. Do not require external project settings or read every
+project, prompt, task, or history file without a concrete reason.
 
 ## Core rules
 
