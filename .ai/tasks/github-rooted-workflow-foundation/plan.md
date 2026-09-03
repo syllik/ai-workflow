@@ -16,7 +16,7 @@
 - Base branch: `master`; approved base SHA: `1c2d4831ff84aea7a4d63135dc2c2ff4952e4c46`.
 - Authorized branch: `task/github-rooted-agent-architecture`.
 - Не изменять другие repositories в Phase 1A.
-- Не запускать реальный `workspace apply` против `~/Desktop/Work`.
+- Не запускать реальный `workspace apply` против `~/Desktop/WORK`.
 - Backend остаётся `read-only`; Tangem и остальные excluded repositories отсутствуют в manifest.
 - Не удалять старое `projects/` в этой phase: пометить его как legacy и перестать загружать.
 - Не хранить личную память, conversation dumps, secrets или credentials.
@@ -357,7 +357,7 @@ node scripts/workspace/cli.mjs check --manifest-only
 npm run verify
 ```
 
-Expected: все команды exit 0. Не запускать реальный `apply` на `~/Desktop/Work`.
+Expected: все команды exit 0. Не запускать реальный `apply` на `~/Desktop/WORK`.
 
 - [ ] **Step 3: проверить полный task-owned diff**
 
