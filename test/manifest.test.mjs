@@ -19,6 +19,25 @@ describe('manifest', () => {
     }
   });
 
+  test('accepts a new valid approved repository entry without source enumeration', () => {
+    const manifest = fixtureManifest({
+      projects: [...fixtureManifest().projects, {
+        id: 'syllik/new-approved-repository',
+        repository: 'syllik/new-approved-repository',
+        localPath: 'tools/new-approved-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'onboarding',
+        contextPath: '.ai/context.md'
+      }]
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
@@ -73,11 +92,10 @@ describe('manifest', () => {
     ]);
   });
 
-  test('rejects excluded repositories and a non-canonical project set', () => {
-    const manifest = fixtureManifest({ projects: fixtureManifest().projects.slice(0, 7) });
+  test('rejects excluded repositories', () => {
+    const manifest = fixtureManifest();
     manifest.projects[0].repository = 'tangem/example';
     const result = validateManifest(manifest);
     assert.equal(result.findings.some((finding) => finding.code === 'EXCLUDED_REPOSITORY'), true);
-    assert.equal(result.findings.some((finding) => finding.code === 'PROJECT_SET_MISMATCH'), true);
   });
 });

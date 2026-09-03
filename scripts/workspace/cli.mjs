@@ -1,21 +1,28 @@
 #!/usr/bin/env node
 
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadManifest, validateManifest } from './manifest.mjs';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from './operations.mjs';
 
-const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest-only] | plan --root <path> | apply --root <path>';
+const CHECKOUT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const DEFAULT_MANIFEST_PATH = path.join(CHECKOUT_ROOT, 'workspace.yaml');
+const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
 
 function parseArgs(args) {
   const command = args[0];
   if (!['check', 'plan', 'apply'].includes(command)) throw new Error(USAGE);
   let root;
+  let manifestPath;
   let manifestOnly = false;
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--root') {
       if (root !== undefined || !args[index + 1] || args[index + 1].startsWith('--')) throw new Error(USAGE);
       root = args[++index];
+    } else if (arg === '--manifest') {
+      if (manifestPath !== undefined || !args[index + 1] || args[index + 1].startsWith('--')) throw new Error(USAGE);
+      manifestPath = args[++index];
     } else if (arg === '--manifest-only' && command === 'check' && !manifestOnly) {
       manifestOnly = true;
     } else {
@@ -24,7 +31,12 @@ function parseArgs(args) {
   }
   if (command !== 'check' && root === undefined) throw new Error(USAGE);
   if (command !== 'check' && manifestOnly) throw new Error(USAGE);
-  return { command, root: root === undefined ? process.cwd() : path.resolve(root), manifestOnly };
+  return {
+    command,
+    root: root === undefined ? process.cwd() : path.resolve(root),
+    manifestPath: path.resolve(manifestPath ?? DEFAULT_MANIFEST_PATH),
+    manifestOnly
+  };
 }
 
 function printFindings(findings) {
@@ -39,12 +51,11 @@ function run(args) {
     process.stderr.write(`${error.message}\n`);
     return 1;
   }
-  const manifestPath = path.join(options.root, 'workspace.yaml');
   let manifest;
   try {
-    manifest = loadManifest(manifestPath);
+    manifest = loadManifest(options.manifestPath);
   } catch {
-    printFindings([{ code: 'MANIFEST_UNREADABLE', path: 'workspace.yaml' }]);
+    printFindings([{ code: 'MANIFEST_UNREADABLE', path: options.manifestPath }]);
     return options.command === 'apply' ? 2 : 1;
   }
   const validation = validateManifest(manifest);
@@ -65,7 +76,7 @@ function run(args) {
     return findings.length > 0 ? 1 : 0;
   }
 
-  const plan = planWorkspace({ root: options.root, manifestPath, manifest });
+  const plan = planWorkspace({ root: options.root, manifestPath: options.manifestPath, manifest });
   printFindings(plan.findings);
   if (plan.validationFailed) return 1;
   if (plan.blocked) return 2;

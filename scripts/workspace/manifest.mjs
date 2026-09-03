@@ -1,17 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 
-export const REQUIRED_PROJECTS = Object.freeze([
-  { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'ChipIn-one/chipin-frontend', repository: 'ChipIn-one/chipin-frontend', localPath: 'products/chipin/chipin-frontend', group: 'products/chipin', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'ChipIn-one/chipin-backend', repository: 'ChipIn-one/chipin-backend', localPath: 'products/chipin/chipin-backend', group: 'products/chipin', access: 'read-only', status: 'active' },
-  { id: 'syllik/chatgpt-archive-cleanup', repository: 'syllik/chatgpt-archive-cleanup', localPath: 'tools/ai/chatgpt-archive-cleanup', group: 'tools/ai', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/codex-local-runner', repository: 'syllik/codex-local-runner', localPath: 'tools/ai/codex-local-runner', group: 'tools/ai', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/youtube-metadata-translator', repository: 'syllik/youtube-metadata-translator', localPath: 'tools/content/youtube-metadata-translator', group: 'tools/content', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/ai-workflow', repository: 'syllik/ai-workflow', localPath: 'workflows/ai/ai-workflow', group: 'workflows/ai', access: 'managed', status: 'active', contextPath: '.ai/context.md' },
-  { id: 'syllik/gpg-signed-commits', repository: 'syllik/gpg-signed-commits', localPath: 'guides/git/gpg-signed-commits', group: 'guides/git', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' }
-]);
-
 export const HARD_BUDGETS = Object.freeze({
   'AI.md': 1024,
   'FLOW.md': 2048,
@@ -53,17 +42,6 @@ function isSafeRelativePath(value) {
     && !value.includes('\0')
     && SAFE_RELATIVE_PATH.test(value)
     && !value.split('/').some((part) => part === '.' || part === '..');
-}
-
-function canonicalProjectShape(project) {
-  return Object.fromEntries([...PROJECT_KEYS].map((key) => [key, project[key]]));
-}
-
-function sameProjectSet(projects) {
-  if (!Array.isArray(projects) || projects.length !== REQUIRED_PROJECTS.length) return false;
-  const actual = projects.map(canonicalProjectShape).sort((left, right) => left.id.localeCompare(right.id));
-  const expected = REQUIRED_PROJECTS.map(canonicalProjectShape).sort((left, right) => left.id.localeCompare(right.id));
-  return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
 function checkDuplicates(projects, findings) {
@@ -129,7 +107,6 @@ export function validateManifest(value) {
         findings.push(finding('EXCLUDED_REPOSITORY', `manifest.projects[${index}].repository`));
       }
     });
-    if (!sameProjectSet(value.projects)) findings.push(finding('PROJECT_SET_MISMATCH', 'manifest.projects'));
   }
 
   return { valid: findings.length === 0, findings };
