@@ -42,8 +42,7 @@
 - `global/core.md`, `global/architect.md`, `global/executor.md`.
 - `projects/README.md` — legacy boundary.
 - `.ai/context.md`, `.ai/decisions.md`.
-- `.ai/tasks/github-rooted-workflow-foundation/prompt.md`.
-- `.ai/tasks/github-rooted-workflow-foundation/state.md`.
+- Pre-existing inputs: `.ai/tasks/github-rooted-workflow-foundation/{prompt,state}.md`.
 
 Изменить:
 
@@ -53,7 +52,7 @@
 - `projects/index.md` — generated compact route/status index.
 - `.gitignore` — только реальные local/generated artifacts, без игнорирования canonical files.
 
-Compatibility-файлы `global/context.md` и `global/workflow.md` сократить до ясных migration pointers; не копировать в них новый workflow.
+`global/context.md` и `global/workflow.md` сократить до migration pointers без копии workflow.
 
 ---
 
@@ -75,7 +74,7 @@ Compatibility-файлы `global/context.md` и `global/workflow.md` сокра�
 
 - [ ] **Step 1: добавить failing schema tests**
 
-Проверить valid manifest и rejection для duplicate `id`, duplicate repository, duplicate normalized path, absolute/traversing `localPath`, unknown fields, invalid access/status и `read-only` с `contextPath`.
+Покрыть valid manifest и rejection для duplicates, unsafe paths, unknown fields, invalid access/status и `read-only` с `contextPath`.
 
 ```js
 test("rejects a managed active project without contextPath", () => {
@@ -97,7 +96,7 @@ Expected: FAIL, потому что module/functions отсутствуют.
 
 - [ ] **Step 3: создать minimal package и parser**
 
-Использовать ESM, `engines.node = "22.23.2"`, built-in test runner и exact locked `yaml` dependency. Reject unknown keys. Нормализовать только POSIX-style relative paths; не разрешать `.`, `..`, empty segments и backslash.
+Использовать ESM, Node `22.23.2`, `node:test` и exact locked `yaml`. Reject unknown keys и unsafe/non-POSIX relative paths.
 
 - [ ] **Step 4: заполнить manifest**
 
@@ -132,7 +131,7 @@ git commit -m "feat: add canonical workspace manifest"
 
 - [ ] **Step 1: добавить failing byte-limit tests**
 
-Покрыть ASCII, Cyrillic UTF-8, exact boundary, one-byte-over boundary и unknown artifact kind.
+Покрыть UTF-8, exact/over boundary и unknown artifact kind.
 
 ```js
 test("blocks content one byte over the configured limit", () => {
@@ -182,7 +181,7 @@ git commit -m "feat: enforce AI context budgets"
 
 - [ ] **Step 1: добавить failing renderer tests**
 
-Проверить stable ordering по manifest, private marker, onboarding/read-only labels, canonical GitHub links, LF endings, final newline, repeated render equality и refusal при одном/дублированном marker.
+Проверить stable order, labels, canonical links, final LF, idempotency и malformed/duplicate markers.
 
 - [ ] **Step 2: подтвердить RED**
 
@@ -191,7 +190,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: реализовать pure renderers**
 
-Renderer не обращается к filesystem/network. `replaceManagedBlock` изменяет только содержимое между единственной корректной парой markers; отсутствие markers возвращает planned insert, а malformed markers дают blocking error.
+Renderer остаётся pure. `replaceManagedBlock` меняет только единственную valid marker pair; отсутствие markers планирует insert, malformed markers блокируют.
 
 - [ ] **Step 4: сгенерировать новый project index**
 
@@ -229,7 +228,7 @@ git commit -m "feat: render workspace routes deterministically"
 
 - [ ] **Step 1: добавить failing safety tests**
 
-Проверить missing clone, matching checkout no-op, wrong remote, existing non-repository path, dirty checkout, extra worktree, path escape, read-only target, existing populated context, malformed markers и second-apply idempotency.
+Покрыть clone/no-op, wrong remote, collision, dirty/multi-worktree, path escape, read-only, populated context, bad markers и idempotency.
 
 ```js
 test("never creates operations for a read-only project", async () => {
@@ -249,11 +248,11 @@ Expected: FAIL.
 
 - [ ] **Step 3: реализовать planner**
 
-Перед любой mutation разрешить absolute path через canonical root и повторно проверить containment. Проверить destination, `.git`, canonical origin, clean status и worktrees. Не планировать move/delete/reset/clean/stash.
+Перед mutation проверить canonical-root containment, destination, `.git`, origin, clean status и worktrees. Не планировать move/delete/reset/clean/stash.
 
 - [ ] **Step 4: реализовать apply**
 
-Apply принимает только заранее построенные typed operations, повторяет precondition непосредственно перед каждой mutation и safe-stops на первом расхождении. Existing files создаются только если отсутствуют; managed block обновляется только внутри markers.
+Apply принимает только typed operations, повторяет preconditions перед mutation и safe-stops при drift. Файлы создаются только при отсутствии; updates ограничены managed markers.
 
 - [ ] **Step 5: реализовать CLI**
 
@@ -315,11 +314,11 @@ Expected: FAIL до rewrite canonical files.
 
 - [ ] **Step 3: написать compact English agent documents**
 
-Не переносить весь старый текст. Сохранить invariants: GitHub source of truth, no memory dependency, no subagents, explicit project match, read-only enforcement, routine/approval-required classification, immutable handoff, one bounded failure pass, no merge/auto-merge.
+Сохранить без дублирования: GitHub source of truth, no memory/subagents, explicit match, read-only, risk classes, immutable handoff, bounded failure, no merge/auto-merge.
 
 - [ ] **Step 4: сделать legacy boundary явной**
 
-`projects/README.md` сообщает, что старые central contexts являются migration-only и не входят в reading order. `global/context.md` и `global/workflow.md` становятся короткими compatibility pointers. Старые project files не удаляются в Phase 1A.
+Пометить старые central contexts как migration-only вне reading order; оставить короткие compatibility pointers. Ничего не удалять.
 
 - [ ] **Step 5: обновить local AI contract**
 
@@ -362,7 +361,7 @@ Expected: все команды exit 0. Не запускать реальный
 
 - [ ] **Step 3: проверить полный task-owned diff**
 
-Проверить отдельно: schema/budgets; render/managed markers; filesystem safety; workflow reading order; backend/exclusion invariants. Затем выполнить короткий cross-file pass по связям `workspace.yaml → CLI → generated index → FLOW.md → AGENTS.md`.
+Review batches: schema/budgets; render/markers; filesystem safety; reading order; exclusions. Затем cross-file pass `workspace.yaml → CLI → index → FLOW.md → AGENTS.md`.
 
 - [ ] **Step 4: обновить state/result**
 
