@@ -229,15 +229,26 @@ Task MD state заканчивается на `READY_FOR_HUMAN_MERGE`. Посл�
 
 ## Поэтапный rollout
 
-### Phase 1 — Foundation
+### Phase 1A — Workflow foundation
 
-- создать profile `AI.md`;
+В `syllik/ai-workflow`:
+
 - добавить manifest, global role files, generator и validator;
-- добавить новый `.ai/` contract для `ai-workflow`;
+- добавить новый `.ai/` contract;
 - временно оставить старое `projects/` как явно не загружаемый legacy storage;
-- перевести profile/workspace navigation на generation from manifest.
+- подготовить deterministic profile/workspace outputs from manifest.
 
-Phase 1 выполняется одной ручной Luna xhigh session, потому что текущий runner ещё привязан к `chipin-frontend`.
+Phase 1A выполняется одной ручной Luna xhigh session и отдельным PR.
+
+### Phase 1B — Profile entry
+
+В `syllik/syllik`:
+
+- добавить profile `AI.md`;
+- применить generated profile/workspace navigation;
+- проверить, что `https://github.com/syllik` детерминированно ведёт в новый workflow.
+
+Phase 1B выполняется второй ручной Luna xhigh session и отдельным PR после human merge Phase 1A. Текущий runner не используется, поскольку он ещё привязан к `chipin-frontend`.
 
 ### Phase 2 — Generalize runner
 
@@ -264,7 +275,7 @@ Phase 1 выполняется одной ручной Luna xhigh session, по�
 
 `ChipIn-one/chipin-backend` только проверяется как `read-only`; никаких write operations не выполняется.
 
-Каждая phase использует отдельные branches и PRs. Следующая phase начинается только после фактической проверки и human merge предыдущей.
+Каждая repository task использует отдельные branch и PR. Phase 1B начинается только после фактической проверки и human merge Phase 1A; последующие phases также выполняются последовательно.
 
 ## Verification
 
