@@ -1,14 +1,14 @@
-# Project registry
+# Workspace project index
 
-Registry сопоставляет project context с реальным GitHub repository. Актуальное
-состояние кода и Git всегда проверяется в target repository.
+Generated from `workspace.yaml`. Read the target repository context; legacy central project contexts are migration-only.
 
-| GitHub repository | Project context |
-| --- | --- |
-| [`syllik/youtube-metadata-translator`](https://github.com/syllik/youtube-metadata-translator) | [`youtube-metadata-translator/context.md`](youtube-metadata-translator/context.md) |
-| [`syllik/gpg-signed-commits`](https://github.com/syllik/gpg-signed-commits) | [`gpg-signed-commits/context.md`](gpg-signed-commits/context.md) |
-| [`ChipIn-one/chipin-frontend`](https://github.com/ChipIn-one/chipin-frontend) | [`chipin/context.md`](chipin/context.md) |
-| [`syllik/syllik`](https://github.com/syllik/syllik) | [`syllik/context.md`](syllik/context.md) |
-
-Выбирайте запись по явно указанному repository или по однозначному совпадению
-задачи. Не подменяйте отсутствующий match догадкой: сначала уточните target.
+| Repository | Group | Access | Status | Target context |
+| --- | --- | --- | --- | --- |
+| ChipIn-one/chipin-backend | products/chipin | read-only | active | [products/chipin/chipin-backend/.ai/context.md](../../../products/chipin/chipin-backend/.ai/context.md) |
+| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | [products/chipin/chipin-frontend/.ai/context.md](../../../products/chipin/chipin-frontend/.ai/context.md) |
+| syllik/ai-workflow | workflows/ai | managed | active | [workflows/ai/ai-workflow/.ai/context.md](../../../workflows/ai/ai-workflow/.ai/context.md) |
+| syllik/chatgpt-archive-cleanup | tools/ai | managed | onboarding | [tools/ai/chatgpt-archive-cleanup/.ai/context.md](../../../tools/ai/chatgpt-archive-cleanup/.ai/context.md) |
+| syllik/codex-local-runner | tools/ai | managed | onboarding | [tools/ai/codex-local-runner/.ai/context.md](../../../tools/ai/codex-local-runner/.ai/context.md) |
+| syllik/gpg-signed-commits | guides/git | managed | onboarding | [guides/git/gpg-signed-commits/.ai/context.md](../../../guides/git/gpg-signed-commits/.ai/context.md) |
+| syllik/syllik | profile | managed | onboarding | [profile/syllik/.ai/context.md](../../../profile/syllik/.ai/context.md) |
+| syllik/youtube-metadata-translator | tools/content | managed | onboarding | [tools/content/youtube-metadata-translator/.ai/context.md](../../../tools/content/youtube-metadata-translator/.ai/context.md) |

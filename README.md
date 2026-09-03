@@ -4,17 +4,34 @@
 решения и короткие reusable prompts для работы Sol и Luna. Полные дампы
 разговоров и секреты здесь не сохраняются.
 
-Начинайте с [`FLOW.md`](FLOW.md). Он задаёт стабильный bootstrap и не заменяет
+Начинайте с [`AI.md`](AI.md), затем читайте [`FLOW.md`](FLOW.md). Они задают стабильный bootstrap и не заменяют
 проверку актуального target GitHub repository.
+
+## GitHub-rooted foundation
+
+`workspace.yaml` is the canonical project manifest and `projects/index.md` is
+its generated navigation. Read one target repository's `.ai/context.md` after
+the manifest record; legacy central project contexts remain migration-only.
+
+The workspace validator is intentionally bounded:
+
+```text
+npm test
+npm run verify
+node scripts/workspace/cli.mjs check [--root <path>] [--manifest-only]
+node scripts/workspace/cli.mjs plan --root <path>
+node scripts/workspace/cli.mjs apply --root <path>
+```
+
+Phase 1A supports isolated fixture apply only. It never applies to the real
+`~/Desktop/WORK` workspace.
 
 ## Что читает Sol
 
-Sol читает `FLOW.md`, затем только relevant
-[`global/context.md`](global/context.md), [`global/workflow.md`](global/workflow.md),
-registry [`projects/index.md`](projects/index.md) и context выбранного проекта.
-`decisions.md` читается только при релевантности. После этого Sol проверяет
-target repository настолько, насколько нужно для planning, architecture,
-research, scope и validation.
+Sol читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
+релевантный role file, затем `AGENTS.md` и `.ai/context.md` target repository.
+`.ai/decisions.md` и task files читаются только при релевантности. Legacy
+central project contexts сохраняются для migration, но не являются active path.
 
 ## Что получает Luna
 
@@ -31,8 +48,9 @@ session без зависимости от conversation history.
 
 * [`global/context.md`](global/context.md) — постоянные правила для всех проектов.
 * [`global/workflow.md`](global/workflow.md) — роли и lifecycle задач.
-* [`projects/index.md`](projects/index.md) — registry GitHub repositories и contexts.
-* `projects/<project>/` — устойчивый context и только необходимые persisted tasks.
+* [`projects/index.md`](projects/index.md) — generated GitHub repository registry.
+* [`projects/README.md`](projects/README.md) — migration-only legacy storage pointer.
+* `.ai/tasks/` — persisted task state for this repository.
 * `prompts/` — короткие reusable prompts.
 * `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
 * [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь.
@@ -47,9 +65,9 @@ session без зависимости от conversation history.
 
 ### Создать проект
 
-1. Добавьте mapping в [`projects/index.md`](projects/index.md).
-2. Создайте `projects/<project>/context.md` из [`templates/project.md`](templates/project.md).
-3. Заполните только устойчивые сведения и при необходимости создайте `decisions.md`.
+1. Добавьте или проверьте запись в `workspace.yaml`.
+2. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md).
+3. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 
 ### Создать задачу
 
@@ -61,7 +79,7 @@ session без зависимости от conversation history.
 context-heavy задачи создайте минимальную структуру:
 
 ```text
-projects/<project>/tasks/<task>/
+.ai/tasks/<task>/
 ├── plan.md
 ├── prompt.md
 ├── state.md

@@ -1,39 +1,11 @@
 # Canonical workflow
 
-Этот repository — canonical storage для workflow и устойчивого AI-контекста.
-Используйте только необходимый context; актуальное состояние кода проверяется
-в target repository.
+GitHub is the only project registry. The active reading route is:
 
-## Precedence
+`AI.md profile entry → FLOW.md → one workspace.yaml record → role rules → target AGENTS.md/context → relevant decisions/files`
 
-```text
-global workflow
-→ project context / applicable decisions
-→ target repository AGENTS.md + relevant rules
-→ task-specific prompt
-```
+Read only the selected project from `projects/index.md`; legacy central project contexts are migration-only. The target repository owns its local architecture and invariants, while the task prompt owns scope and validation. Do not auto-discover repositories.
 
-Global workflow owns the generic lifecycle. Project context and applicable
-decisions own durable project facts. The target repository owns local
-architecture and invariants. The task prompt owns task-specific scope and
-validation. Lower-precedence instructions cannot silently weaken higher-
-precedence requirements.
+Sol plans and hands off one self-contained prompt. Luna implements, tests, reviews, commits, and pushes only an authorized task branch. The project-declared PR target is authoritative; only a human merges.
 
-Определяйте target project по задаче и `projects/index.md`. Не читайте весь
-storage без необходимости.
-
-GPT-5.6 Sol отвечает за planning, architecture, research, scope и validation.
-Результат Sol — self-contained execution prompt для Luna xhigh. Luna отвечает
-за implementation, tests/checks, bounded review, commit и push, если это
-разрешено prompt и target workflow repository.
-
-Интеграционная и PR target branch определяется project context и правилами
-target repository. GitHub repository default branch нельзя молча принимать за
-integration branch. Подробный lifecycle и gate policy находятся в
-`global/workflow.md`.
-
-Long или context-heavy execution использует persisted task state, чтобы Luna
-могла продолжить работу из repository files без зависимости от conversation
-history.
-
-Subagents запрещены. Повторное research и загрузку контекста минимизируйте.
+Use persisted task state for long or audit-significant work. Subagents are prohibited. Never store credentials, private keys, `.env` content, or conversation dumps.

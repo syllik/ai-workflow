@@ -1,0 +1,332 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { checkBudget, BUDGETS } from './budgets.mjs';
+import { loadManifest, validateManifest } from './manifest.mjs';
+import { markerState, renderAgentsBlock, renderManagedContextBlock, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+
+export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block']);
+
+function finding(code, filePath, details = {}) {
+  return { code, path: filePath, ...details };
+}
+
+function normalizeText(text) {
+  return `${String(text).replaceAll('\r\n', '\n').replaceAll('\r', '\n').replace(/\n+$/u, '')}\n`;
+}
+
+function fingerprint(filePath) {
+  if (!existsSync(filePath) || !lstatSync(filePath).isFile()) return null;
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
+function resolveInside(root, relativePath) {
+  const base = path.resolve(root);
+  const target = path.resolve(base, relativePath);
+  const relative = path.relative(base, target);
+  if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) return target;
+  return null;
+}
+
+function expandHome(value) {
+  return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+}
+
+function canonicalRootPath(manifest) {
+  return path.resolve(expandHome(manifest.canonicalRoot));
+}
+
+function command(directory, args) {
+  try {
+    return execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function normalizedRemote(value) {
+  if (!value) return null;
+  let remote = value.trim();
+  if (remote.startsWith('git@github.com:')) remote = `https://github.com/${remote.slice('git@github.com:'.length)}`;
+  remote = remote.replace(/^ssh:\/\/git@github\.com\//u, 'https://github.com/');
+  return remote.replace(/\/+$/u, '').replace(/\.git$/u, '').toLowerCase();
+}
+
+function expectedRemote(repository) {
+  return `https://github.com/${repository}.git`;
+}
+
+function repositorySafety(destination, repository, localPath, findings) {
+  const gitPath = path.join(destination, '.git');
+  if (!existsSync(gitPath)) {
+    findings.push(finding('DESTINATION_COLLISION', localPath));
+    return false;
+  }
+  if (lstatSync(gitPath).isFile()) {
+    findings.push(finding('WORKTREE_COLLISION', localPath));
+    return false;
+  }
+  const gitRoot = command(destination, ['rev-parse', '--show-toplevel']);
+  let valid = true;
+  if (!gitRoot || path.resolve(gitRoot) !== path.resolve(realpathSync(destination))) {
+    findings.push(finding('GIT_ROOT_MISMATCH', localPath));
+    valid = false;
+  }
+  const origin = command(destination, ['config', '--get', 'remote.origin.url']);
+  if (normalizedRemote(origin) !== normalizedRemote(expectedRemote(repository))) {
+    findings.push(finding('ORIGIN_MISMATCH', localPath));
+    valid = false;
+  }
+  if ((command(destination, ['status', '--porcelain']) ?? '') !== '') {
+    findings.push(finding('DIRTY_REPOSITORY', localPath));
+    valid = false;
+  }
+  const worktrees = command(destination, ['worktree', 'list', '--porcelain']) ?? '';
+  const worktreeCount = worktrees.split(/^worktree /mu).length - 1;
+  if (worktreeCount > 1) {
+    findings.push(finding('MULTI_WORKTREE', localPath));
+    valid = false;
+  }
+  return valid;
+}
+
+function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock) {
+  const destination = resolveInside(root, relativePath);
+  if (!destination) {
+    findings.push(finding('UNSAFE_PATH', relativePath));
+    return;
+  }
+  const current = existsSync(destination) ? readFileSync(destination, 'utf8') : null;
+  if (current === null) {
+    operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock });
+    return;
+  }
+  const state = markerState(current, name);
+  if (state.kind === 'duplicate') {
+    findings.push(finding('DUPLICATE_MARKER', relativePath));
+    return;
+  }
+  if (state.kind === 'malformed') {
+    findings.push(finding('MALFORMED_MARKER', relativePath));
+    return;
+  }
+  const content = replaceManagedBlock(current, name, desiredBlock);
+  if (content !== normalizeText(current)) {
+    operations.push({
+      kind: 'replace-managed-block',
+      path: relativePath,
+      destination,
+      marker: name,
+      block: desiredBlock,
+      content,
+      expectedFingerprint: fingerprint(destination)
+    });
+  }
+}
+
+function addIndexOperation(root, operations, findings, manifest) {
+  const relativePath = 'projects/index.md';
+  const destination = resolveInside(root, relativePath);
+  if (!destination) {
+    findings.push(finding('UNSAFE_PATH', relativePath));
+    return;
+  }
+  const desired = renderProjectIndex(manifest);
+  if (!existsSync(destination)) {
+    operations.push({ kind: 'create-file', path: relativePath, destination, content: desired });
+  } else if (readFileSync(destination, 'utf8') !== desired) {
+    findings.push(finding('GENERATED_DRIFT', relativePath));
+  }
+}
+
+function addContextOperation(root, operations, findings, project) {
+  const projectDestination = resolveInside(root, project.localPath);
+  const relativePath = path.posix.join(project.localPath, project.contextPath);
+  const destination = projectDestination && resolveInside(projectDestination, project.contextPath);
+  if (!projectDestination || !destination) {
+    findings.push(finding('UNSAFE_PATH', relativePath));
+    return;
+  }
+  const desired = renderManagedContextBlock(project);
+  if (!existsSync(destination)) {
+    operations.push({
+      kind: 'create-file',
+      path: relativePath,
+      destination,
+      content: desired,
+      repositoryPath: project.localPath,
+      repository: project.repository
+    });
+    return;
+  }
+  if (readFileSync(destination, 'utf8') !== desired) findings.push(finding('POPULATED_CONTEXT', relativePath));
+}
+
+export function planWorkspace(options = {}) {
+  const root = path.resolve(options.root ?? process.cwd());
+  const manifestPath = options.manifestPath ?? path.join(root, 'workspace.yaml');
+  let manifest = options.manifest;
+  const findings = [];
+  if (!manifest) {
+    try {
+      manifest = loadManifest(manifestPath);
+    } catch {
+      findings.push(finding('MANIFEST_UNREADABLE', path.relative(root, manifestPath) || 'workspace.yaml'));
+      return { root, manifestPath, manifest: null, operations: [], findings, blocked: false, validationFailed: true, drift: false, fingerprints: {} };
+    }
+  }
+  const validation = validateManifest(manifest);
+  findings.push(...validation.findings);
+  if (!validation.valid) return { root, manifestPath, manifest, operations: [], findings, blocked: false, validationFailed: true, drift: false, fingerprints: {} };
+  if (!existsSync(root) || !lstatSync(root).isDirectory()) {
+    findings.push(finding('ROOT_NOT_DIRECTORY', root));
+    return { root, manifestPath, manifest, operations: [], findings, blocked: true, validationFailed: false, drift: false, fingerprints: {} };
+  }
+
+  const operations = [];
+  const projects = [...manifest.projects];
+  for (const project of projects) {
+    const destination = resolveInside(root, project.localPath);
+    if (!destination) {
+      findings.push(finding('UNSAFE_PATH', `manifest.projects[${projects.indexOf(project)}].localPath`));
+      continue;
+    }
+    if (!existsSync(destination)) {
+      if (project.access === 'managed') {
+        operations.push({ kind: 'clone', repository: project.repository, path: project.localPath, destination });
+      }
+      continue;
+    }
+    if (!lstatSync(destination).isDirectory()) {
+      findings.push(finding('DESTINATION_COLLISION', project.localPath));
+      continue;
+    }
+    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings);
+    if (!safeRepository) continue;
+    if (project.access === 'managed') addContextOperation(root, operations, findings, project);
+  }
+
+  addManagedFileOperation(root, operations, findings, 'AGENTS.md', 'agents-routing', renderAgentsBlock(manifest));
+  addIndexOperation(root, operations, findings, manifest);
+  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'POPULATED_CONTEXT', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH']);
+  const blocked = findings.some(({ code }) => blockedCodes.has(code));
+  const fingerprints = Object.fromEntries(operations.map((operation) => [operation.path, fingerprint(operation.destination)]));
+  return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
+}
+
+function preflightOperation(root, operation, plan, findings) {
+  if (!OPERATION_KINDS.includes(operation.kind)) {
+    findings.push(finding('UNSUPPORTED_OPERATION', operation.path ?? 'operation'));
+    return;
+  }
+  const destination = resolveInside(root, operation.path);
+  if (!destination || destination !== path.resolve(operation.destination)) {
+    findings.push(finding('UNSAFE_PATH', operation.path ?? 'operation'));
+    return;
+  }
+  const expected = plan.fingerprints?.[operation.path] ?? operation.expectedFingerprint ?? null;
+  const current = fingerprint(destination);
+  if (current !== expected) {
+    findings.push(finding('FIRST_DRIFT', operation.path));
+    return;
+  }
+  if (operation.kind === 'clone' && existsSync(destination)) findings.push(finding('FIRST_DRIFT', operation.path));
+  if (operation.kind === 'create-file' && existsSync(destination)) findings.push(finding('FIRST_DRIFT', operation.path));
+  if (operation.kind === 'replace-managed-block') {
+    if (!existsSync(destination)) {
+      findings.push(finding('FIRST_DRIFT', operation.path));
+      return;
+    }
+    const currentText = readFileSync(destination, 'utf8');
+    const state = markerState(currentText, operation.marker);
+    if (state.kind === 'duplicate') findings.push(finding('DUPLICATE_MARKER', operation.path));
+    else if (state.kind === 'malformed') findings.push(finding('MALFORMED_MARKER', operation.path));
+    else {
+      let expectedContent;
+      try {
+        expectedContent = replaceManagedBlock(currentText, operation.marker, operation.block);
+      } catch {
+        findings.push(finding('MALFORMED_MARKER', operation.path));
+        return;
+      }
+      if (expectedContent !== operation.content) findings.push(finding('FIRST_DRIFT', operation.path));
+    }
+  }
+  if (operation.repositoryPath && existsSync(resolveInside(root, operation.repositoryPath))) {
+    const repositoryDestination = resolveInside(root, operation.repositoryPath);
+    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings);
+  }
+}
+
+export function applyOperations(options = {}) {
+  const plan = options.plan;
+  const root = path.resolve(options.root ?? plan?.root ?? process.cwd());
+  const findings = [];
+  if (!plan || !Array.isArray(plan.operations)) return { root, applied: [], findings: [finding('INVALID_PLAN', 'plan')], blocked: true };
+  const forbiddenRoot = plan.manifest ? canonicalRootPath(plan.manifest) : path.resolve(os.homedir(), 'Desktop', 'WORK');
+  if (path.resolve(root) === forbiddenRoot) {
+    return { root, applied: [], findings: [finding('CANONICAL_APPLY_FORBIDDEN', root)], blocked: true };
+  }
+  if (!existsSync(root) || !lstatSync(root).isDirectory()) return { root, applied: [], findings: [finding('ROOT_NOT_DIRECTORY', root)], blocked: true };
+  for (const operation of plan.operations) preflightOperation(root, operation, { ...plan, fingerprints: options.expectedFingerprints ?? plan.fingerprints }, findings);
+  if (findings.length > 0) return { root, applied: [], findings, blocked: true };
+
+  const applied = [];
+  try {
+    for (const operation of plan.operations) {
+      const destination = path.resolve(operation.destination);
+      if (operation.kind === 'clone') {
+        mkdirSync(path.dirname(destination), { recursive: true });
+        execFileSync('git', ['clone', '--quiet', expectedRemote(operation.repository), destination], { stdio: 'pipe' });
+      } else {
+        mkdirSync(path.dirname(destination), { recursive: true });
+        writeFileSync(destination, normalizeText(operation.content), 'utf8');
+      }
+      applied.push(operation.path);
+    }
+  } catch (error) {
+    findings.push(finding('APPLY_FAILED', applied.length < plan.operations.length ? plan.operations[applied.length]?.path ?? 'operation' : 'operation', { message: error.message }));
+    return { root, applied, findings, blocked: true };
+  }
+  return { root, applied, findings, blocked: false };
+}
+
+function walkFiles(directory, relative = '') {
+  const output = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name === '.git' || entry.name === 'node_modules') continue;
+    if (relative === '' && entry.name === 'projects') continue;
+    const entryRelative = path.posix.join(relative, entry.name);
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) output.push(...walkFiles(entryPath, entryRelative));
+    else if (entry.isFile() && entry.name !== 'plan.md') output.push({ path: entryRelative, text: readFileSync(entryPath, 'utf8') });
+  }
+  return output;
+}
+
+export function checkGeneratedFiles(root, manifest) {
+  const findings = [];
+  const indexPath = path.join(root, 'projects/index.md');
+  if (!existsSync(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+  const agentsPath = path.join(root, 'AGENTS.md');
+  const desired = renderAgentsBlock(manifest);
+  if (!existsSync(agentsPath)) findings.push(finding('GENERATED_DRIFT', 'AGENTS.md'));
+  else {
+    const current = readFileSync(agentsPath, 'utf8');
+    const state = markerState(current, 'agents-routing');
+    if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desired) !== normalizeText(current)) findings.push(finding('GENERATED_DRIFT', 'AGENTS.md'));
+  }
+  const budgetEntries = walkFiles(root).filter(({ path: filePath }) => filePath === 'AI.md' || filePath === 'FLOW.md' || filePath.startsWith('global/') || filePath.endsWith('/.ai/context.md') || filePath.endsWith('/decisions.md') || filePath.endsWith('/prompt.md') || filePath.endsWith('/state.md') || filePath.endsWith('/result.md'));
+  findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
+  if (existsSync(agentsPath)) {
+    const agents = readFileSync(agentsPath, 'utf8');
+    const state = markerState(agents, 'agents-routing');
+    if (state.kind === 'valid') {
+      const end = agents.indexOf('-->', state.endIndex) + 3;
+      findings.push(...checkBudget({ path: 'managed AGENTS block', text: agents.slice(state.startIndex, end) }, BUDGETS));
+    }
+  }
+  return findings;
+}

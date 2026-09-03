@@ -2,18 +2,19 @@
 
 ## Порядок чтения
 
-`FLOW.md` — canonical entry point для workflow/context storage. Перед работой
-прочитайте:
+`AI.md` и `FLOW.md` — canonical entry points для workflow/context storage. Перед
+работой прочитайте:
 
-1. `FLOW.md`;
-2. `global/context.md`;
-3. `global/workflow.md`;
-4. `projects/index.md`;
-5. `projects/<project>/context.md` для target project;
-6. `projects/<project>/decisions.md` только если relevant.
+1. `AI.md`;
+2. `FLOW.md`;
+3. одну запись `workspace.yaml` и `projects/index.md`;
+4. релевантный role file из `global/architect.md` или `global/executor.md`;
+5. `AGENTS.md` и `.ai/context.md` target repository;
+6. только релевантные `.ai/decisions.md` и task files.
 
-Для persisted task дополнительно используйте его `prompt.md`, утверждённый
-`plan.md` и текущий `state.md`. Не перечитывайте task history без необходимости.
+Для persisted task дополнительно используйте его `prompt.md` и текущий
+`state.md`; human-only `plan.md` читайте только если task prompt разрешает.
+Не перечитывайте task history без необходимости.
 
 Не используйте `AGENTS.md` как единственный bootstrap для ChatGPT Web: для Web
 нужна отдельная Project Instructions из README. Не читайте все projects,
@@ -38,3 +39,14 @@ prompts, tasks или history без необходимости.
 * Обновляйте canonical project context только при появлении устойчивого знания.
 * Никогда не сохраняйте secrets, credentials, tokens, private keys или содержимое `.env`.
 * Пользовательские объяснения и документацию пишите на русском; technical identifiers оставляйте на английском, если это естественно.
+<!-- ai-workflow:agents-routing:start -->
+Canonical AI routing:
+1. Read `FLOW.md`.
+2. Select one GitHub record from `workspace.yaml` / `projects/index.md`.
+3. Read role rules from `global/architect.md` or `global/executor.md`.
+4. Read target `AGENTS.md`, then target `.ai/context.md`.
+5. Read only relevant `.ai/decisions.md` and task files.
+
+Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.
+Canonical root: ~/Desktop/WORK
+<!-- ai-workflow:agents-routing:end -->
