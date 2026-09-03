@@ -1,5 +1,11 @@
 import { BUDGETS } from './budgets.mjs';
 
+const CANONICAL_WORKFLOW_ROOT = 'https://github.com/syllik/ai-workflow/blob/HEAD';
+
+function canonicalWorkflowFile(filePath) {
+  return `${CANONICAL_WORKFLOW_ROOT}/${filePath}`;
+}
+
 function lf(text) {
   return String(text).replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
@@ -47,9 +53,9 @@ export function renderProfileNavigation(manifest) {
     '',
     'Reading route:',
     '',
-    '1. Read this profile entry and `FLOW.md`.',
-    '2. Read one matching record in `workspace.yaml` and `projects/index.md`.',
-    '3. Read `global/architect.md` or `global/executor.md` only for the current role.',
+    `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
+    `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
+    `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')} or ${canonicalWorkflowFile('global/executor.md')}.`,
     '4. Read the target AGENTS.md and `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
@@ -60,9 +66,9 @@ export function renderProfileNavigation(manifest) {
 export function renderAgentsBlock(manifest) {
   const body = [
     'Canonical AI routing:',
-    '1. Read `FLOW.md`.',
-    '2. Select one GitHub record from `workspace.yaml` / `projects/index.md`.',
-    '3. Read role rules from `global/architect.md` or `global/executor.md`.',
+    `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
+    `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
+    `3. Read role rules from ${canonicalWorkflowFile('global/architect.md')} or ${canonicalWorkflowFile('global/executor.md')}.`,
     '4. Read target `AGENTS.md`, then target `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',

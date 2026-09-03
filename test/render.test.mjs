@@ -19,6 +19,10 @@ describe('renderers', () => {
 
   test('render navigation contains the canonical reading route', () => {
     const output = renderProfileNavigation(fixtureManifest());
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/FLOW\.md/u);
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/workspace\.yaml/u);
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/projects\/index\.md/u);
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/architect\.md/u);
     assert.match(output, /profile AI entry/);
     assert.match(output, /FLOW\.md/);
     assert.match(output, /workspace\.yaml/);
@@ -26,6 +30,7 @@ describe('renderers', () => {
     assert.match(output, /target AGENTS\.md/);
     assert.equal(output.endsWith('\n'), true);
     assert.equal(output.includes('\r'), false);
+    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
   });
 
   test('render context scaffold follows the project template without a managed marker', () => {
@@ -47,5 +52,13 @@ describe('renderers', () => {
     assert.equal(output.startsWith('<!-- ai-workflow:agents-routing:start -->\n'), true);
     assert.equal(output.endsWith('<!-- ai-workflow:agents-routing:end -->\n'), true);
     assert.ok(Buffer.byteLength(output, 'utf8') <= 1024);
+    for (const url of [
+      'https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md',
+      'https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml',
+      'https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md',
+      'https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md',
+      'https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md'
+    ]) assert.equal(output.includes(url), true, url);
+    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
   });
 });

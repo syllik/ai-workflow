@@ -2,7 +2,7 @@
 
 ## Current phase
 
-CORRECTION_1_COMPLETE.
+CORRECTION_2_COMPLETE.
 
 ## Scope
 
@@ -29,6 +29,8 @@ Remove five verified Phase 1A blockers in `syllik/ai-workflow` on `task/github-r
 - Missing managed contexts now use a template-shaped scaffold without managed markers.
 - Existing regular context files are preserved byte-for-byte; collisions and UTF-8 budget violations block.
 - Focused renderer and workspace-operation tests cover preservation, idempotency, and oversized context.
+- Profile and target routing now uses canonical absolute GitHub `HEAD` URLs for central workflow files and role files.
+- Focused renderer tests reject ambiguous relative central paths and confirm the managed block budget.
 
 ## Safety
 
@@ -36,7 +38,7 @@ No subagents or dependency changes. Preserve unrelated work. Modify no other rep
 
 ## Next
 
-Implement canonical GitHub routing and keep the next checkpoint bounded to correction 2.
+Implement bounded one-apply convergence for missing repositories and keep the next checkpoint bounded to correction 3.
 
 ## Blockers
 
