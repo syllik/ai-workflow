@@ -13,9 +13,7 @@ Implement Phase 1A of the approved GitHub-rooted agent architecture in `syllik/a
 - PR target: `master`
 - Persistence mode: `persisted`
 - State: `.ai/tasks/github-rooted-workflow-foundation/state.md`
-- Human-only files: both `plan.md` files under the architecture/foundation task directories. Do not load them; this prompt is self-contained.
-
-The remote task branch already contains planning artifacts. Fetch and continue that branch. Preserve every pre-existing commit and unrelated file.
+Do not load either human-only `plan.md`; this prompt is self-contained. Fetch and continue the existing remote task branch without rewriting its history.
 
 ## Goal
 
@@ -52,9 +50,7 @@ syllik/ai-workflow                    managed  active      workflows/ai/ai-workf
 syllik/gpg-signed-commits             managed  onboarding  guides/git/gpg-signed-commits
 ```
 
-Each record has stable `id`, `repository`, `localPath`, purpose-first `group`, `access`, `status`, and `contextPath: .ai/context.md` only for managed records.
-
-Reject unknown keys, duplicates, absolute/traversing/non-POSIX paths, invalid access/status combinations, managed active records without context, and read-only records with context. Do not include Tangem, `syllik.github.io`, or auto-discovered repositories.
+Records contain `id`, `repository`, `localPath`, `group`, `access`, `status`, and managed-only `contextPath: .ai/context.md`. Reject unknown keys, duplicates, unsafe/non-POSIX paths, invalid combinations, managed-active without context, and read-only with context. Exclude Tangem, `syllik.github.io`, and auto-discovery.
 
 ### Hard budgets
 
@@ -92,15 +88,13 @@ Managed markers are:
 <!-- ai-workflow:<name>:end -->
 ```
 
-Rendering must be deterministic, idempotent, LF-only, and end with one newline. Missing markers may produce a planned insert. Malformed, unpaired, or duplicate markers are blocking.
+Rendering is deterministic/idempotent, LF-only, with one final newline. Missing markers may plan insertion; malformed or duplicate markers block.
 
 ### Safe operations
 
 The only operation kinds are `clone`, `create-file`, and `replace-managed-block`.
 
-Before every mutation, resolve the canonical root and target, prove target containment, and recheck the operation preconditions. Validate existing destination type, Git root, canonical origin, clean status, and worktree mapping.
-
-Never plan or execute move, delete, reset, clean, stash, overwrite, force push, branch deletion, or writes to a read-only project. Never replace populated context/decisions. Update existing files only inside a valid managed marker pair. Safe-stop on the first drift.
+Before mutation, prove root containment and recheck destination, Git root, origin, clean status, worktrees, and operation preconditions. Never plan/execute move, delete, reset, clean, stash, overwrite, force push, branch deletion, read-only writes, or replacement of populated context/decisions. Updates stay inside valid markers; first drift safe-stops.
 
 Phase 1A must not run real `apply` against `~/Desktop/Work`. Test plan/apply only with isolated fixtures.
 
@@ -121,7 +115,7 @@ Create compact English files:
 - `.ai/decisions.md`: durable foundation decisions.
 - `projects/README.md`: old central project contexts are migration-only and outside the active reading path.
 
-Rewrite `FLOW.md` to fit 2048 bytes and require this order: profile AI entry, FLOW, one matching manifest record, global architect rules, target AGENTS/context, then only relevant decisions/files.
+Keep `FLOW.md` within 2048 bytes and route: profile AI entry → FLOW → one manifest record → architect rules → target AGENTS/context → relevant decisions/files.
 
 Update root `AGENTS.md` with one managed routing block while preserving useful repository-local rules. Make `global/context.md` and `global/workflow.md` short compatibility pointers; do not duplicate the new workflow. Update `README.md` and `.gitignore`.
 
@@ -138,7 +132,7 @@ Use test-first development. Add:
 - `test/cli.test.mjs`
 - isolated fixtures under `test/fixtures/workspace/`
 
-Cover valid schema plus every rejection above; UTF-8 and exact/over budget boundaries; deterministic rendering and markers; missing clone; correct checkout no-op; wrong remote; non-repository collision; dirty checkout; extra worktree; path escape; read-only project; populated context; second-apply idempotency; and CLI exit codes.
+Cover all stated schema/budget failures, deterministic markers, clone/no-op, wrong remote, collisions, dirty/multi-worktree, path escape, read-only, populated context, idempotency, and CLI codes.
 
 Do not access or mutate real sibling repositories from tests.
 
@@ -196,4 +190,4 @@ Create `.ai/tasks/github-rooted-workflow-foundation/result.md` only after comple
 
 ## Definition of done
 
-The manifest and CLI are tested and deterministic; real workspace apply was not run; this repository is the only repository changed; budgets pass; legacy contexts are outside active routing but not deleted; backend and excluded repositories cannot become write targets; the complete diff is reviewed; the authorized branch is pushed; and a PR into `master` is ready for human merge.
+Tests and budgets pass; real workspace apply was not run; only this repository changed; legacy storage is preserved but unrouted; backend/exclusions cannot be write targets; full diff review passes; the authorized branch and PR into `master` are ready for human merge.
