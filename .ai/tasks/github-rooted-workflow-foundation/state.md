@@ -2,7 +2,7 @@
 
 ## Current phase
 
-Final validation and task-owned diff review.
+READY_FOR_HUMAN_MERGE.
 
 ## Completed
 
@@ -11,6 +11,7 @@ Final validation and task-owned diff review.
 - Implemented strict manifest/budget core, deterministic renderers, exact markers, isolated safe operations, and CLI exit boundaries.
 - Added tests for schema, budgets, rendering, Git/filesystem safety, read-only rules, idempotency, drift, and CLI codes.
 - Added canonical manifest, AI/FLOW route, global role files, `.ai` contract, migration pointer, generated index, compatibility pointers, README, and AGENTS routing block.
+- Published implementation commit `69920bb80570d4cbb5a3a33c5fdea6dec159bd6c` and opened PR #4 into `master`.
 
 ## Changed / reviewed files
 
@@ -20,7 +21,7 @@ Final validation and task-owned diff review.
 
 - Focused manifest/render and operations/CLI tests passed.
 - `npm test`, manifest-only check, and `npm run verify` passed; `git diff --check` is clean.
-- Five requested review batches and the cross-file route pass completed with no findings.
+- Five requested review batches and the cross-file route pass completed with no findings; PR is open, non-draft, `CLEAN`, with no configured remote checks.
 - No real workspace apply has run.
 
 ## Confirmed findings
@@ -31,7 +32,7 @@ Final validation and task-owned diff review.
 
 ## Next
 
-Write `result.md`, stage task-owned files, commit, push the authorized branch, and verify/update the PR.
+Commit and push `result.md` and this final checkpoint, then recheck PR #4 and leave merge to the human.
 
 ## Blockers
 
