@@ -4,19 +4,17 @@ import { renderAgentsBlock, renderManagedBlock, renderProfileNavigation, renderP
 import { fixtureManifest } from './helpers.mjs';
 
 describe('renderers', () => {
-  test('render deterministic project index routes only to target .ai/context.md', () => {
+  test('render deterministic project index uses exact GitHub-native repository routes', () => {
     const manifest = fixtureManifest();
     const first = renderProjectIndex(manifest);
     const second = renderProjectIndex(manifest);
     assert.equal(first, second);
     assert.equal(first.endsWith('\n'), true);
     assert.equal(first.includes('\r'), false);
-    assert.equal(first.includes('projects/'), false);
-    for (const project of manifest.projects) {
-      assert.equal(first.includes(`${project.localPath}/.ai/context.md`), true);
-      assert.equal(first.includes(project.access), true);
-      assert.equal(first.includes(project.status), true);
-    }
+    assert.equal(first.includes('| ChipIn-one/chipin-backend | products/chipin | read-only | active | [repository source of truth](https://github.com/ChipIn-one/chipin-backend) |'), true);
+    assert.equal(first.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/HEAD/.ai/context.md) |'), true);
+    assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
+    assert.equal(first.includes('../../../'), false);
   });
 
   test('render navigation contains the canonical reading route', () => {

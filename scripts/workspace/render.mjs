@@ -22,16 +22,18 @@ export function renderProjectIndex(manifest) {
   const rows = [...manifest.projects]
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((project) => {
-      const context = `${project.localPath}/.ai/context.md`;
-      const link = `../../../${context}`;
-      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | [${context}](${link}) |`;
+      const repositoryUrl = `https://github.com/${project.repository}`;
+      const link = project.access === 'managed'
+        ? `[${project.contextPath}](${repositoryUrl}/blob/HEAD/${project.contextPath})`
+        : `[repository source of truth](${repositoryUrl})`;
+      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${link} |`;
     });
   return finalNewline([
     '# Workspace project index',
     '',
     'Generated from `workspace.yaml`. Read the target repository context; legacy central project contexts are migration-only.',
     '',
-    '| Repository | Group | Access | Status | Target context |',
+    '| Repository | Group | Access | Status | GitHub source |',
     '| --- | --- | --- | --- | --- |',
     ...rows
   ].join('\n'));
@@ -80,6 +82,14 @@ export function renderManagedContextBlock(project) {
     `Workspace group: ${project.group}`,
     '',
     'This file is the target repository context entry for the GitHub-rooted workflow.'
+  ].join('\n'));
+}
+
+export function renderDecisionsScaffold() {
+  return finalNewline([
+    '# Decisions',
+    '',
+    'Record durable decisions for this repository here.'
   ].join('\n'));
 }
 

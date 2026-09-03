@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, planWorkspace } from '../scripts/workspace/operations.mjs';
-import { renderManagedContextBlock } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderManagedBlock, renderManagedContextBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
@@ -34,6 +33,81 @@ describe('workspace operations', () => {
       const manifest = fixtureManifest();
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
       assert.equal(result.operations.some((operation) => operation.kind === 'clone' && operation.path === 'profile/syllik'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('plans and applies managed contracts inside each repository at its local path', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest({
+        projects: [
+          fixtureManifest().projects[1],
+          fixtureManifest().projects[3]
+        ]
+      });
+      const frontendPath = path.join(root, manifest.projects[0].localPath);
+      const archivePath = path.join(root, manifest.projects[1].localPath);
+      initFixtureRepo(frontendPath, 'https://github.com/ChipIn-one/chipin-frontend.git');
+      initFixtureRepo(archivePath, 'https://github.com/syllik/chatgpt-archive-cleanup.git');
+
+      writeFileSync(path.join(frontendPath, 'AGENTS.md'), `Repository rules\n${renderManagedBlock('agents-routing', 'old routing')}\n`, 'utf8');
+      mkdirSync(path.join(frontendPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(frontendPath, '.ai/decisions.md'), 'Existing decisions\n', 'utf8');
+      git(frontendPath, 'add', 'AGENTS.md', '.ai/decisions.md');
+      git(frontendPath, 'commit', '--quiet', '-m', 'existing contract content');
+
+      const manifestPath = writeFixtureManifest(root, manifest);
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const operationPaths = plan.operations.map((operation) => operation.path);
+
+      assert.equal(operationPaths.includes('AGENTS.md'), false);
+      assert.equal(operationPaths.includes('projects/index.md'), false);
+      assert.equal(operationPaths.includes('products/chipin/chipin-frontend/AGENTS.md'), true);
+      assert.equal(operationPaths.includes('products/chipin/chipin-frontend/.ai/context.md'), true);
+      assert.equal(operationPaths.includes('products/chipin/chipin-frontend/.ai/decisions.md'), false);
+      assert.equal(operationPaths.includes('tools/ai/chatgpt-archive-cleanup/AGENTS.md'), true);
+      assert.equal(operationPaths.includes('tools/ai/chatgpt-archive-cleanup/.ai/context.md'), true);
+      assert.equal(operationPaths.includes('tools/ai/chatgpt-archive-cleanup/.ai/decisions.md'), true);
+
+      const applied = applyOperations({ root, plan });
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(frontendPath, 'AGENTS.md'), 'utf8'), `Repository rules\n${renderAgentsBlock(manifest)}`);
+      assert.equal(readFileSync(path.join(frontendPath, '.ai/decisions.md'), 'utf8'), 'Existing decisions\n');
+      assert.equal(readFileSync(path.join(archivePath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.equal(readFileSync(path.join(archivePath, '.ai/decisions.md'), 'utf8'), '# Decisions\n\nRecord durable decisions for this repository here.\n');
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('plans only a clone when an allowlisted read-only repository is missing', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest({ projects: [fixtureManifest().projects[2]] });
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.deepEqual(result.operations.map(({ kind, repository, path: operationPath }) => ({ kind, repository, path: operationPath })), [{
+        kind: 'clone',
+        repository: 'ChipIn-one/chipin-backend',
+        path: 'products/chipin/chipin-backend'
+      }]);
+      assert.equal(result.operations.some((operation) => operation.path.startsWith('products/chipin/chipin-backend/')), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('plans no operations for a present read-only repository', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest({ projects: [fixtureManifest().projects[2]] });
+      initFixtureRepo(path.join(root, 'products/chipin/chipin-backend'), 'https://github.com/ChipIn-one/chipin-backend.git');
+      mkdirSync(path.join(root, 'projects'), { recursive: true });
+      writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.deepEqual(result.operations, []);
+      assert.equal(result.operations.some((operation) => operation.path.includes('ChipIn-one/chipin-backend')), false);
     } finally {
       removeFixtureRoot(root);
     }
@@ -73,7 +147,9 @@ describe('workspace operations', () => {
       writeFileSync(path.join(target, '.ai/context.md'), 'existing context\n', 'utf8');
       git(target, 'add', '.ai/context.md');
       git(target, 'commit', '--quiet', '-m', 'context');
-      writeFileSync(path.join(root, 'AGENTS.md'), '<!-- ai-workflow:agents-routing:start -->\nfirst\n<!-- ai-workflow:agents-routing:start -->\n', 'utf8');
+      writeFileSync(path.join(target, 'AGENTS.md'), '<!-- ai-workflow:agents-routing:start -->\nfirst\n<!-- ai-workflow:agents-routing:start -->\n', 'utf8');
+      git(target, 'add', 'AGENTS.md');
+      git(target, 'commit', '--quiet', '-m', 'malformed routing block');
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root), manifest: fixtureManifest() });
       assert.equal(result.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), true);
       assert.equal(result.findings.some(({ code }) => code === 'DUPLICATE_MARKER'), true);
@@ -127,10 +203,14 @@ describe('workspace operations', () => {
     }
   });
 
-  test('refuses canonical workspace apply even when the plan has no manifest', () => {
-    const root = path.resolve(os.homedir(), 'Desktop/WORK');
-    const result = applyOperations({ root, plan: { root, operations: [], fingerprints: {} } });
-    assert.equal(result.blocked, true);
-    assert.equal(result.findings.some(({ code }) => code === 'CANONICAL_APPLY_FORBIDDEN'), true);
+  test('does not reject an isolated apply root merely because it is the plan canonical root', () => {
+    const root = makeFixtureRoot();
+    try {
+      const result = applyOperations({ root, plan: { root, manifest: { canonicalRoot: root }, operations: [], fingerprints: {} } });
+      assert.equal(result.blocked, false);
+      assert.deepEqual(result.findings, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
   });
 });
