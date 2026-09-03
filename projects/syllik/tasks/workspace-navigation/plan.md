@@ -14,7 +14,7 @@
 - Approved purpose-first structure и repository mapping копируются из task prompt.
 - Разрешены ровно два GitHub rename; visibility, default branches и прочие settings не изменяются.
 - Запрещены direct push в protected/integration branches, merge, auto-merge, force push, delete branch и destructive cleanup.
-- `slack-rofls` и остальные excluded repositories не трогаются и не документируются.
+- Excluded repositories are not moved, edited, renamed, archived or documented.
 - Documentation language: новая profile/workspace documentation — English; итоговый отчёт — Russian.
 - Recovery refs остаются local-only и не push’нуты.
 
@@ -78,7 +78,7 @@ rename wording remains only where needed in this task's `plan.md` and
 
 ## Exclusions and publication policy
 
-The excluded repositories and organization-owned `slack-rofls` are not moved,
-edited, renamed, archived or documented. Only authorized task branches may be
-committed and pushed. PRs target `master` for `ai-workflow` and `syllik/syllik`,
-and `main` for `youtube-metadata-translator`; human merge remains required.
+The excluded repositories are not moved, edited, renamed, archived or
+documented. Only authorized task branches may be committed and pushed. PRs
+target `master` for `ai-workflow` and `syllik/syllik`, and `main` for
+`youtube-metadata-translator`; human merge remains required.

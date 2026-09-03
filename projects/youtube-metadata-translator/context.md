@@ -1,8 +1,8 @@
-# Youtube-video-meta-translator
+# youtube-metadata-translator
 
 ## Repository
 
-[`syllik/Youtube-video-meta-translator`](https://github.com/syllik/Youtube-video-meta-translator)
+[`syllik/youtube-metadata-translator`](https://github.com/syllik/youtube-metadata-translator)
 
 ## Purpose
 

@@ -1,8 +1,8 @@
-# Рабочий контекст для AI
+# AI workflow
 
-Этот repository хранит canonical workflow, устойчивый project context, решения
-и короткие reusable prompts для работы Sol и Luna. Полные дампы разговоров и
-секреты здесь не сохраняются.
+Этот repository хранит canonical AI workflow, устойчивый project context,
+решения и короткие reusable prompts для работы Sol и Luna. Полные дампы
+разговоров и секреты здесь не сохраняются.
 
 Начинайте с [`FLOW.md`](FLOW.md). Он задаёт стабильный bootstrap и не заменяет
 проверку актуального target GitHub repository.
@@ -130,7 +130,7 @@ project context или `decisions.md`; `tasks/` остаётся историе�
 
 ```text
 Для software-development tasks используй canonical workflow/context storage:
-https://github.com/syllik/my-prompt-storage
+https://github.com/syllik/ai-workflow
 
 Перед planning прочитай FLOW.md из текущего default branch и следуй его reading
 order. Определи target project через projects/index.md, загрузи только relevant

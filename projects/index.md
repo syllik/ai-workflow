@@ -5,7 +5,7 @@ Registry сопоставляет project context с реальным GitHub rep
 
 | GitHub repository | Project context |
 | --- | --- |
-| [`syllik/Youtube-video-meta-translator`](https://github.com/syllik/Youtube-video-meta-translator) | [`youtube-video-meta-translator/context.md`](youtube-video-meta-translator/context.md) |
+| [`syllik/youtube-metadata-translator`](https://github.com/syllik/youtube-metadata-translator) | [`youtube-metadata-translator/context.md`](youtube-metadata-translator/context.md) |
 | [`syllik/gpg-signed-commits`](https://github.com/syllik/gpg-signed-commits) | [`gpg-signed-commits/context.md`](gpg-signed-commits/context.md) |
 | [`ChipIn-one/chipin-frontend`](https://github.com/ChipIn-one/chipin-frontend) | [`chipin/context.md`](chipin/context.md) |
 | [`syllik/syllik`](https://github.com/syllik/syllik) | [`syllik/context.md`](syllik/context.md) |
