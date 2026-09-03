@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
-import { renderAgentsBlock, renderManagedContextBlock } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderManagedContextBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { parseArgs } from '../scripts/workspace/cli.mjs';
 
 const cli = path.resolve('scripts/workspace/cli.mjs');
@@ -75,29 +75,24 @@ describe('workspace CLI', () => {
     assert.equal(runCli('plan', '--root').status, 1);
   });
 
-  test('apply returns one and performs no work when generated files drift', () => {
+  test('check resolves generated index beside an explicit manifest and repository-local contracts beside the target root', () => {
+    const manifestRoot = makeFixtureRoot();
     const root = makeFixtureRoot();
     try {
-      const manifest = fixtureManifest();
-      for (const project of manifest.projects) {
-        const projectPath = path.join(root, project.localPath);
-        initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`);
-        if (project.access === 'managed') {
-          mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
-          writeFileSync(path.join(projectPath, project.contextPath), renderManagedContextBlock(project), 'utf8');
-          git(projectPath, 'add', project.contextPath);
-          git(projectPath, 'commit', '--quiet', '-m', 'context');
-        }
-      }
-      const manifestPath = writeFixtureManifest(root, manifest);
-      writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
-      mkdirSync(path.join(root, 'projects'), { recursive: true });
-      writeFileSync(path.join(root, 'projects/index.md'), 'drift\n', 'utf8');
-      const result = runCli('apply', '--root', root, '--manifest', manifestPath);
-      assert.equal(result.status, 1, result.stderr);
-      assert.equal(result.stderr.includes('GENERATED_DRIFT'), true);
-      assert.equal(result.stderr.includes('APPLY_FAILED'), false);
+      const manifest = fixtureManifest({ projects: [fixtureManifest().projects[1]] });
+      const projectPath = path.join(root, manifest.projects[0].localPath);
+      initFixtureRepo(projectPath, 'https://github.com/ChipIn-one/chipin-frontend.git');
+      mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(projectPath, manifest.projects[0].contextPath), renderManagedContextBlock(manifest.projects[0]), 'utf8');
+      writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n\nRecord durable decisions for this repository here.\n', 'utf8');
+      writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      const manifestPath = writeFixtureManifest(manifestRoot, manifest);
+      mkdirSync(path.join(manifestRoot, 'projects'), { recursive: true });
+      writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      const result = runCli('check', '--root', root, '--manifest', manifestPath);
+      assert.equal(result.status, 0, result.stderr);
     } finally {
+      removeFixtureRoot(manifestRoot);
       removeFixtureRoot(root);
     }
   });

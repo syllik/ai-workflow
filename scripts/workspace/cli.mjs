@@ -67,7 +67,7 @@ function run(args) {
     if (options.manifestOnly) return 0;
     let findings;
     try {
-      findings = checkGeneratedFiles(options.root, manifest);
+      findings = checkGeneratedFiles(options.root, manifest, options.manifestPath);
     } catch (error) {
       printFindings([{ code: 'CHECK_FAILED', path: options.root, message: error.message }]);
       return 2;
