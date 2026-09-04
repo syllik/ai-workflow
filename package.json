@@ -1,0 +1,16 @@
+{
+  "name": "ai-workflow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.23.2"
+  },
+  "scripts": {
+    "test": "node --test",
+    "verify": "npm test && node scripts/workspace/cli.mjs check --manifest-only && node scripts/workspace/cli.mjs check && git diff --check"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}

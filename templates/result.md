@@ -1,7 +1,7 @@
 # Result
 
-Используйте для persisted task. Для lightweight task отдельный result file не
-обязателен.
+Use this for a persisted task. A separate result file is optional for a
+lightweight task.
 
 ## Done
 

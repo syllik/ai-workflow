@@ -4,17 +4,34 @@
 решения и короткие reusable prompts для работы Sol и Luna. Полные дампы
 разговоров и секреты здесь не сохраняются.
 
-Начинайте с [`FLOW.md`](FLOW.md). Он задаёт стабильный bootstrap и не заменяет
+Начинайте с [`AI.md`](AI.md), затем читайте [`FLOW.md`](FLOW.md). Они задают стабильный bootstrap и не заменяют
 проверку актуального target GitHub repository.
+
+## GitHub-rooted foundation
+
+`workspace.yaml` is the canonical project manifest and `projects/index.md` is
+its generated navigation. Read one target repository's `.ai/context.md` after
+the manifest record; legacy central project contexts remain migration-only.
+
+The workspace validator is intentionally bounded:
+
+```text
+npm test
+npm run verify
+node scripts/workspace/cli.mjs check [--root <path>] [--manifest-only]
+node scripts/workspace/cli.mjs plan --root <path>
+node scripts/workspace/cli.mjs apply --root <path>
+```
+
+Phase 1A includes isolated fixture apply tests. The product supports canonical
+apply after normal safety checks; canonical apply was not executed in Phase 1A.
 
 ## Что читает Sol
 
-Sol читает `FLOW.md`, затем только relevant
-[`global/context.md`](global/context.md), [`global/workflow.md`](global/workflow.md),
-registry [`projects/index.md`](projects/index.md) и context выбранного проекта.
-`decisions.md` читается только при релевантности. После этого Sol проверяет
-target repository настолько, насколько нужно для planning, architecture,
-research, scope и validation.
+Sol читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
+релевантный role file, затем `AGENTS.md` и `.ai/context.md` target repository.
+`.ai/decisions.md` и task files читаются только при релевантности. Legacy
+central project contexts сохраняются для migration, но не являются active path.
 
 ## Что получает Luna
 
@@ -31,8 +48,9 @@ session без зависимости от conversation history.
 
 * [`global/context.md`](global/context.md) — постоянные правила для всех проектов.
 * [`global/workflow.md`](global/workflow.md) — роли и lifecycle задач.
-* [`projects/index.md`](projects/index.md) — registry GitHub repositories и contexts.
-* `projects/<project>/` — устойчивый context и только необходимые persisted tasks.
+* [`projects/index.md`](projects/index.md) — generated GitHub repository registry.
+* [`projects/README.md`](projects/README.md) — migration-only legacy storage pointer.
+* `.ai/tasks/` — persisted task state for this repository.
 * `prompts/` — короткие reusable prompts.
 * `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
 * [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь.
@@ -47,9 +65,9 @@ session без зависимости от conversation history.
 
 ### Создать проект
 
-1. Добавьте mapping в [`projects/index.md`](projects/index.md).
-2. Создайте `projects/<project>/context.md` из [`templates/project.md`](templates/project.md).
-3. Заполните только устойчивые сведения и при необходимости создайте `decisions.md`.
+1. Добавьте или проверьте запись в `workspace.yaml`.
+2. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md).
+3. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 
 ### Создать задачу
 
@@ -61,7 +79,7 @@ session без зависимости от conversation history.
 context-heavy задачи создайте минимальную структуру:
 
 ```text
-projects/<project>/tasks/<task>/
+.ai/tasks/<task>/
 ├── plan.md
 ├── prompt.md
 ├── state.md
@@ -105,7 +123,7 @@ task-specific prompt. Не создавайте storage location по догад
 После context compaction, interruption или новой Luna session:
 
 1. прочитайте `prompt.md`;
-2. прочитайте утверждённый `plan.md`;
+2. пользователь проверяет human-only `plan.md`; Luna его не читает;
 3. прочитайте актуальный `state.md`;
 4. проверьте текущий target repository `git status` и task-owned diff;
 5. продолжите с `state.md` → `Next`.
@@ -124,31 +142,33 @@ Conversation history не является source of truth для persisted exec
 project context или `decisions.md`; `tasks/` остаётся историей конкретной работы,
 а не постоянным source of truth проекта.
 
-## ChatGPT Web bootstrap
+## GitHub-only bootstrap
 
-Один раз вставьте следующий текст в Project Instructions ChatGPT Web:
+Для software-development tasks достаточно task prompt и GitHub organization
+`https://github.com/syllik`; внешняя project configuration не требуется:
 
 ```text
-Для software-development tasks используй canonical workflow/context storage:
+Use this canonical workflow/context storage for software-development tasks:
 https://github.com/syllik/ai-workflow
 
-Перед planning прочитай FLOW.md из текущего default branch и следуй его reading
-order. Определи target project через projects/index.md, загрузи только relevant
-project context и проверь актуальный target GitHub repository по необходимости.
+Before planning, read FLOW.md from the current default branch and follow its
+reading order. Determine the target project through projects/index.md, load
+only relevant project context, and verify the current target GitHub repository
+when needed.
 
 GPT-5.6 Sol — planner, architect и research agent.
 Luna xhigh — executor, coder и reviewer.
 
-Sol должен выдать один self-contained execution prompt для Luna. Для long или
-context-heavy work используй persisted task state, чтобы выполнение можно было
-продолжить без зависимости от conversation history.
+Sol must issue one self-contained execution prompt for Luna. For long or
+context-heavy work, use persisted task state so execution can continue without
+depending on conversation history.
 
-Не используй subagents, минимизируй повторное research и context/token usage.
-Пользовательские объяснения пиши на русском языке.
+Do not use subagents; minimize repeated research and context/token usage.
+The task prompt plus this GitHub repository are sufficient bootstrap.
 ```
 
-ChatGPT Web не следует считать автоматически распознающим `AGENTS.md` в этом
-repository без такой bootstrap instruction.
+The task prompt and `https://github.com/syllik/ai-workflow` are sufficient to
+bootstrap the workflow; do not depend on automatic loading of repository files.
 
 Не сохраняйте API keys, passwords, access tokens, refresh tokens, private keys,
 содержимое `.env` или другие credentials. См. также [`.gitignore`](.gitignore).

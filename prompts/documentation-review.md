@@ -1,5 +1,7 @@
 # Documentation review prompt
 
-Сопоставь документацию с фактическим состоянием проекта в указанном scope.
+Compare the documentation with the project's actual state within the specified
+scope.
 
-Отметь устаревшие, отсутствующие или противоречивые сведения, укажи файл и предложенное исправление. Не добавляй документацию вне scope.
+Call out outdated, missing, or contradictory information, naming the file and
+the proposed correction. Do not add documentation outside the scope.
