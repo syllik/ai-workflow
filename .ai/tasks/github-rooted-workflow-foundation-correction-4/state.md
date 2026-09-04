@@ -2,7 +2,7 @@
 
 ## Current phase
 
-LUNA_IMPLEMENTATION.
+READY_FOR_HUMAN_MERGE.
 
 ## Scope
 
@@ -25,7 +25,7 @@ Fix the verified generated-index convergence defect in `syllik/ai-workflow` on
 
 ## Validation
 
-- Operations suite: 32 passed.
+- Operations suite: 33 passed.
 - Repository test suite: 65 passed.
 - `npm run verify`: passed, including manifest-only check, generated-file check,
   and `git diff --check`.
@@ -39,8 +39,7 @@ Fix the verified generated-index convergence defect in `syllik/ai-workflow` on
 
 ## Next
 
-Commit and publish the reviewed task-owned diff, verify PR #4, then write the
-final result checkpoint.
+Sol review and human merge of PR #4 into `master` are next.
 
 ## Blockers
 
