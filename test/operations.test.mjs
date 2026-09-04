@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
+import { run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
 import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
-import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
+import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
   test('defaults direct workspace options to the checkout manifest, not the target root', () => {
@@ -45,6 +46,388 @@ describe('workspace operations', () => {
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
       assert.equal(result.operations.some((operation) => operation.kind === 'clone' && operation.path === 'profile/syllik'), false);
     } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('plans a central generated index replacement alongside a new project clone', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const newProject = {
+        id: 'syllik/new-approved-repository',
+        repository: 'syllik/new-approved-repository',
+        localPath: 'tools/new-approved-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'onboarding',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, newProject] });
+      const centralPath = path.join(root, central.localPath);
+      initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git');
+      mkdirSync(path.join(centralPath, '.ai'), { recursive: true });
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(centralPath, central.contextPath), renderContextScaffold(central), 'utf8');
+      writeFileSync(path.join(centralPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex({ ...manifest, projects: [central] }), 'utf8');
+      const manifestPath = writeFixtureManifest(centralPath, manifest);
+      git(centralPath, 'add', '.');
+      git(centralPath, 'commit', '--quiet', '-m', 'committed manifest change');
+
+      const source = path.join(remoteRoot, 'new-approved-repository');
+      initFixtureRepo(source, 'https://github.com/syllik/new-approved-repository.git');
+      const plan = planWorkspace({
+        root,
+        manifestPath,
+        manifest,
+        cloneSource: { 'syllik/new-approved-repository': source }
+      });
+
+      const indexOperation = plan.operations.find(({ path: operationPath }) => operationPath === `${central.localPath}/projects/index.md`);
+      assert.equal(indexOperation?.kind, 'replace-generated-file');
+      assert.equal(indexOperation?.content, renderProjectIndex(manifest));
+      assert.equal(plan.operations.some(({ kind, path: operationPath }) => kind === 'clone' && operationPath === newProject.localPath), true);
+      assert.equal(plan.blocked, false);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('one apply writes the exact central index and a second plan is clean', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [central, project] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
+      const projectPath = path.join(root, project.localPath);
+      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`);
+      mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(projectPath, project.contextPath), renderContextScaffold(project), 'utf8');
+      writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      git(projectPath, 'add', '.');
+      git(projectPath, 'commit', '--quiet', '-m', 'existing project contracts');
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      assert.deepEqual(plan.operations.map(({ kind, path: operationPath }) => ({ kind, path: operationPath })), [{
+        kind: 'replace-generated-file',
+        path: `${central.localPath}/projects/index.md`
+      }]);
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(centralPath, 'projects/index.md'), 'utf8'), renderProjectIndex(manifest));
+      assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
+      const secondPlan = planWorkspace({ root, manifestPath, manifest, generatedOutputs: applied.generatedOutputs });
+      assert.deepEqual(secondPlan.operations, []);
+      assert.deepEqual(secondPlan.findings, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('one apply safely creates a missing central index and converges', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [central] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { includeIndex: false });
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      assert.equal(plan.operations[0]?.kind, 'replace-generated-file');
+      assert.equal(plan.operations[0]?.expectedFingerprint, null);
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(centralPath, 'projects/index.md'), 'utf8'), renderProjectIndex(manifest));
+      assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
+      const secondPlan = planWorkspace({ root, manifestPath, manifest, generatedOutputs: applied.generatedOutputs });
+      assert.deepEqual(secondPlan.operations, []);
+      assert.deepEqual(secondPlan.findings, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('stale central index between plan and apply blocks before cloning a project', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const project = {
+        id: 'syllik/new-approved-repository',
+        repository: 'syllik/new-approved-repository',
+        localPath: 'tools/new-approved-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'onboarding',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, project] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
+      const indexPath = path.join(centralPath, 'projects/index.md');
+      const plan = planWorkspace({ root, manifestPath, manifest, cloneSource: { [project.repository]: root } });
+      writeFileSync(indexPath, 'changed after plan\n', 'utf8');
+
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(applied.findings.some(({ code }) => code === 'FIRST_DRIFT'), true);
+      assert.equal(existsSync(path.join(root, project.localPath)), false);
+      assert.equal(readFileSync(indexPath, 'utf8'), 'changed after plan\n');
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('forged generated destination or content cannot overwrite a file', () => {
+    for (const forge of ['destination', 'content']) {
+      const root = makeFixtureRoot();
+      try {
+        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+        const manifest = fixtureManifest({ projects: [central] });
+        const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [] } });
+        const indexPath = path.join(centralPath, 'projects/index.md');
+        const forgedPath = path.join(root, 'forged.txt');
+        writeFileSync(forgedPath, 'sentinel\n', 'utf8');
+        const plan = planWorkspace({ root, manifestPath, manifest });
+        const operation = plan.operations[0];
+        const forgedOperation = forge === 'destination'
+          ? { ...operation, destination: forgedPath }
+          : { ...operation, content: 'forged content\n' };
+
+        const applied = applyOperations({ root, plan: { ...plan, operations: [forgedOperation] } });
+
+        assert.equal(applied.blocked, true, forge);
+        assert.deepEqual(applied.applied, [], forge);
+        assert.equal(readFileSync(indexPath, 'utf8'), renderProjectIndex({ ...manifest, projects: [] }), forge);
+        assert.equal(readFileSync(forgedPath, 'utf8'), 'sentinel\n', forge);
+      } finally {
+        removeFixtureRoot(root);
+      }
+    }
+  });
+
+  test('blocks a dirty central checkout before any new project is cloned', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const project = { ...fixtureManifest().projects[0], id: 'syllik/new-approved-repository', repository: 'syllik/new-approved-repository', localPath: 'tools/new-approved-repository', group: 'tools' };
+      const manifest = fixtureManifest({ projects: [central, project] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
+      writeFileSync(path.join(centralPath, 'uncommitted.txt'), 'uncommitted\n', 'utf8');
+      const plan = planWorkspace({ root, manifestPath, manifest, cloneSource: { [project.repository]: root } });
+
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(existsSync(path.join(root, project.localPath)), false);
+      assert.equal(readFileSync(path.join(centralPath, 'uncommitted.txt'), 'utf8'), 'uncommitted\n');
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks a wrong central origin before any generated write', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [central] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [] } });
+      const indexPath = path.join(centralPath, 'projects/index.md');
+      git(centralPath, 'remote', 'set-url', 'origin', 'https://github.com/other/repository.git');
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'ORIGIN_MISMATCH'), true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(readFileSync(indexPath, 'utf8'), renderProjectIndex({ ...manifest, projects: [] }));
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks a central manifest path mapping that does not match the manifest checkout', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [{ ...central, localPath: 'workflows/wrong/ai-workflow' }] });
+      const actualCentralPath = path.join(root, central.localPath);
+      initFixtureRepo(actualCentralPath, 'https://github.com/syllik/ai-workflow.git');
+      mkdirSync(path.join(actualCentralPath, '.ai'), { recursive: true });
+      mkdirSync(path.join(actualCentralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(actualCentralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(actualCentralPath, central.contextPath), renderContextScaffold(central), 'utf8');
+      writeFileSync(path.join(actualCentralPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(actualCentralPath, 'projects/index.md'), renderProjectIndex({ ...manifest, projects: [] }), 'utf8');
+      const manifestPath = writeFixtureManifest(actualCentralPath, manifest);
+      git(actualCentralPath, 'add', '.');
+      git(actualCentralPath, 'commit', '--quiet', '-m', 'committed manifest change');
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(readFileSync(path.join(actualCentralPath, 'projects/index.md'), 'utf8'), renderProjectIndex({ ...manifest, projects: [] }));
+      assert.equal(existsSync(path.join(root, 'workflows/wrong/ai-workflow')), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks a manifest checkout outside the declared workspace root', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [central] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(outside, manifest, { indexManifest: { ...manifest, projects: [] } });
+      const indexPath = path.join(centralPath, 'projects/index.md');
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(readFileSync(indexPath, 'utf8'), renderProjectIndex({ ...manifest, projects: [] }));
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks an intermediate central symlink without changing the outside checkout', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [central] });
+      const { centralPath: outsideCentralPath } = initCentralManifestRepo(outside, manifest, { indexManifest: { ...manifest, projects: [] } });
+      const linkedParent = path.join(root, 'workflows/ai');
+      mkdirSync(path.dirname(linkedParent), { recursive: true });
+      symlinkSync(path.dirname(outsideCentralPath), linkedParent);
+      const manifestPath = path.join(linkedParent, 'ai-workflow/workspace.yaml');
+      const indexPath = path.join(outsideCentralPath, 'projects/index.md');
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(readFileSync(indexPath, 'utf8'), renderProjectIndex({ ...manifest, projects: [] }));
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks a final central index symlink without changing its target', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const manifest = fixtureManifest({ projects: [central] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [] } });
+      const indexPath = path.join(centralPath, 'projects/index.md');
+      const sentinel = path.join(outside, 'sentinel.txt');
+      writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
+      unlinkSync(indexPath);
+      symlinkSync(sentinel, indexPath);
+
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      const applied = applyOperations({ root, plan });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.equal(plan.findings.some(({ code }) => code === 'CENTRAL_REPOSITORY_UNVERIFIED'), true);
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside remains unchanged\n');
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('never writes contracts into a read-only project during central convergence', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const readOnly = fixtureManifest().projects.find(({ access }) => access === 'read-only');
+      const manifest = fixtureManifest({ projects: [central, readOnly] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
+      const source = path.join(remoteRoot, 'chipin-backend');
+      initFixtureRepo(source, `https://github.com/${readOnly.repository}.git`);
+
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: { [readOnly.repository]: source },
+        expectedRemote: (repository) => repository === readOnly.repository ? source : `https://github.com/${repository}.git`
+      });
+      const readOnlyPath = path.join(root, readOnly.localPath);
+
+      assert.equal(status, 0);
+      assert.equal(readFileSync(path.join(centralPath, 'projects/index.md'), 'utf8'), renderProjectIndex(manifest));
+      assert.deepEqual(readdirSync(readOnlyPath).sort(), ['.git', '.keep']);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('one CLI apply converges a new managed project and the central index', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const project = {
+        id: 'syllik/new-approved-repository',
+        repository: 'syllik/new-approved-repository',
+        localPath: 'tools/new-approved-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'onboarding',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, project] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
+      const source = path.join(remoteRoot, 'new-approved-repository');
+      initFixtureRepo(source, `https://github.com/${project.repository}.git`);
+
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: { [project.repository]: source },
+        expectedRemote: (repository) => repository === project.repository ? source : `https://github.com/${repository}.git`
+      });
+      const projectPath = path.join(root, project.localPath);
+
+      assert.equal(status, 0);
+      assert.equal(readFileSync(path.join(centralPath, 'projects/index.md'), 'utf8'), renderProjectIndex(manifest));
+      assert.equal(readFileSync(path.join(projectPath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.equal(readFileSync(path.join(projectPath, project.contextPath), 'utf8'), renderContextScaffold(project));
+      assert.equal(readFileSync(path.join(projectPath, '.ai/decisions.md'), 'utf8'), '# Decisions\n\nRecord durable decisions for this repository here.\n');
+      assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
       removeFixtureRoot(root);
     }
   });

@@ -2,7 +2,7 @@
 
 ## Current phase
 
-READY_FOR_LUNA.
+LUNA_IMPLEMENTATION.
 
 ## Scope
 
@@ -15,23 +15,20 @@ Fix the verified generated-index convergence defect in `syllik/ai-workflow` on
 - Required handoff: the launcher-pinned correction-4 commit.
 - Current PR head is mutable and must be verified from GitHub.
 
-## Confirmed finding
+## Completed
 
-`checkGeneratedFiles` detects stale `projects/index.md`, while `planWorkspace`
-and `apply` have no operation that can regenerate it. A new manifest record
-cannot reach clean `check` through the documented flow.
-
-## Required work
-
-- Add an exact, central-only generated index operation.
-- Prove manifest checkout identity, Git safety, and real-path containment.
-- Revalidate fingerprint, exact renderer content, and path before mutation.
-- Preserve same-process convergence without weakening dirty-worktree rules.
-- Add full new-project convergence and adversarial safety tests.
+- Verified the clean checkout, fetched origin, fast-forwarded to the pinned
+  handoff, and confirmed `HEAD` is `08096fb33635ad406d358cba1a36dde1ba6fe47a`.
+- Added central-only index generation with identity, Git safety, containment,
+  revalidation, atomic replacement, and same-process output tracking.
+- Added isolated convergence and adversarial safety regressions.
 
 ## Validation
 
-Not run by Luna yet.
+- Operations suite: 32 passed.
+- Repository test suite: 65 passed.
+- `npm run verify`: passed, including manifest-only check, generated-file check,
+  and `git diff --check`.
 
 ## Decisions / assumptions
 
@@ -42,7 +39,8 @@ Not run by Luna yet.
 
 ## Next
 
-Verify the pinned handoff and begin focused TDD from `prompt.md`.
+Commit and publish the reviewed task-owned diff, verify PR #4, then write the
+final result checkpoint.
 
 ## Blockers
 

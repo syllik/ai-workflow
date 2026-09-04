@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
 
 export const expectedProjects = [
   { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
@@ -64,4 +65,22 @@ export function initFixtureRepo(directory, remote = 'https://github.com/example/
 
 export function git(directory, ...args) {
   return execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8' }).trim();
+}
+
+export function initCentralManifestRepo(root, manifest, { indexManifest = manifest, includeIndex = true } = {}) {
+  const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+  const centralPath = path.join(root, central.localPath);
+  initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git');
+  mkdirSync(path.join(centralPath, '.ai'), { recursive: true });
+  writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+  writeFileSync(path.join(centralPath, central.contextPath), renderContextScaffold(central), 'utf8');
+  writeFileSync(path.join(centralPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+  if (includeIndex) {
+    mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+    writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(indexManifest), 'utf8');
+  }
+  const manifestPath = writeFixtureManifest(centralPath, manifest);
+  git(centralPath, 'add', '.');
+  git(centralPath, 'commit', '--quiet', '-m', 'committed manifest change');
+  return { central, centralPath, manifestPath };
 }

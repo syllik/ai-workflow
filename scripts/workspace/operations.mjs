@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
-export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block']);
+export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block', 'replace-generated-file']);
 
 const GENERATED_OUTPUT_TOKEN = {};
+const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
+const CENTRAL_INDEX_PATH = 'projects/index.md';
+const CENTRAL_IDENTITY_FINDING = 'CENTRAL_REPOSITORY_UNVERIFIED';
 
 function generatedOutputs(entries) {
   return Object.freeze({
@@ -36,6 +39,29 @@ function fingerprint(filePath) {
 
 function contentFingerprint(content) {
   return createHash('sha256').update(normalizeText(content), 'utf8').digest('hex');
+}
+
+function atomicWriteFile(filePath, content) {
+  let temporaryDirectory;
+  try {
+    try {
+      if (lstatSync(filePath).isSymbolicLink()) throw new Error('Generated output destination is a symlink');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    temporaryDirectory = mkdtempSync(path.join(path.dirname(filePath), '.ai-workflow-generated-'));
+    const temporaryFile = path.join(temporaryDirectory, 'output');
+    writeFileSync(temporaryFile, normalizeText(content), 'utf8');
+    renameSync(temporaryFile, filePath);
+  } finally {
+    if (temporaryDirectory) {
+      try {
+        rmSync(temporaryDirectory, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup of the private temporary directory.
+      }
+    }
+  }
 }
 
 function isPathInside(base, target) {
@@ -90,7 +116,7 @@ function resolveInside(root, relativePath) {
 
 function command(directory, args) {
   try {
-    return execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trimEnd();
   } catch {
     return null;
   }
@@ -118,6 +144,99 @@ function resolveCloneSource(repository, options = {}) {
   if (typeof options.cloneSource === 'function') return options.cloneSource(repository);
   if (options.cloneSource && typeof options.cloneSource === 'object') return options.cloneSource[repository] ?? null;
   return null;
+}
+
+function centralManifestIdentity(root, manifest, manifestPath, findings, options = {}) {
+  const resolvedManifestPath = path.resolve(manifestPath);
+  const manifestRoot = path.dirname(resolvedManifestPath);
+  const centralProject = manifest?.projects?.find(({ id, repository, access }) => id === CENTRAL_REPOSITORY && repository === CENTRAL_REPOSITORY && access === 'managed');
+  const relativeManifestRoot = path.relative(root, manifestRoot);
+  const manifestFile = resolveInside(root, path.relative(root, resolvedManifestPath));
+  const centralDestination = centralProject ? resolveInside(root, centralProject.localPath) : null;
+  const mappedManifestRoot = resolveInside(root, relativeManifestRoot);
+  const pathMatches = centralDestination
+    && mappedManifestRoot
+    && path.resolve(centralDestination) === path.resolve(manifestRoot)
+    && path.resolve(mappedManifestRoot) === path.resolve(manifestRoot)
+    && manifestFile
+    && path.resolve(path.dirname(manifestFile)) === path.resolve(manifestRoot)
+    && isRegularFile(manifestFile);
+  if (!pathMatches) {
+    addUniqueFinding(findings, CENTRAL_IDENTITY_FINDING, CENTRAL_INDEX_PATH);
+    return null;
+  }
+  let realManifestRoot;
+  let realCentralDestination;
+  try {
+    realManifestRoot = realpathSync(manifestRoot);
+    realCentralDestination = realpathSync(centralDestination);
+  } catch {
+    addUniqueFinding(findings, CENTRAL_IDENTITY_FINDING, CENTRAL_INDEX_PATH);
+    return null;
+  }
+  if (realManifestRoot !== realCentralDestination || !isPathInside(trustedRoot(root), realManifestRoot)) {
+    addUniqueFinding(findings, CENTRAL_IDENTITY_FINDING, CENTRAL_INDEX_PATH);
+    return null;
+  }
+  const safe = repositorySafety(
+    centralDestination,
+    CENTRAL_REPOSITORY,
+    centralProject.localPath,
+    findings,
+    resolveExpectedRemote(CENTRAL_REPOSITORY, options),
+    options.generatedOutputs
+  );
+  if (!safe) {
+    addUniqueFinding(findings, CENTRAL_IDENTITY_FINDING, CENTRAL_INDEX_PATH);
+    return null;
+  }
+  const indexPath = resolveInside(centralDestination, CENTRAL_INDEX_PATH);
+  if (!indexPath) {
+    addUniqueFinding(findings, CENTRAL_IDENTITY_FINDING, CENTRAL_INDEX_PATH);
+    return null;
+  }
+  return { centralProject, centralDestination, indexPath, operationPath: path.posix.join(centralProject.localPath, CENTRAL_INDEX_PATH) };
+}
+
+function hasGitMetadata(directoryPath) {
+  try {
+    const stat = lstatSync(path.join(directoryPath, '.git'));
+    return stat.isDirectory() || stat.isFile() || stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function addCentralGeneratedIndexOperation(root, operations, findings, manifest, manifestPath, options = {}) {
+  const manifestRoot = path.dirname(path.resolve(manifestPath));
+  if (!hasGitMetadata(manifestRoot)) return;
+  const candidate = resolveInside(manifestRoot, CENTRAL_INDEX_PATH);
+  const desired = renderProjectIndex(manifest);
+  let drift = !candidate || !isRegularFile(candidate);
+  if (!drift) {
+    try {
+      drift = readFileSync(candidate, 'utf8') !== desired;
+    } catch {
+      drift = true;
+    }
+  }
+  if (!drift) return;
+  const identity = centralManifestIdentity(root, manifest, manifestPath, findings, options);
+  if (!identity) return;
+  if (existsSync(identity.indexPath) && !isRegularFile(identity.indexPath)) {
+    addUniqueFinding(findings, 'DESTINATION_COLLISION', identity.operationPath);
+    return;
+  }
+  operations.push({
+    kind: 'replace-generated-file',
+    path: identity.operationPath,
+    destination: identity.indexPath,
+    generatedPath: CENTRAL_INDEX_PATH,
+    content: desired,
+    expectedFingerprint: fingerprint(identity.indexPath),
+    repositoryPath: identity.centralProject.localPath,
+    repository: CENTRAL_REPOSITORY
+  });
 }
 
 function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), generatedOutputs = null) {
@@ -315,7 +434,9 @@ export function planWorkspace(options = {}) {
     }
   }
 
-  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED']);
+  addCentralGeneratedIndexOperation(root, operations, findings, manifest, manifestPath, options);
+
+  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED', CENTRAL_IDENTITY_FINDING]);
   const blocked = findings.some(({ code }) => blockedCodes.has(code));
   const fingerprints = Object.fromEntries(operations.map((operation) => [operation.path, fingerprint(operation.destination)]));
   return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
@@ -359,7 +480,26 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
       if (expectedContent !== operation.content) findings.push(finding('FIRST_DRIFT', operation.path));
     }
   }
-  if (operation.repositoryPath && existsSync(resolveInside(root, operation.repositoryPath))) {
+  if (operation.kind === 'replace-generated-file') {
+    const identity = centralManifestIdentity(root, plan.manifest, plan.manifestPath, findings, options);
+    const matchesIdentity = identity
+      && operation.repository === CENTRAL_REPOSITORY
+      && operation.repositoryPath === identity.centralProject.localPath
+      && operation.generatedPath === CENTRAL_INDEX_PATH
+      && operation.path === identity.operationPath
+      && path.resolve(operation.destination) === path.resolve(identity.indexPath);
+    if (!matchesIdentity) {
+      addUniqueFinding(findings, 'UNSAFE_PATH', operation.path ?? 'operation');
+      return;
+    }
+    if (operation.content !== renderProjectIndex(plan.manifest)) {
+      addUniqueFinding(findings, 'GENERATED_CONTENT_MISMATCH', operation.path);
+    }
+    if (existsSync(destination) && !isRegularFile(destination)) {
+      addUniqueFinding(findings, 'DESTINATION_COLLISION', operation.path);
+    }
+  }
+  if (operation.repositoryPath && operation.kind !== 'replace-generated-file' && existsSync(resolveInside(root, operation.repositoryPath))) {
     const repositoryDestination = resolveInside(root, operation.repositoryPath);
     repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), options.generatedOutputs);
   }
@@ -387,6 +527,16 @@ export function applyOperations(options = {}) {
         findings.push(finding('UNSAFE_PATH', operation.path));
         return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
       }
+      if (operation.kind === 'replace-generated-file') {
+        const findingsBeforeRevalidation = findings.length;
+        preflightOperation(root, operation, { ...plan, fingerprints: options.expectedFingerprints ?? plan.fingerprints }, findings, {
+          ...options,
+          generatedOutputs: generatedOutputs(generatedEntries)
+        });
+        if (findings.length > findingsBeforeRevalidation) {
+          return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
+        }
+      }
       if (operation.kind === 'clone') {
         mkdirSync(path.dirname(destination), { recursive: true });
         destination = resolveInside(root, operation.path);
@@ -403,7 +553,8 @@ export function applyOperations(options = {}) {
           return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
         }
         const expectedFingerprint = contentFingerprint(operation.content);
-        writeFileSync(destination, normalizeText(operation.content), 'utf8');
+        if (operation.kind === 'replace-generated-file') atomicWriteFile(destination, operation.content);
+        else writeFileSync(destination, normalizeText(operation.content), 'utf8');
         if (fingerprint(destination) !== expectedFingerprint) throw new Error('Generated output fingerprint mismatch');
         generatedEntries.push({ path: operation.path, fingerprint: expectedFingerprint });
       }
