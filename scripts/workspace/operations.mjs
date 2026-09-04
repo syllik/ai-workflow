@@ -8,6 +8,15 @@ import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsS
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block']);
 
+const GENERATED_OUTPUT_TOKEN = {};
+
+function generatedOutputs(entries) {
+  return Object.freeze({
+    token: GENERATED_OUTPUT_TOKEN,
+    entries: Object.freeze(entries.map((entry) => Object.freeze({ ...entry })))
+  });
+}
+
 function finding(code, filePath, details = {}) {
   return { code, path: filePath, ...details };
 }
@@ -17,16 +26,66 @@ function normalizeText(text) {
 }
 
 function fingerprint(filePath) {
-  if (!existsSync(filePath) || !lstatSync(filePath).isFile()) return null;
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  try {
+    if (!lstatSync(filePath).isFile()) return null;
+    return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function contentFingerprint(content) {
+  return createHash('sha256').update(normalizeText(content), 'utf8').digest('hex');
+}
+
+function isPathInside(base, target) {
+  const relative = path.relative(base, target);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function rootPaths(root) {
+  const requestedRoot = path.resolve(root);
+  try {
+    const rootStat = lstatSync(requestedRoot);
+    if (!rootStat.isDirectory() && !rootStat.isSymbolicLink()) return null;
+    const realRoot = realpathSync(requestedRoot);
+    return lstatSync(realRoot).isDirectory() ? { requestedRoot, realRoot } : null;
+  } catch {
+    return null;
+  }
+}
+
+function trustedRoot(root) {
+  return rootPaths(root)?.realRoot ?? null;
 }
 
 function resolveInside(root, relativePath) {
-  const base = path.resolve(root);
+  if (typeof relativePath !== 'string') return null;
+  const roots = rootPaths(root);
+  if (!roots) return null;
+  const { requestedRoot: base, realRoot } = roots;
   const target = path.resolve(base, relativePath);
+  if (!isPathInside(base, target)) return null;
+
+  let current = base;
   const relative = path.relative(base, target);
-  if (relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) return target;
-  return null;
+  for (const segment of relative ? relative.split(path.sep) : []) {
+    current = path.join(current, segment);
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      if (error.code === 'ENOENT') break;
+      return null;
+    }
+    if (stat.isSymbolicLink()) return null;
+    try {
+      if (!isPathInside(realRoot, realpathSync(current))) return null;
+    } catch {
+      return null;
+    }
+  }
+  return target;
 }
 
 function command(directory, args) {
@@ -61,13 +120,20 @@ function resolveCloneSource(repository, options = {}) {
   return null;
 }
 
-function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), allowedUntrackedPaths = []) {
+function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), generatedOutputs = null) {
   const gitPath = path.join(destination, '.git');
-  if (!existsSync(gitPath)) {
+  let gitStat;
+  try {
+    gitStat = lstatSync(gitPath);
+  } catch {
     findings.push(finding('DESTINATION_COLLISION', localPath));
     return false;
   }
-  if (lstatSync(gitPath).isFile()) {
+  if (gitStat.isSymbolicLink()) {
+    findings.push(finding('UNSAFE_PATH', path.posix.join(localPath, '.git')));
+    return false;
+  }
+  if (gitStat.isFile()) {
     findings.push(finding('WORKTREE_COLLISION', localPath));
     return false;
   }
@@ -84,7 +150,10 @@ function repositorySafety(destination, repository, localPath, findings, expected
   }
   const status = command(destination, ['status', '--porcelain', '--untracked-files=all']) ?? '';
   const statusPaths = status.split('\n').filter(Boolean).map((line) => line.slice(3).trim());
-  const unexpectedStatusPaths = statusPaths.filter((statusPath) => !lineIsUntracked(statusPath, status, allowedUntrackedPaths));
+  for (const statusPath of statusPaths) {
+    if (!resolveInside(destination, statusPath)) findings.push(finding('UNSAFE_PATH', path.posix.join(localPath, statusPath)));
+  }
+  const unexpectedStatusPaths = statusPaths.filter((statusPath) => !isGeneratedOutput(statusPath, destination, localPath, generatedOutputs));
   if (unexpectedStatusPaths.length > 0) {
     findings.push(finding('DIRTY_REPOSITORY', localPath));
     valid = false;
@@ -98,14 +167,13 @@ function repositorySafety(destination, repository, localPath, findings, expected
   return valid;
 }
 
-function lineIsUntracked(statusPath, status, allowedUntrackedPaths) {
-  const line = status.split('\n').find((candidate) => candidate.slice(3).trim() === statusPath);
-  return line?.startsWith('?? ') && allowedUntrackedPaths.includes(statusPath);
-}
-
-function allowedUntrackedPaths(project) {
-  if (project.access !== 'managed') return [];
-  return ['AGENTS.md', project.contextPath, '.ai/decisions.md'];
+function isGeneratedOutput(statusPath, repositoryDestination, repositoryPath, generatedOutputs) {
+  if (generatedOutputs?.token !== GENERATED_OUTPUT_TOKEN) return false;
+  const workspacePath = path.posix.join(repositoryPath, statusPath);
+  const destination = resolveInside(repositoryDestination, statusPath);
+  if (!destination) return false;
+  const currentFingerprint = fingerprint(destination);
+  return generatedOutputs.entries.some((entry) => entry.path === workspacePath && entry.fingerprint === currentFingerprint);
 }
 
 function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository) {
@@ -197,7 +265,8 @@ function addContextOperation(root, operations, findings, project) {
 }
 
 export function planWorkspace(options = {}) {
-  const root = path.resolve(options.root ?? process.cwd());
+  const requestedRoot = path.resolve(options.root ?? process.cwd());
+  const root = requestedRoot;
   const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST_PATH;
   let manifest = options.manifest;
   const findings = [];
@@ -212,7 +281,7 @@ export function planWorkspace(options = {}) {
   const validation = validateManifest(manifest);
   findings.push(...validation.findings);
   if (!validation.valid) return { root, manifestPath, manifest, operations: [], findings, blocked: false, validationFailed: true, drift: false, fingerprints: {} };
-  if (!existsSync(root) || !lstatSync(root).isDirectory()) {
+  if (!trustedRoot(root)) {
     findings.push(finding('ROOT_NOT_DIRECTORY', root));
     return { root, manifestPath, manifest, operations: [], findings, blocked: true, validationFailed: false, drift: false, fingerprints: {} };
   }
@@ -236,7 +305,7 @@ export function planWorkspace(options = {}) {
       findings.push(finding('DESTINATION_COLLISION', project.localPath));
       continue;
     }
-    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), allowedUntrackedPaths(project));
+    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), options.generatedOutputs);
     if (!safeRepository) continue;
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository };
@@ -292,40 +361,59 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
   }
   if (operation.repositoryPath && existsSync(resolveInside(root, operation.repositoryPath))) {
     const repositoryDestination = resolveInside(root, operation.repositoryPath);
-    const repositoryRelativePath = path.posix.relative(operation.repositoryPath, operation.path);
-    const allowed = ['AGENTS.md', '.ai/decisions.md'];
-    if (repositoryRelativePath.endsWith('.ai/context.md')) allowed.push(repositoryRelativePath);
-    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), allowed);
+    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), options.generatedOutputs);
   }
 }
 
 export function applyOperations(options = {}) {
   const plan = options.plan;
-  const root = path.resolve(options.root ?? plan?.root ?? process.cwd());
+  const requestedRoot = path.resolve(options.root ?? plan?.root ?? process.cwd());
+  const root = requestedRoot;
   const findings = [];
   if (!plan || !Array.isArray(plan.operations)) return { root, applied: [], findings: [finding('INVALID_PLAN', 'plan')], blocked: true };
-  if (!existsSync(root) || !lstatSync(root).isDirectory()) return { root, applied: [], findings: [finding('ROOT_NOT_DIRECTORY', root)], blocked: true };
+  if (!trustedRoot(root)) return { root, applied: [], findings: [finding('ROOT_NOT_DIRECTORY', root)], blocked: true };
+  if (plan.blocked || plan.validationFailed) return { root, applied: [], findings: plan.findings ?? [finding('DIRTY_REPOSITORY', 'workspace')], blocked: true };
   for (const operation of plan.operations) preflightOperation(root, operation, { ...plan, fingerprints: options.expectedFingerprints ?? plan.fingerprints }, findings, options);
   if (findings.length > 0) return { root, applied: [], findings, blocked: true };
 
   const applied = [];
+  const generatedEntries = options.generatedOutputs?.token === GENERATED_OUTPUT_TOKEN
+    ? [...options.generatedOutputs.entries]
+    : [];
   try {
     for (const operation of plan.operations) {
-      const destination = path.resolve(operation.destination);
+      let destination = resolveInside(root, operation.path);
+      if (!destination || destination !== path.resolve(operation.destination)) {
+        findings.push(finding('UNSAFE_PATH', operation.path));
+        return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
+      }
       if (operation.kind === 'clone') {
         mkdirSync(path.dirname(destination), { recursive: true });
+        destination = resolveInside(root, operation.path);
+        if (!destination || destination !== path.resolve(operation.destination) || existsSync(destination)) {
+          findings.push(finding('UNSAFE_PATH', operation.path));
+          return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
+        }
         execFileSync('git', ['clone', '--quiet', operation.source ?? resolveExpectedRemote(operation.repository, options), destination], { stdio: 'pipe' });
       } else {
         mkdirSync(path.dirname(destination), { recursive: true });
+        destination = resolveInside(root, operation.path);
+        if (!destination || destination !== path.resolve(operation.destination)) {
+          findings.push(finding('UNSAFE_PATH', operation.path));
+          return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
+        }
+        const expectedFingerprint = contentFingerprint(operation.content);
         writeFileSync(destination, normalizeText(operation.content), 'utf8');
+        if (fingerprint(destination) !== expectedFingerprint) throw new Error('Generated output fingerprint mismatch');
+        generatedEntries.push({ path: operation.path, fingerprint: expectedFingerprint });
       }
       applied.push(operation.path);
     }
   } catch (error) {
     findings.push(finding('APPLY_FAILED', applied.length < plan.operations.length ? plan.operations[applied.length]?.path ?? 'operation' : 'operation', { message: error.message }));
-    return { root, applied, findings, blocked: true };
+    return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
   }
-  return { root, applied, findings, blocked: false };
+  return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: false };
 }
 
 const TASK_ARTIFACT_NAMES = new Set(['plan.md', 'prompt.md', 'state.md', 'result.md']);
@@ -346,9 +434,27 @@ function isDirectory(directoryPath) {
   }
 }
 
-function readKnownArtifact(root, relativePath) {
+function physicalPath(filePath) {
+  try {
+    return isRegularFile(filePath)
+      ? realpathSync(filePath)
+      : path.join(realpathSync(path.dirname(filePath)), path.basename(filePath));
+  } catch {
+    return filePath;
+  }
+}
+
+function addUniqueFinding(findings, code, filePath) {
+  if (!findings.some((entry) => entry.code === code && entry.path === filePath)) findings.push(finding(code, filePath));
+}
+
+function readKnownArtifact(root, relativePath, findings = null) {
   const filePath = resolveInside(root, relativePath);
-  if (!filePath || !isRegularFile(filePath)) return null;
+  if (!filePath) {
+    if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', relativePath);
+    return null;
+  }
+  if (!isRegularFile(filePath)) return null;
   try {
     return { path: relativePath, text: readFileSync(filePath, 'utf8') };
   } catch {
@@ -356,9 +462,13 @@ function readKnownArtifact(root, relativePath) {
   }
 }
 
-function collectTaskArtifacts(root, taskRootRelative) {
+function collectTaskArtifacts(root, taskRootRelative, findings = null) {
   const taskRoot = resolveInside(root, taskRootRelative);
-  if (!taskRoot || !isDirectory(taskRoot)) return [];
+  if (!taskRoot) {
+    if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', taskRootRelative);
+    return [];
+  }
+  if (!isDirectory(taskRoot)) return [];
   const output = [];
   function visit(directoryPath, relativeDirectory) {
     let entries;
@@ -368,12 +478,19 @@ function collectTaskArtifacts(root, taskRootRelative) {
       return;
     }
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      if (entry.isSymbolicLink()) continue;
       const entryRelative = path.posix.join(relativeDirectory, entry.name);
-      const entryPath = path.join(directoryPath, entry.name);
-      if (entry.isDirectory()) visit(entryPath, entryRelative);
+      if (entry.isSymbolicLink()) {
+        if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', entryRelative);
+        continue;
+      }
+      const safeEntryPath = resolveInside(root, entryRelative);
+      if (!safeEntryPath) {
+        if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', entryRelative);
+        continue;
+      }
+      if (entry.isDirectory()) visit(safeEntryPath, entryRelative);
       else if (entry.isFile() && TASK_ARTIFACT_NAMES.has(entry.name)) {
-        const artifact = readKnownArtifact(root, entryRelative);
+        const artifact = readKnownArtifact(root, entryRelative, findings);
         if (artifact) output.push(artifact);
       }
     }
@@ -382,76 +499,117 @@ function collectTaskArtifacts(root, taskRootRelative) {
   return output;
 }
 
-function collectKnownBudgetArtifacts(root, manifest, manifestPath) {
-  const manifestRoot = path.dirname(path.resolve(manifestPath));
+function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = null) {
+  const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
   const entries = [];
   for (const relativePath of ['AI.md', 'FLOW.md']) {
-    const artifact = readKnownArtifact(manifestRoot, relativePath);
+    const artifact = readKnownArtifact(manifestRoot, relativePath, findings);
     if (artifact) entries.push(artifact);
   }
 
-  const globalDirectory = path.join(manifestRoot, 'global');
+  const globalDirectory = resolveInside(manifestRoot, 'global');
+  if (!globalDirectory && findings) addUniqueFinding(findings, 'UNSAFE_PATH', 'global');
   if (isDirectory(globalDirectory)) {
     try {
       for (const entry of readdirSync(globalDirectory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
-        if (entry.isSymbolicLink() || !entry.isFile() || !entry.name.endsWith('.md')) continue;
-        const artifact = readKnownArtifact(manifestRoot, path.posix.join('global', entry.name));
+        if (entry.isSymbolicLink()) {
+          if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join('global', entry.name));
+          continue;
+        }
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+        const artifact = readKnownArtifact(manifestRoot, path.posix.join('global', entry.name), findings);
         if (artifact) entries.push(artifact);
       }
     } catch {
       // Unreadable optional central artifacts are skipped safely.
     }
   }
-  entries.push(...collectTaskArtifacts(manifestRoot, '.ai/tasks'));
+  entries.push(...collectTaskArtifacts(manifestRoot, '.ai/tasks', findings));
 
   for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
     const repository = resolveInside(root, project.localPath);
-    if (!repository || !isDirectory(repository)) continue;
+    if (!repository) {
+      if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', project.localPath);
+      continue;
+    }
+    if (!isDirectory(repository)) continue;
     for (const relativePath of [project.contextPath, '.ai/decisions.md']) {
-      const artifact = readKnownArtifact(repository, relativePath);
+      const artifact = readKnownArtifact(repository, relativePath, findings);
       if (artifact) entries.push({ path: path.posix.join(project.localPath, artifact.path), text: artifact.text });
     }
-    entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks')));
+    entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks'), findings));
   }
   return entries;
 }
 
 export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
-  const workspaceRoot = path.resolve(root);
+  const requestedWorkspaceRoot = path.resolve(root);
+  const workspaceRoot = requestedWorkspaceRoot;
   const findings = [];
-  const indexPath = path.join(path.dirname(path.resolve(manifestPath)), 'projects/index.md');
-  if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
-  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
-    const repository = resolveInside(workspaceRoot, project.localPath);
-    if (!repository || !isDirectory(repository)) continue;
-    const agentsPath = path.join(repository, 'AGENTS.md');
+  const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
+  const indexPath = resolveInside(manifestRoot, 'projects/index.md');
+  if (!indexPath) addUniqueFinding(findings, 'UNSAFE_PATH', 'projects/index.md');
+  else if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+
+  const checkedAgents = new Set();
+  const checkAgents = (repositoryRoot, relativePath, findingPath) => {
+    const agentsPath = resolveInside(repositoryRoot, relativePath);
+    if (!agentsPath) {
+      addUniqueFinding(findings, 'UNSAFE_PATH', findingPath);
+      return;
+    }
+    const identity = physicalPath(agentsPath);
+    if (checkedAgents.has(identity)) return;
+    checkedAgents.add(identity);
     const desiredAgents = renderAgentsBlock(manifest);
-    if (!isRegularFile(agentsPath)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
+    if (!isRegularFile(agentsPath)) findings.push(finding('GENERATED_DRIFT', findingPath));
     else {
       const current = readFileSync(agentsPath, 'utf8');
       const state = markerState(current, 'agents-routing');
-      if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desiredAgents) !== normalizeText(current)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
+      if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desiredAgents) !== normalizeText(current)) findings.push(finding('GENERATED_DRIFT', findingPath));
     }
-    const contextPath = resolveInside(repository, project.contextPath);
-    if (!contextPath || !isRegularFile(contextPath)) {
-      findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, project.contextPath)));
-    }
-    const decisionsPath = path.join(repository, '.ai/decisions.md');
-    if (!isRegularFile(decisionsPath)) findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
-  }
-  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath);
-  findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
+  };
+
+  checkAgents(manifestRoot, 'AGENTS.md', 'AGENTS.md');
   for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
     const repository = resolveInside(workspaceRoot, project.localPath);
-    if (!repository || !isDirectory(repository)) continue;
-    const agentsPath = path.join(repository, 'AGENTS.md');
-    if (!isRegularFile(agentsPath)) continue;
+    if (!repository) {
+      addUniqueFinding(findings, 'UNSAFE_PATH', project.localPath);
+      continue;
+    }
+    if (!isDirectory(repository)) continue;
+    checkAgents(repository, 'AGENTS.md', path.posix.join(project.localPath, 'AGENTS.md'));
+    const contextPath = resolveInside(repository, project.contextPath);
+    if (!contextPath || !isRegularFile(contextPath)) {
+      if (!contextPath) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join(project.localPath, project.contextPath));
+      else findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, project.contextPath)));
+    }
+    const decisionsPath = resolveInside(repository, '.ai/decisions.md');
+    if (!decisionsPath || !isRegularFile(decisionsPath)) {
+      if (!decisionsPath) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join(project.localPath, '.ai/decisions.md'));
+      else findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
+    }
+  }
+  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings);
+  findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
+  const budgetAgents = new Set();
+  const checkAgentBudget = (agentsPath) => {
+    if (!agentsPath || !isRegularFile(agentsPath)) return;
+    const identity = realpathSync(agentsPath);
+    if (budgetAgents.has(identity)) return;
+    budgetAgents.add(identity);
     const agents = readFileSync(agentsPath, 'utf8');
     const state = markerState(agents, 'agents-routing');
     if (state.kind === 'valid') {
       const end = agents.indexOf('-->', state.endIndex) + 3;
       findings.push(...checkBudget({ path: 'managed AGENTS block', text: agents.slice(state.startIndex, end) }, BUDGETS));
     }
+  };
+  checkAgentBudget(resolveInside(manifestRoot, 'AGENTS.md'));
+  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
+    const repository = resolveInside(workspaceRoot, project.localPath);
+    if (!repository || !isDirectory(repository)) continue;
+    checkAgentBudget(resolveInside(repository, 'AGENTS.md'));
   }
   return findings;
 }

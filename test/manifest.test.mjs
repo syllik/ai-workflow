@@ -92,6 +92,17 @@ describe('manifest', () => {
     ]);
   });
 
+  test('requires the exact managed context path and accepts the approved path', () => {
+    const customPath = fixtureManifest({ projects: [{ ...fixtureManifest().projects[0], contextPath: 'docs/context.md' }] });
+    const rejected = validateManifest(customPath);
+    assert.deepEqual(rejected.findings.filter(({ path }) => path === 'manifest.projects[0].contextPath'), [
+      { code: 'MANAGED_CONTEXT_PATH_INVALID', path: 'manifest.projects[0].contextPath' }
+    ]);
+
+    const accepted = validateManifest(fixtureManifest({ projects: [fixtureManifest().projects[0]] }));
+    assert.equal(accepted.valid, true);
+  });
+
   test('rejects excluded repositories', () => {
     const manifest = fixtureManifest();
     manifest.projects[0].repository = 'tangem/example';

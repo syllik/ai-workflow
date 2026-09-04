@@ -26,13 +26,13 @@ project, prompt, task, or history file without a concrete reason.
 * Luna xhigh is the executor, coder, and reviewer; it reads target repository instructions, implements, verifies, and reviews the diff.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
-* The default persisted structure is `plan.md`, `prompt.md`, `state.md`, and `result.md`.
+* The default persisted structure is a human-only planning record, `prompt.md`, `state.md`, and `result.md`.
 * A lightweight task may be promoted to persisted when its implementation or review scope becomes context-heavy.
-* `plan.md` stores approved intent, scope, and architecture; do not use it as mutable execution scratch space.
+* The task prompt stores executable intent, scope, and architecture; do not use task state as mutable planning scratch space.
 * `state.md` is a short mutable checkpoint for safe continuation; do not turn it into a journal, reasoning dump, raw log, or full diff.
 * Conversation context must not be the only execution state for a persisted task.
-* Task `context.md` is optional and must not duplicate `plan.md`.
-* When an approved `plan.md` exists, do not change the architecture without an explicit reason.
+* Task context is optional and must not duplicate the human-only planning record.
+* Do not change the architecture without an explicit reason in the supplied task prompt.
 * Do not use subagents, repeat broad research, or expand scope.
 * Luna may stage task-owned files, commit, push an authorized task branch, and open or update a PR when the task workflow permits it; Luna never merges or enables auto-merge.
 * Do not create unnecessary documentation or perform unrelated refactoring.
@@ -41,9 +41,9 @@ project, prompt, task, or history file without a concrete reason.
 * User-facing explanations and documentation should be in English for agent-executable workflow files; retain technical identifiers in English.
 <!-- ai-workflow:agents-routing:start -->
 Canonical AI routing:
-1. Read `FLOW.md`.
-2. Select one GitHub record from `workspace.yaml` / `projects/index.md`.
-3. Read role rules from `global/architect.md` or `global/executor.md`.
+1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.
+2. Select one GitHub record from https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml / https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md.
+3. Read role rules from https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md or https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md.
 4. Read target `AGENTS.md`, then target `.ai/context.md`.
 5. Read only relevant `.ai/decisions.md` and task files.
 

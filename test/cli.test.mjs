@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
-import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { planWorkspace } from '../scripts/workspace/operations.mjs';
 import { parseArgs, run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
 
@@ -90,10 +90,67 @@ describe('workspace CLI', () => {
       const manifestPath = writeFixtureManifest(manifestRoot, manifest);
       mkdirSync(path.join(manifestRoot, 'projects'), { recursive: true });
       writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(manifestRoot, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       const result = runCli('check', '--root', root, '--manifest', manifestPath);
       assert.equal(result.status, 0, result.stderr);
     } finally {
       removeFixtureRoot(manifestRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('checks the central checkout AGENTS block relative to the manifest directory', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest({ projects: [] });
+      const manifestPath = writeFixtureManifest(root, manifest);
+      mkdirSync(path.join(root, 'projects'), { recursive: true });
+      writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(root, 'AGENTS.md'), renderManagedBlock('agents-routing', 'Read `FLOW.md`.\n'), 'utf8');
+
+      const stale = runCli('check', '--root', root, '--manifest', manifestPath);
+      assert.equal(stale.status, 1, stale.stderr);
+      assert.match(stale.stderr, /GENERATED_DRIFT.*AGENTS\.md/u);
+
+      writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      const restored = runCli('check', '--root', root, '--manifest', manifestPath);
+      assert.equal(restored.status, 0, restored.stderr);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('does not duplicate central AGENTS drift when it is the canonical target repository', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifestRoot = path.join(root, 'workflows/ai/ai-workflow');
+      mkdirSync(path.join(manifestRoot, '.ai'), { recursive: true });
+      const project = { ...fixtureManifest().projects[0], localPath: 'workflows/ai/ai-workflow' };
+      const manifest = fixtureManifest({ projects: [project] });
+      const manifestPath = writeFixtureManifest(manifestRoot, manifest);
+      mkdirSync(path.join(manifestRoot, 'projects'), { recursive: true });
+      writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(manifestRoot, 'AGENTS.md'), renderManagedBlock('agents-routing', 'stale\\n'), 'utf8');
+      writeFileSync(path.join(manifestRoot, project.contextPath), renderContextScaffold(project), 'utf8');
+      writeFileSync(path.join(manifestRoot, '.ai/decisions.md'), '# Decisions\\n', 'utf8');
+
+      const result = runCli('check', '--root', root, '--manifest', manifestPath);
+      const agentsFindings = JSON.parse(result.stderr).filter(({ path: findingPath }) => findingPath.endsWith('/AGENTS.md') || findingPath === 'AGENTS.md');
+      assert.deepEqual(agentsFindings, [{ code: 'GENERATED_DRIFT', path: 'AGENTS.md' }]);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects a non-canonical managed context path before plan or apply', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = { ...fixtureManifest().projects[0], contextPath: 'docs/context.md' };
+      const manifestPath = writeFixtureManifest(root, fixtureManifest({ projects: [project] }));
+      assert.equal(runCli('plan', '--root', root, '--manifest', manifestPath).status, 1);
+      assert.equal(runCli('apply', '--root', root, '--manifest', manifestPath).status, 1);
+      assert.equal(readdirSync(root).includes(project.localPath.split('/')[0]), false);
+    } finally {
       removeFixtureRoot(root);
     }
   });

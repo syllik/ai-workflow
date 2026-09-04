@@ -81,12 +81,14 @@ function run(args, dependencies = {}) {
   if (options.command === 'plan') return plan.operations.length > 0 || plan.drift ? 1 : 0;
   if (plan.drift) return 1;
   let currentPlan = plan;
+  let generatedOutputs;
   for (let pass = 0; pass < 2; pass += 1) {
-    const applied = applyOperations({ root: options.root, plan: currentPlan, ...dependencies });
+    const applied = applyOperations({ root: options.root, plan: currentPlan, generatedOutputs, ...dependencies });
     printFindings(applied.findings);
     if (applied.blocked) return 2;
+    generatedOutputs = applied.generatedOutputs;
 
-    const verification = planWorkspace(planOptions);
+    const verification = planWorkspace({ ...planOptions, generatedOutputs });
     printFindings(verification.findings);
     if (verification.validationFailed) return 1;
     if (verification.blocked) return 2;

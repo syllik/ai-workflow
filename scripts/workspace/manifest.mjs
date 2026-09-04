@@ -101,7 +101,8 @@ export function validateManifest(value) {
       if (!['managed', 'read-only'].includes(project.access)) findings.push(finding('INVALID_ACCESS', `${projectPath}.access`));
       if (!['onboarding', 'active'].includes(project.status)) findings.push(finding('INVALID_STATUS', `${projectPath}.status`));
       if (project.contextPath !== undefined && !isSafeRelativePath(project.contextPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.contextPath`));
-      if (project.access === 'managed' && !project.contextPath) findings.push(finding('MANAGED_CONTEXT_REQUIRED', `${projectPath}.contextPath`));
+      if (project.access === 'managed' && project.contextPath === undefined) findings.push(finding('MANAGED_CONTEXT_REQUIRED', `${projectPath}.contextPath`));
+      else if (project.access === 'managed' && project.contextPath !== '.ai/context.md') findings.push(finding('MANAGED_CONTEXT_PATH_INVALID', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.contextPath !== undefined) findings.push(finding('READ_ONLY_CONTEXT_FORBIDDEN', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.status !== 'active') findings.push(finding('INVALID_COMBINATION', `${projectPath}.status`));
     });

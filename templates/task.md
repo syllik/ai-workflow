@@ -1,8 +1,8 @@
 # Optional task context
 
-Используйте только для persisted task, если `plan.md` недостаточно и есть
-реальная причина хранить отдельный task context. Не дублируйте plan или project
-context.
+Use this only for a persisted task when the execution prompt and state need
+additional context for a concrete reason. Do not duplicate project context or
+execution state.
 
 ## Why
 

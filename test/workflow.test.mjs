@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 const workflowFiles = [
-  'README.md',
   'AGENTS.md',
-  'prompts/implementation.md',
   'AI.md',
   'FLOW.md',
   'global/core.md',
@@ -15,10 +13,25 @@ const workflowFiles = [
   'global/workflow.md'
 ];
 
+const reusableAgentFiles = [
+  ...workflowFiles,
+  ...readdirSync('prompts').filter((filePath) => filePath.endsWith('.md')).map((filePath) => `prompts/${filePath}`),
+  ...readdirSync('templates').filter((filePath) => filePath.endsWith('.md')).map((filePath) => `templates/${filePath}`)
+];
+
 describe('workflow documentation', () => {
+  test('keeps reusable agent content free of Cyrillic text', () => {
+    const cyrillic = reusableAgentFiles.flatMap((filePath) => readFileSync(filePath, 'utf8').split('\n')
+      .filter((line) => /\p{Script=Cyrillic}/u.test(line))
+      .map((line) => `${filePath}: ${line}`));
+    assert.deepEqual(cyrillic, []);
+  });
+
   test('does not give Luna an executable instruction to read human-only plans', () => {
-    const forbidden = workflowFiles.flatMap((filePath) => readFileSync(filePath, 'utf8').split('\n')
-      .filter((line) => /plan\.md/u.test(line) && /(read|прочит)/iu.test(line) && !/(never|do not|никогда|не чита|не использ)/iu.test(line))
+    const forbidden = reusableAgentFiles.flatMap((filePath) => readFileSync(filePath, 'utf8').split('\n')
+      .filter((line) => /(?:plan\.md|approved plan|human plan)/iu.test(line)
+        && /(read|use|rely|follow|consume|использ)/iu.test(line)
+        && !/(?:never|do not|does not|must not|without|не чита|не использ)/iu.test(line))
       .map((line) => `${filePath}: ${line}`));
     assert.deepEqual(forbidden, []);
   });
@@ -27,6 +40,6 @@ describe('workflow documentation', () => {
     const readme = readFileSync('README.md', 'utf8');
     const prompt = readFileSync('prompts/implementation.md', 'utf8');
     assert.match(readme, /пользователь.*plan\.md.*Luna.*не чита/isu);
-    assert.match(prompt, /Luna.*(?:never read|не чита).*plan\.md/isu);
+    assert.match(prompt, /Luna.*never reads.*plan\.md/isu);
   });
 });

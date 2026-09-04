@@ -1,7 +1,7 @@
-## YYYY-MM-DD — Название решения
+## YYYY-MM-DD — Decision title
 
-### Решение
+### Decision
 
-### Причина
+### Reason
 
-### Последствия
+### Consequences

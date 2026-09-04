@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
@@ -149,6 +149,48 @@ describe('workspace operations', () => {
     }
   });
 
+  test('blocks each pre-existing managed contract file without applying operations', () => {
+    for (const relativePath of ['AGENTS.md', '.ai/context.md', '.ai/decisions.md']) {
+      const root = makeFixtureRoot();
+      try {
+        const project = fixtureManifest().projects[0];
+        const manifest = fixtureManifest({ projects: [project] });
+        const repositoryPath = path.join(root, project.localPath);
+        initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+        const content = `pre-existing ${relativePath}\n`;
+        mkdirSync(path.dirname(path.join(repositoryPath, relativePath)), { recursive: true });
+        writeFileSync(path.join(repositoryPath, relativePath), content, 'utf8');
+
+        const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+        assert.equal(plan.findings.some(({ code }) => code === 'DIRTY_REPOSITORY'), true, relativePath);
+        assert.deepEqual(plan.operations, [], relativePath);
+        const applied = applyOperations({ root, plan });
+        assert.equal(applied.blocked, true, relativePath);
+        assert.deepEqual(applied.applied, [], relativePath);
+        assert.equal(readFileSync(path.join(repositoryPath, relativePath), 'utf8'), content, relativePath);
+      } finally {
+        removeFixtureRoot(root);
+      }
+    }
+  });
+
+  test('does not trust pre-existing content that exactly matches a generated contract', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(plan.findings.some(({ code }) => code === 'DIRTY_REPOSITORY'), true);
+      assert.deepEqual(plan.operations, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('preserves populated managed context while still blocking malformed or duplicate marker blocks', () => {
     const root = makeFixtureRoot();
     try {
@@ -188,6 +230,7 @@ describe('workspace operations', () => {
       const manifestPath = writeFixtureManifest(root, manifest);
       mkdirSync(path.join(root, 'projects'), { recursive: true });
       writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       const plan = planWorkspace({ root, manifestPath, manifest });
 
       assert.equal(plan.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), false);
@@ -264,6 +307,104 @@ describe('workspace operations', () => {
       assert.equal(result.validationFailed, true);
       assert.equal(result.blocked, false);
     } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks an intermediate symlink before planning a clone', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [{ ...project, localPath: 'linked/repository' }] });
+      const sentinel = path.join(outside, 'sentinel.txt');
+      writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
+      symlinkSync(outside, path.join(root, 'linked'));
+
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(result.findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.equal(result.operations.some(({ kind }) => kind === 'clone'), false);
+      assert.equal(result.blocked, true);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside remains unchanged\n');
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks an intermediate symlink before inspecting an existing repository', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [{ ...project, localPath: 'linked/repository' }] });
+      const outsideRepository = path.join(outside, 'repository');
+      initFixtureRepo(outsideRepository, `https://github.com/${project.repository}.git`);
+      symlinkSync(outside, path.join(root, 'linked'));
+      const sentinel = path.join(outsideRepository, 'sentinel.txt');
+      writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
+
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(result.findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.deepEqual(result.operations, []);
+      assert.equal(result.blocked, true);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside remains unchanged\n');
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks generated writes when an existing repository descendant is a symlink', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      const sentinel = path.join(outside, 'sentinel.txt');
+      writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
+      symlinkSync(outside, path.join(repositoryPath, '.ai'));
+
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(plan.findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.equal(plan.blocked, true);
+      const applied = applyOperations({ root, plan });
+      assert.equal(applied.blocked, true);
+      assert.deepEqual(applied.applied, []);
+      assert.equal(existsSync(path.join(repositoryPath, 'AGENTS.md')), false);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside remains unchanged\n');
+    } finally {
+      removeFixtureRoot(outside);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks budget collection through an intermediate symlink', () => {
+    const root = makeFixtureRoot();
+    const outside = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects[0];
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(repositoryPath, project.contextPath), renderContextScaffold(project), 'utf8');
+      writeFileSync(path.join(repositoryPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      const outsideTaskRoot = path.join(outside, 'tasks');
+      mkdirSync(outsideTaskRoot, { recursive: true });
+      writeFileSync(path.join(outsideTaskRoot, 'prompt.md'), 'x'.repeat(8193), 'utf8');
+      symlinkSync(outsideTaskRoot, path.join(repositoryPath, '.ai/tasks'));
+      const sentinel = path.join(outsideTaskRoot, 'sentinel.txt');
+      writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
+
+      const findings = checkGeneratedFiles(root, manifest, writeFixtureManifest(root, manifest));
+      assert.equal(findings.some(({ code }) => code === 'UNSAFE_PATH'), true);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside remains unchanged\n');
+    } finally {
+      removeFixtureRoot(outside);
       removeFixtureRoot(root);
     }
   });
