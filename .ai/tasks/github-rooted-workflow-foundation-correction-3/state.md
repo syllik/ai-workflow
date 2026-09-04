@@ -2,7 +2,7 @@
 
 ## Current phase
 
-IMPLEMENTING_CORRECTIONS.
+READY_FOR_HUMAN_MERGE.
 
 ## Scope
 
@@ -33,12 +33,15 @@ task/github-rooted-agent-architecture; update PR #4 only.
 - Added central AGENTS, reusable-content, and managed-context-path coverage.
 - Implemented real-path containment for plan, preflight, check, and artifact
   collection; regenerated the central AGENTS block.
+- Completed full local verification, committed as b9c6958, and pushed the task
+  branch.
 
 ## Validation
 
 - Focused operations, CLI, manifest, budget, and workflow suites pass.
 - git diff --check passes.
 - Current checkout cli.mjs check passes.
+- PR #4 is open on the task branch with no reported remote status checks.
 
 ## Decisions / assumptions
 
@@ -47,8 +50,7 @@ task/github-rooted-agent-architecture; update PR #4 only.
 
 ## Next
 
-Review the complete task-owned diff, run all gates, create result.md, verify
-PR #4, and stop at READY_FOR_HUMAN_MERGE.
+Sol review and human merge of PR #4 into master are next.
 
 ## Blockers
 
