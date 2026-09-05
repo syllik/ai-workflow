@@ -36,9 +36,11 @@ central project contexts сохраняются для migration, но не яв
 ## Что получает Luna
 
 Sol выдаёт один self-contained execution prompt. Luna читает в target repository
-его `AGENTS.md` и local instructions, реализует утверждённый scope, запускает
-проверки, просматривает полный task-owned diff, исправляет реальные проблемы,
-делает commit и push, если это разрешено prompt и workflow target repository.
+его `AGENTS.md` и local instructions, реализует утверждённый scope и запускает
+разрешённые local checks. После implementation и validation Luna останавливается
+на `IMPLEMENTATION_COMPLETE` или `BLOCKED`; она не выполняет self-review,
+commit, push или PR publication. Independent code review выполняет Sol 5.6 High
+отдельно по pinned base/head diff.
 
 Для persisted task Luna также использует durable `state.md`, чтобы execution
 можно было безопасно продолжить после context compaction, interruption или новой
@@ -58,7 +60,7 @@ session без зависимости от conversation history.
 ### Reusable prompts
 
 * [`implementation.md`](prompts/implementation.md) — базовые execution rules для Luna.
-* [`code-review.md`](prompts/code-review.md) — bounded findings-first review для Luna.
+* [`code-review.md`](prompts/code-review.md) — bounded findings-first independent review для Sol 5.6 High.
 * [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
 
 ## Как работать
@@ -160,7 +162,7 @@ only relevant project context, and verify the current target GitHub repository
 when needed.
 
 GPT-5.6 Sol — planner, architect и research agent.
-Luna xhigh — executor, coder и reviewer.
+Luna xhigh — executor и coder only. Independent review выполняет Sol 5.6 High.
 
 Sol must issue one self-contained execution prompt for Luna. For long or
 context-heavy work, use persisted task state so execution can continue without
