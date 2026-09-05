@@ -65,9 +65,12 @@ session без зависимости от conversation history.
 
 ### Создать проект
 
-1. Добавьте или проверьте запись в `workspace.yaml`.
-2. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md).
-3. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
+1. Если это новая tool/repository, до проектирования проведите актуальный research существующих аналогов, библиотек, сервисов и forkable projects. Проверьте функциональное соответствие, поддержку и license compatibility. Если подходящий проект можно законно и технически корректно форкнуть и дописать, предпочитайте fork + минимальный delta вместо greenfield implementation.
+2. До первого commit попросите человека выбрать licensing model и кратко объясните подходящие варианты: permissive (например MIT/Apache-2.0), copyleft, proprietary/rights-reserved или сознательный no-license. Private repository не отменяет этот шаг.
+3. Для greenfield repository создайте выбранный `LICENSE` или rights notice одновременно с project bootstrap/template до первого commit. Для fork/derivative сохраните upstream license, copyright, attribution и другие обязательные notices; не перелицензируйте несовместимый upstream code.
+4. Добавьте или проверьте запись в `workspace.yaml`.
+5. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
+6. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 
 ### Создать задачу
 
