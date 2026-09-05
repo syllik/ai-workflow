@@ -1,23 +1,26 @@
 # Execution state
 
-Rolling checkpoint for a persisted task.
+Rolling checkpoint for a persisted executor task.
 
 Keep this file concise. Replace stale state instead of appending a journal.
-Do not store reasoning dumps, raw command output, secrets or credentials.
+Do not store reasoning dumps, raw command output, secrets, credentials, or
+reviewer findings.
 
 ## Current phase
 
+## Completion status
+
+Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
+
 ## Completed
 
-## Changed / reviewed files
+## Changed files
 
 ## Validation
 
-## Confirmed findings
-
 ## Decisions / assumptions
 
-Only task-local facts required for continuation.
+Only task-local facts required for executor continuation.
 
 ## Next
 
