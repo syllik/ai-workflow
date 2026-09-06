@@ -68,7 +68,7 @@ describe('workflow documentation', () => {
 
     const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
     const reviewTemplate = readFileSync('templates/review.md', 'utf8');
-    assert.match(promptTemplate, /trusted\s+publication[\s\S]*managed Codex GitHub Code Review/iu);
+    assert.match(promptTemplate, /trusted\s+publication[\s\S]*managed\s+Codex\s+GitHub\s+Code\s+Review/iu);
     assert.match(reviewTemplate, /escalation\s*\/\s*fallback/iu);
     assert.match(reviewTemplate, /routine published PR review belongs to managed Codex GitHub Code Review/iu);
   });
