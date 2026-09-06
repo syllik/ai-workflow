@@ -71,8 +71,9 @@ session без зависимости от conversation history.
 2. До первого commit попросите человека выбрать licensing model и кратко объясните подходящие варианты: permissive (например MIT/Apache-2.0), copyleft, proprietary/rights-reserved или сознательный no-license. Private repository не отменяет этот шаг.
 3. Для greenfield repository создайте выбранный `LICENSE` или rights notice одновременно с project bootstrap/template до первого commit. Для fork/derivative сохраните upstream license, copyright, attribution и другие обязательные notices; не перелицензируйте несовместимый upstream code.
 4. Добавьте или проверьте запись в `workspace.yaml`.
-5. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
-6. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
+5. Создайте или обновите связанный change в `syllik/syllik`: `docs/workspace.md` и `docs/repositories.md`. PR с изменением `workspace.yaml` не считается готовым к human merge, пока синхронизирующий workspace-documentation change не существует и не соответствует ему. Profile `README.md` содержит стабильную ссылку на `docs/workspace.md` и не дублирует список проектов; исключение из workspace documentation требует явного решения человека.
+6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
+7. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 
 ### Создать задачу
 
