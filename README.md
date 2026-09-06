@@ -39,12 +39,24 @@ Sol выдаёт один self-contained execution prompt. Luna читает в 
 его `AGENTS.md` и local instructions, реализует утверждённый scope и запускает
 разрешённые local checks. После implementation и validation Luna останавливается
 на `IMPLEMENTATION_COMPLETE` или `BLOCKED`; она не выполняет self-review,
-commit, push или PR publication. Independent code review выполняет Sol 5.6 High
-отдельно по pinned base/head diff.
+commit, push или PR publication. Default independent review выполняет managed
+Codex GitHub Code Review уже после publication PR; Sol 5.6 High используется
+только для escalation/fallback.
 
 Для persisted task Luna также использует durable `state.md`, чтобы execution
 можно было безопасно продолжить после context compaction, interruption или новой
 session без зависимости от conversation history.
+
+## Как проходит code review
+
+1. После local validation trusted publication создаёт или обновляет PR.
+2. Automatic Codex review по умолчанию остаётся выключенным. Для готового PR вручную отправляется `@codex review`.
+3. Review считается актуальным только если его `Reviewed commit` совпадает с текущим PR head SHA.
+4. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие команды, которые позволяют Codex менять branch.
+5. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
+6. После correction и нового head снова отправляется `@codex review`; старый review считается stale.
+7. Sol 5.6 High используется только для architecture/high-risk review, спорных или неоднозначных findings, недоступности Codex или явного запроса человека.
+8. Merge выполняет только человек.
 
 ## Структура
 
@@ -60,7 +72,7 @@ session без зависимости от conversation history.
 ### Reusable prompts
 
 * [`implementation.md`](prompts/implementation.md) — базовые execution rules для Luna.
-* [`code-review.md`](prompts/code-review.md) — bounded findings-first independent review для Sol 5.6 High.
+* [`code-review.md`](prompts/code-review.md) — escalation/fallback review prompt для Sol 5.6 High, когда managed Codex review недостаточен или недоступен.
 * [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
 
 ## Как работать
@@ -163,7 +175,7 @@ only relevant project context, and verify the current target GitHub repository
 when needed.
 
 GPT-5.6 Sol — planner, architect и research agent.
-Luna xhigh — executor и coder only. Independent review выполняет Sol 5.6 High.
+Luna xhigh — executor и coder only. Managed Codex GitHub Code Review — default independent PR reviewer; Sol 5.6 High — escalation/fallback reviewer.
 
 Sol must issue one self-contained execution prompt for Luna. For long or
 context-heavy work, use persisted task state so execution can continue without
