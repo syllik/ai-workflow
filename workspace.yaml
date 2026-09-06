@@ -24,7 +24,7 @@ projects:
     localPath: products/chipin/chipin-frontend
     group: products/chipin
     access: managed
-    status: onboarding
+    status: active
     contextPath: .ai/context.md
   - id: ChipIn-one/chipin-backend
     repository: ChipIn-one/chipin-backend
