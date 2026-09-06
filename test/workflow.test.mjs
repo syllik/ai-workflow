@@ -42,4 +42,15 @@ describe('workflow documentation', () => {
     assert.match(readme, /пользователь.*plan\.md.*Luna.*не чита/isu);
     assert.match(prompt, /Luna.*never reads.*plan\.md/isu);
   });
+
+  test('keeps profile documentation sync as a canonical repository-creation gate', () => {
+    for (const filePath of ['FLOW.md', 'global/core.md', 'global/architect.md']) {
+      const text = readFileSync(filePath, 'utf8');
+      assert.match(text, /syllik\/syllik/u, filePath);
+      assert.match(text, /README\.md/u, filePath);
+      assert.match(text, /docs\/workspace\.md/u, filePath);
+      assert.match(text, /docs\/repositories\.md/u, filePath);
+    }
+  });
+
 });
