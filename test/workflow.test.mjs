@@ -65,6 +65,12 @@ describe('workflow documentation', () => {
     assert.match(flow, /Sol 5\.6 High is reserved for escalation or fallback/iu);
     assert.match(reviewer, /previous review is stale/iu);
     assert.match(reviewer, /human\s+explicitly authorizes/iu);
+
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+    const reviewTemplate = readFileSync('templates/review.md', 'utf8');
+    assert.match(promptTemplate, /trusted\s+publication[\s\S]*managed Codex GitHub Code Review/iu);
+    assert.match(reviewTemplate, /escalation\s*\/\s*fallback/iu);
+    assert.match(reviewTemplate, /routine published PR review belongs to managed Codex GitHub Code Review/iu);
   });
 
 });
