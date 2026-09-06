@@ -22,7 +22,7 @@ project, prompt, task, or history file without a concrete reason.
 
 ## Core rules
 
-* GPT-5.6 Sol is the planner, architect, research agent, and independent reviewer; it issues one self-contained execution prompt for implementation and performs review as a separate role.
+* GPT-5.6 Sol is the planner, architect, and research agent; it issues one self-contained execution prompt for implementation. Managed Codex GitHub Code Review is the default independent PR reviewer, while Sol 5.6 High is reserved for escalation, architecture/high-risk review, ambiguous findings, reviewer unavailability, or explicit human request.
 * Luna xhigh is the executor and coder only; it reads target repository instructions, implements the authorized scope, and runs authorized validation.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
@@ -35,6 +35,9 @@ project, prompt, task, or history file without a concrete reason.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
 * Do not use subagents, repeat broad research, or expand scope.
 * Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub/Trello publication state.
+* Trigger routine Codex review manually with `@codex review` only after the PR is published and ready; keep automatic review disabled by default to avoid duplicate runs.
+* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head requires a new `@codex review` before human merge.
+* Codex review is review-only. Do not use `@codex fix`, `@codex address that feedback`, or any other command that asks Codex to mutate the branch.
 * Do not create unnecessary documentation or perform unrelated refactoring.
 * Update canonical project context only when durable knowledge appears.
 * Never store secrets, credentials, tokens, private keys, or `.env` contents.
@@ -43,7 +46,7 @@ project, prompt, task, or history file without a concrete reason.
 Canonical AI routing:
 1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.
 2. Select one GitHub record from https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml / https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md.
-3. Read role rules from https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md or https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md.
+3. Read role rules from https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md, https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md, or https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md.
 4. Read target `AGENTS.md`, then target `.ai/context.md`.
 5. Read only relevant `.ai/decisions.md` and task files.
 

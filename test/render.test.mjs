@@ -23,6 +23,7 @@ describe('renderers', () => {
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/workspace\.yaml/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/projects\/index\.md/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/architect\.md/u);
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/reviewer\.md/u);
     assert.match(output, /profile AI entry/);
     assert.match(output, /FLOW\.md/);
     assert.match(output, /workspace\.yaml/);
@@ -57,7 +58,8 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml',
       'https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md',
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md',
-      'https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md'
+      'https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md',
+      'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
     ]) assert.equal(output.includes(url), true, url);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
   });

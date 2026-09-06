@@ -55,8 +55,11 @@ Reviewer findings are not part of Luna's execution state.
 ## Publication boundary
 
 Luna does not stage, commit, push, create/update PRs, merge, enable auto-merge,
-or mutate GitHub/Trello publication state. Publication is handled separately by
-Sol/human after independent review and explicit authorization.
+or mutate GitHub/Trello publication state. After Luna reaches
+`IMPLEMENTATION_COMPLETE` and local validation evidence is available, trusted
+publication is handled separately by Sol/human to create or update the PR. The
+published PR is then reviewed independently through managed Codex GitHub Code
+Review before any human-authorized correction pass or human merge.
 
 ## Bounded failure diagnosis / escalation
 

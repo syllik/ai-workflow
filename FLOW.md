@@ -1,17 +1,15 @@
 # Canonical workflow
 
-GitHub is the only project registry. The active reading route is:
+GitHub is the only project registry. Read:
+`AI.md -> FLOW.md -> workspace record -> role rules -> target AGENTS.md/.ai/context.md -> relevant decisions/task files`.
+Read only the selected project. Do not auto-discover repositories. Target repositories own invariants; task prompts own scope/validation.
 
-`AI.md profile entry → FLOW.md → one workspace.yaml record → role rules → target AGENTS.md/context → relevant decisions/files`
+New project/repository licensing is a pre-first-commit gate, including private repositories: Sol asks the human, explains choices, and bootstraps the selected license/rights notice. Before a net-new tool, research current analogues; prefer viable reuse/fork over greenfield and preserve upstream license obligations.
 
-Read only the selected project from `projects/index.md`; legacy central project contexts are migration-only. The target repository owns its local architecture and invariants, while the task prompt owns scope and validation. Do not auto-discover repositories.
+Adding a project to `workspace.yaml` requires a coordinated `syllik/syllik` change for `docs/workspace.md` and `docs/repositories.md`. It is not ready for human merge until synchronized. Profile `README.md` keeps a stable link to `docs/workspace.md`; omission requires explicit human approval.
 
-For a new project/repository, licensing is a pre-first-commit architecture gate even when the repository is private: Sol asks the human, explains the relevant choices, and bootstraps the selected license or rights notice with the project template. For a net-new tool, current analogue/reuse research is also a planning gate; prefer a legally and technically viable existing project or fork over greenfield implementation, while preserving upstream license obligations.
+Sol hands Luna one self-contained prompt. Luna is executor-only: implement scope, run validation, checkpoint state, then stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. Luna does not self-review, use subagents, commit, push, publish/update PRs, or mutate publication state.
 
-Repository registration also has a documentation-sync gate. When a project is added to `workspace.yaml`, Sol must create or update a coordinated `syllik/syllik` change covering `docs/workspace.md` and `docs/repositories.md`. The registry change is not ready for human merge until that workspace-documentation change exists and is synchronized with it. The profile `README.md` keeps a stable link to `docs/workspace.md` and does not carry the project list itself. A repository may be intentionally omitted from workspace documentation only by an explicit human decision.
+After validation, trusted Sol/human publication creates or updates the PR. Routine review uses managed Codex GitHub Code Review. Trigger `@codex review` manually; automatic review is disabled by default. A review is current only when its reviewed commit SHA matches the current PR head. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization as one consolidated package. Any changed head requires a new `@codex review`. Sol 5.6 High is reserved for escalation or fallback: architecture/high-risk review, ambiguous/disputed findings, Codex unavailability, or explicit human request. Only a human merges.
 
-Sol plans and hands off one self-contained prompt. Luna is executor-only: she implements the authorized scope, runs authorized local validation, checkpoints execution state, and stops at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. Luna does not self-review, create subagents, commit, push, open or update PRs, or mutate publication state.
-
-Code review is a separate independent role performed by Sol 5.6 High against the exact pinned base/head diff. Reviewer findings stay separate from Luna execution checkpoints. Findings are not sent back to Luna until a human explicitly authorizes a correction pass; when authorized, send one consolidated findings package. Publication remains under Sol/human control, and only a human merges.
-
-Use persisted task state for long or audit-significant work. Never store credentials, private keys, `.env` content, or conversation dumps.
+Use persisted state for long/audit-significant work. Never store secrets or credentials.
