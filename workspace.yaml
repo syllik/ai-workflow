@@ -46,13 +46,6 @@ projects:
     access: managed
     status: onboarding
     contextPath: .ai/context.md
-  - id: syllik/codex-local-runner-control
-    repository: syllik/codex-local-runner-control
-    localPath: tools/ai/codex-local-runner-control
-    group: tools/ai
-    access: managed
-    status: onboarding
-    contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
     localPath: tools/content/youtube-metadata-translator
