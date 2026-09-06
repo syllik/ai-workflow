@@ -65,6 +65,10 @@ describe('workflow documentation', () => {
     assert.match(flow, /Sol 5\.6 High is reserved for escalation or fallback/iu);
     assert.match(reviewer, /previous review is stale/iu);
     assert.match(reviewer, /human\s+explicitly authorizes/iu);
+    const executor = readFileSync('global/executor.md', 'utf8');
+    assert.match(executor, /Routine published-PR review belongs to managed Codex GitHub Code Review/iu);
+    assert.match(executor, /Sol 5\.6 High is escalation\/fallback only/iu);
+    assert.doesNotMatch(executor, /Review and publication are separate Sol\/human responsibilities/iu);
 
     const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
     const reviewTemplate = readFileSync('templates/review.md', 'utf8');
