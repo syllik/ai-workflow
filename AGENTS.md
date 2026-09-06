@@ -43,7 +43,7 @@ project, prompt, task, or history file without a concrete reason.
 Canonical AI routing:
 1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.
 2. Select one GitHub record from https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml / https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md.
-3. Read the relevant role rules from https://github.com/syllik/ai-workflow/tree/HEAD/global (`architect.md`, `executor.md`, or `reviewer.md`).
+3. Read role rules from https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md or https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md.
 4. Read target `AGENTS.md`, then target `.ai/context.md`.
 5. Read only relevant `.ai/decisions.md` and task files.
 
