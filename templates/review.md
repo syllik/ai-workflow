@@ -1,10 +1,16 @@
-# Independent review
+# Independent review escalation / fallback
 
 Use this separately from Luna execution state/result.
 
+Routine published PR review belongs to managed Codex GitHub Code Review and is
+triggered manually with `@codex review`. Use this template only when Sol 5.6 High
+is explicitly needed for escalation or fallback: architecture/high-risk review,
+ambiguous or disputed Codex findings, Codex unavailability, or explicit human
+request.
+
 ## Reviewer
 
-Sol 5.6 High.
+Sol 5.6 High — escalation/fallback only.
 
 ## Repository
 
@@ -15,6 +21,8 @@ Sol 5.6 High.
 ## Exact diff scope
 
 ## Execution evidence checked
+
+## Escalation reason
 
 ## Findings
 
