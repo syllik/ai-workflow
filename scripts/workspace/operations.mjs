@@ -426,7 +426,7 @@ export function planWorkspace(options = {}) {
     }
     const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), options.generatedOutputs);
     if (!safeRepository) continue;
-    if (project.access === 'managed') {
+    if (project.access === 'read-only') {
       const repository = { repositoryPath: project.localPath, repository: project.repository };
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addContextOperation(root, operations, findings, project);
