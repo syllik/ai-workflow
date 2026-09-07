@@ -28,3 +28,17 @@ When an agent creates or normalizes a human-facing task in an external tracker, 
 - Notifications render from the same canonical fields and should trigger only for meaningful state changes; they must not invent independent priority/status semantics.
 - Project/repository rules may narrow this contract for a specific tracker or team. Do not mutate another team's tracker flow unless that project's rules explicitly authorize it.
 
+### Temporary project profile: ChipIn frontend
+
+Until `ChipIn-one/chipin-frontend/AGENTS.md` is synchronized, apply this profile to Trello publication for frontend tasks only:
+
+- Never normalize or mutate backend-team cards or backend notification flow without explicit authorization.
+- Area is the `Frontend` label.
+- Priority is exactly one of `P0`, `P1`, `P2`, `P3`; do not use frontend legacy `Critical`, `Major`, `Minor`, generic `Priority`, or `PROD CRIT`.
+- Render priority as `P0 -> 🔴`, `P1 -> 🟠`, `P2 -> 🟡`, `P3 -> ⚪`.
+- Until PRE-PROD has its own canonical field/label, render PRE-PROD FE titles as `<emoji> <P#> · PRE-PROD · FE · <semantic task name>`.
+- Trello list is authoritative for Todo/In progress/DEV/PROD/Done. A blocker belongs in `Dependencies`; do not create a second status system in title/description.
+- Canonical description sections are only the relevant subset of `Problem`, `Outcome`, `Acceptance`, `Dependencies`, `References`.
+- Slack/Trello notifications are presentation only and derive meaning from the same task fields/title.
+- Remove this temporary profile after the target repository contains equivalent rules.
+
