@@ -35,8 +35,8 @@ project, prompt, task, or history file without a concrete reason.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
 * Do not use subagents, repeat broad research, or expand scope.
 * Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub/Trello publication state.
-* Trigger routine Codex review manually with `@codex review` only after the PR is published and ready; keep automatic review disabled by default to avoid duplicate runs.
-* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head requires a new `@codex review` before human merge.
+* Routine Codex review is automatic on every push to an open PR by default. Use `@codex review` only as a manual fallback/retrigger when automatic review does not start or an explicit retry is needed; do not duplicate an automatic review already running.
+* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head invalidates the previous review and requires a new Codex review before human merge.
 * Codex review is review-only. Do not use `@codex fix`, `@codex address that feedback`, or any other command that asks Codex to mutate the branch.
 * Do not create unnecessary documentation or perform unrelated refactoring.
 * Update canonical project context only when durable knowledge appears.
