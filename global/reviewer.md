@@ -18,8 +18,9 @@ published pull requests.
   explicitly authorizes it.
 - After authorization, hand Luna one consolidated findings package as bounded
   correction input.
-- After any correction changes the PR head, publish the new head and trigger a
-  new `@codex review`; the previous review is stale.
+- After any correction changes the PR head, the previous review is stale and
+  the new head must receive a new Codex review automatically or, if needed,
+  through the manual `@codex review` fallback.
 - Use Sol 5.6 High only for escalation or fallback: architecture/high-risk
   review, ambiguous or disputed findings, Codex unavailability, or explicit
   human request.
