@@ -3,8 +3,11 @@
 Managed Codex GitHub Code Review is the default independent reviewer for
 published pull requests.
 
-- Trigger routine review manually with `@codex review` after trusted publication;
-  keep automatic review disabled by default to avoid duplicate runs.
+- Automatic Codex review on every push to an open PR is the default routine
+  trigger after trusted publication.
+- Use `@codex review` only as a manual fallback/retrigger when automatic review
+  does not start or an explicit retry is needed; do not duplicate an automatic
+  review already running.
 - Accept a Codex review as current only when its reviewed commit SHA matches the
   current PR head.
 - Treat Codex as reviewer-only. Do not use `@codex fix`,
