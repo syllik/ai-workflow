@@ -500,6 +500,9 @@ describe('workspace operations', () => {
 
       git(repositoryPath, 'add', '.');
       git(repositoryPath, 'commit', '--quiet', '-m', 'generated uppercase profile contracts');
+      mkdirSync(path.join(root, 'projects'), { recursive: true });
+      writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       assert.deepEqual(checkGeneratedFiles(root, manifest, writeFixtureManifest(root, manifest)), []);
     } finally {
       removeFixtureRoot(root);
