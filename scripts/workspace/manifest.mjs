@@ -54,6 +54,10 @@ function isExcludedRepository(repository) {
     && (/^tangem(?:\/|$)/i.test(repository) || /syllik\.github\.io/i.test(repository));
 }
 
+function normalizedRepository(repository) {
+  return typeof repository === 'string' ? repository.toLowerCase() : repository;
+}
+
 function checkDuplicates(projects, findings) {
   const seen = new Map();
   for (const field of ['id', 'repository', 'localPath']) {
@@ -95,7 +99,7 @@ export function validateManifest(value) {
   } else {
     const managedRepositories = new Set(value.projects
       .filter((project) => isObject(project) && project.access === 'managed' && typeof project.repository === 'string')
-      .map((project) => project.repository));
+      .map((project) => normalizedRepository(project.repository)));
 
     value.projects.forEach((project, index) => {
       const projectPath = `manifest.projects[${index}]`;
@@ -140,17 +144,19 @@ export function validateManifest(value) {
             if (dependency.access !== 'read-only') {
               findings.push(finding('INVALID_DEPENDENCY_ACCESS', `${dependencyPath}.access`));
             }
-            if (dependency.repository === project.repository) {
+            const normalizedDependencyRepository = normalizedRepository(dependency.repository);
+            const normalizedProjectRepository = normalizedRepository(project.repository);
+            if (normalizedDependencyRepository === normalizedProjectRepository) {
               findings.push(finding('SELF_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
             }
-            if (dependency.repository !== project.repository && managedRepositories.has(dependency.repository)) {
+            if (normalizedDependencyRepository !== normalizedProjectRepository && managedRepositories.has(normalizedDependencyRepository)) {
               findings.push(finding('MANAGED_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
             }
             if (typeof dependency.repository === 'string') {
-              if (dependencyRepositories.has(dependency.repository)) {
+              if (dependencyRepositories.has(normalizedDependencyRepository)) {
                 findings.push(finding('DUPLICATE_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
               }
-              dependencyRepositories.add(dependency.repository);
+              dependencyRepositories.add(normalizedDependencyRepository);
             }
           });
         }
