@@ -10,8 +10,10 @@
 ## GitHub-rooted foundation
 
 `workspace.yaml` is the canonical project manifest and `projects/index.md` is
-its generated navigation. Read one target repository's `.ai/context.md` after
-the manifest record; legacy central project contexts remain migration-only.
+its generated navigation. Resolve target files from the record's
+`integrationBranch`. Active managed projects route to repository context;
+onboarding projects are limited to onboarding/alignment until that context
+exists. Legacy central project contexts remain migration-only.
 
 The workspace validator is intentionally bounded:
 
@@ -29,7 +31,8 @@ apply after normal safety checks; canonical apply was not executed in Phase 1A.
 ## Что читает Sol
 
 Sol читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
-релевантный role file, затем `AGENTS.md` и `.ai/context.md` target repository.
+релевантный role file, затем `AGENTS.md` и `.ai/context.md` target repository
+на указанной в записи `integrationBranch`.
 `.ai/decisions.md` и task files читаются только при релевантности. Legacy
 central project contexts сохраняются для migration, но не являются active path.
 
@@ -50,12 +53,12 @@ session без зависимости от conversation history.
 ## Как проходит code review
 
 1. После local validation trusted publication создаёт или обновляет PR.
-2. Automatic Codex review по умолчанию остаётся выключенным. Для готового PR вручную отправляется `@codex review`.
-3. Review считается актуальным только если его `Reviewed commit` совпадает с текущим PR head SHA.
-4. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие команды, которые позволяют Codex менять branch.
-5. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
-6. После correction и нового head снова отправляется `@codex review`; старый review считается stale.
-7. Sol 5.6 High используется только для architecture/high-risk review, спорных или неоднозначных findings, недоступности Codex или явного запроса человека.
+2. Managed Codex review автоматически запускается на каждом push в открытый PR.
+3. Review актуален только для текущего PR head SHA; новый head делает предыдущий review stale и требует нового.
+4. `@codex review` используется только как fallback/retrigger, если automatic review не стартовал или нужен явный retry; не запускайте duplicate review поверх уже идущего automatic run.
+5. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие branch-mutation команды.
+6. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
+7. Sol 5.6 High используется только для architecture/high-risk review, спорных findings, недоступности Codex или явного запроса человека.
 8. Merge выполняет только человек.
 
 ## Структура
