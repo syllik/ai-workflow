@@ -62,6 +62,7 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, newProject] });
@@ -165,6 +166,7 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, project] });
@@ -407,6 +409,7 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, project] });
