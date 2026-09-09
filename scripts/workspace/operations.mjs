@@ -343,7 +343,6 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
       marker: name,
       block: desiredBlock,
       content,
-      legacyGeneratedContent: migratesLegacyGeneratedFile ? normalizedLegacy : null,
       expectedFingerprint: fingerprint(destination),
       ...repository
     });
@@ -494,11 +493,11 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
       let expectedContent;
       try {
         const normalizedCurrent = normalizeText(currentText);
-        const legacyMatches = state.kind === 'missing'
-          && operation.legacyGeneratedContent !== null
-          && operation.legacyGeneratedContent !== undefined
-          && normalizedCurrent === normalizeText(operation.legacyGeneratedContent);
-        expectedContent = legacyMatches
+        const legacyProfileMatches = state.kind === 'missing'
+          && operation.marker === 'profile-navigation'
+          && operation.repository === 'syllik/syllik'
+          && normalizedCurrent === normalizeText(renderLegacyProfileNavigation(plan.manifest));
+        expectedContent = legacyProfileMatches
           ? normalizeText(operation.block)
           : replaceManagedBlock(currentText, operation.marker, operation.block);
       } catch {
