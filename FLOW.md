@@ -2,28 +2,16 @@
 
 GitHub is the only project registry. Read:
 `AI.md -> FLOW.md -> workspace record -> role rules -> target AGENTS.md/.ai/context.md -> relevant decisions/task files`.
-Read only the selected project. Do not auto-discover repositories. Target repositories own invariants; task prompts own scope/validation.
+Use the record's `integrationBranch` to resolve target files. Do not auto-discover repos. Active managed projects may receive normal work; onboarding managed projects only onboarding/alignment until routing/context exists. Read-only projects are never write targets. Target repos own invariants; task prompts own scope/validation.
 
-New project/repository licensing is a pre-first-commit gate, including private repositories: Sol asks the human, explains choices, and bootstraps the selected license/rights notice. Before a net-new tool, research current analogues; prefer viable reuse/fork over greenfield and preserve upstream license obligations.
+New repos require human licensing decision before first commit. Before a net-new tool, research maintained analogues and prefer viable licensed reuse/fork over greenfield.
 
-Adding a project to `workspace.yaml` requires a coordinated `syllik/syllik` change for `docs/workspace.md` and `docs/repositories.md`. It is not ready for human merge until synchronized. Profile `README.md` keeps a stable link to `docs/workspace.md`; omission requires explicit human approval.
+Adding a project to `workspace.yaml` requires synchronized `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` keeps a stable workspace link.
 
-Sol hands Luna one self-contained prompt. Luna is executor-only: implement scope, run validation, checkpoint state, then stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. Luna does not self-review, use subagents, commit, push, publish/update PRs, or mutate publication state.
+Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint, then stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. Luna does not self-review, use subagents, commit, push, publish/update PRs, or mutate publication state.
 
-After validation, trusted Sol/human publication creates or updates the PR. Routine review uses managed Codex GitHub Code Review with automatic review on every push to an open PR as the default. A review is current only when its reviewed commit SHA matches the current PR head; any changed head invalidates the previous review and must receive a new Codex review. Use `@codex review` only as a manual fallback/retrigger when automatic review does not start or an explicit retry is needed; do not duplicate an automatic review already running. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization as one consolidated package. Sol 5.6 High is reserved for escalation or fallback: architecture/high-risk review, ambiguous/disputed findings, Codex unavailability, or explicit human request. Only a human merges.
+Trusted Sol/human publication creates or updates the PR. Managed Codex GitHub Code Review runs automatically on every push to an open PR. A review is valid only for the current PR head; changed heads require a fresh review. Use `@codex review` only as fallback/retrigger and never duplicate an automatic review already running. Codex is reviewer-only; never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization as one consolidated package. Sol 5.6 High is escalation/fallback only. Only a human merges.
 
 Use persisted state for long/audit-significant work. Never store secrets or credentials.
 
-## Task publication contract
-
-When an agent creates or normalizes a human-facing task in an external tracker, keep one canonical task contract and do not encode the same state in multiple places.
-
-- Status belongs to the tracker's workflow state/list, not the description.
-- Priority belongs to exactly one priority field/label. Presentation emoji may be derived from priority but is never independent state.
-- Scope/area belong to explicit fields/labels when the tracker supports them.
-- The title is a compact human-readable rendering of canonical metadata plus the semantic task name. Do not use bracket-prefix syntax such as `[PRE-PROD] [FE][P0]`.
-- The description contains only durable execution context using `Problem -> Outcome -> Acceptance -> Dependencies -> References` when those sections are relevant.
-- Do not add `[TASK DESCRIPTION]`, generic agent instructions, mutable status/history, execution journals, raw verification logs, or duplicated tracker metadata to the canonical description.
-- Put transient execution evidence in comments/activity or the publication/result channel unless it is required as a durable reference.
-- Notifications render from the same canonical fields and should trigger only for meaningful state changes; they must not invent independent priority/status semantics.
-- Project/repository rules may narrow this contract for a specific tracker or team. Do not mutate another team's tracker flow unless that project's rules explicitly authorize it.
+Task publication keeps one source of truth: status stays in tracker workflow, priority/scope in fields, descriptions contain `Problem -> Outcome -> Acceptance -> Dependencies -> References`, transient evidence stays in comments/results, and project rules may only narrow it.
