@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block', 'replace-generated-file']);
 
@@ -356,7 +356,8 @@ function addDecisionsOperation(root, operations, findings, project) {
       destination,
       content: renderDecisionsScaffold(),
       repositoryPath: project.localPath,
-      repository: project.repository
+      repository: project.repository,
+      integrationBranch: project.integrationBranch
     });
   } else if (!lstatSync(destination).isFile()) {
     findings.push(finding('DESTINATION_COLLISION', relativePath));
@@ -380,7 +381,8 @@ function addContextOperation(root, operations, findings, project) {
       destination,
       content: desired,
       repositoryPath: project.localPath,
-      repository: project.repository
+      repository: project.repository,
+      integrationBranch: project.integrationBranch
     });
     return;
   }
@@ -436,6 +438,9 @@ export function planWorkspace(options = {}) {
     if (!safeRepository) continue;
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
+      if (project.repository === 'syllik/syllik') {
+        addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository);
+      }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addContextOperation(root, operations, findings, project);
       addDecisionsOperation(root, operations, findings, project);
@@ -738,6 +743,21 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     }
     if (!isDirectory(repository)) continue;
     checkAgents(repository, 'AGENTS.md', path.posix.join(project.localPath, 'AGENTS.md'));
+    if (project.repository === 'syllik/syllik') {
+      const aiPath = resolveInside(repository, 'AI.md');
+      const findingPath = path.posix.join(project.localPath, 'AI.md');
+      const desired = renderProfileNavigation(manifest);
+      if (!aiPath || !isRegularFile(aiPath)) {
+        if (!aiPath) addUniqueFinding(findings, 'UNSAFE_PATH', findingPath);
+        else findings.push(finding('GENERATED_DRIFT', findingPath));
+      } else {
+        const current = readFileSync(aiPath, 'utf8');
+        const state = markerState(current, 'profile-navigation');
+        if (state.kind !== 'valid' || replaceManagedBlock(current, 'profile-navigation', desired) !== normalizeText(current)) {
+          findings.push(finding('GENERATED_DRIFT', findingPath));
+        }
+      }
+    }
     const contextPath = resolveInside(repository, project.contextPath);
     if (!contextPath || !isRegularFile(contextPath)) {
       if (!contextPath) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join(project.localPath, project.contextPath));
