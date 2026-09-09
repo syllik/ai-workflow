@@ -309,8 +309,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     findings.push(finding('UNSAFE_PATH', relativePath));
     return;
   }
-  const current = existsSync(destination) ? readFileSync(destination, 'utf8') : null;
-  if (current === null) {
+  if (!existsSync(destination)) {
     if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: desiredBlock }, BUDGETS));
     operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock, ...repository });
     return;
@@ -319,6 +318,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     findings.push(finding('DESTINATION_COLLISION', relativePath));
     return;
   }
+  const current = readFileSync(destination, 'utf8');
   const state = markerState(current, name);
   if (state.kind === 'duplicate') {
     findings.push(finding('DUPLICATE_MARKER', relativePath));
