@@ -49,6 +49,11 @@ function isSafeRelativePath(value) {
     && !value.split('/').some((part) => part === '.' || part === '..');
 }
 
+function isExcludedRepository(repository) {
+  return typeof repository === 'string'
+    && (/^tangem(?:\/|$)/i.test(repository) || /syllik\.github\.io/i.test(repository));
+}
+
 function checkDuplicates(projects, findings) {
   const seen = new Map();
   for (const field of ['id', 'repository', 'localPath']) {
@@ -88,6 +93,10 @@ export function validateManifest(value) {
   if (!Array.isArray(value.projects)) {
     findings.push(finding('INVALID_PROJECTS', 'manifest.projects'));
   } else {
+    const managedRepositories = new Set(value.projects
+      .filter((project) => isObject(project) && project.access === 'managed' && typeof project.repository === 'string')
+      .map((project) => project.repository));
+
     value.projects.forEach((project, index) => {
       const projectPath = `manifest.projects[${index}]`;
       if (!isObject(project)) {
@@ -122,6 +131,9 @@ export function validateManifest(value) {
             if (typeof dependency.repository !== 'string' || !REPOSITORY_PATTERN.test(dependency.repository)) {
               findings.push(finding('INVALID_DEPENDENCY_REPOSITORY', `${dependencyPath}.repository`));
             }
+            if (isExcludedRepository(dependency.repository)) {
+              findings.push(finding('EXCLUDED_REPOSITORY', `${dependencyPath}.repository`));
+            }
             if (!isSafeRelativePath(dependency.integrationBranch)) {
               findings.push(finding('INVALID_DEPENDENCY_BRANCH', `${dependencyPath}.integrationBranch`));
             }
@@ -130,6 +142,9 @@ export function validateManifest(value) {
             }
             if (dependency.repository === project.repository) {
               findings.push(finding('SELF_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+            }
+            if (dependency.repository !== project.repository && managedRepositories.has(dependency.repository)) {
+              findings.push(finding('MANAGED_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
             }
             if (typeof dependency.repository === 'string') {
               if (dependencyRepositories.has(dependency.repository)) {
@@ -143,7 +158,7 @@ export function validateManifest(value) {
     });
     checkDuplicates(value.projects, findings);
     value.projects.forEach((project, index) => {
-      if (typeof project?.repository === 'string' && (/^tangem(?:\/|$)/i.test(project.repository) || /syllik\.github\.io/i.test(project.repository))) {
+      if (isExcludedRepository(project?.repository)) {
         findings.push(finding('EXCLUDED_REPOSITORY', `manifest.projects[${index}].repository`));
       }
     });
