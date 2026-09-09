@@ -31,6 +31,13 @@ describe('budgets', () => {
       .map(([path, maxBytes]) => ({ code: 'BUDGET_EXCEEDED', path, actualBytes: maxBytes + 1, maxBytes })));
   });
 
+  test('applies the AI budget to nested profile AI paths', () => {
+    const findings = checkBudget({ path: 'profile/syllik/AI.md', text: 'x'.repeat(1025) }, BUDGETS);
+    assert.equal(findings[0]?.code, 'BUDGET_EXCEEDED');
+    assert.equal(findings[0]?.path, 'profile/syllik/AI.md');
+    assert.equal(findings[0]?.maxBytes, 1024);
+  });
+
   test('accepts text at the exact UTF-8 boundary', () => {
     assert.deepEqual(checkBudget({ path: 'AI.md', text: 'é'.repeat(512) }, BUDGETS), []);
   });
