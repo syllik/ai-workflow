@@ -61,7 +61,7 @@ export function renderProfileNavigation(manifest) {
     `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
-    '4. Read the target AGENTS.md and `.ai/context.md`.',
+    '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
     'GitHub is the only project registry. Do not auto-discover repositories or route into legacy central contexts.'
@@ -74,7 +74,7 @@ export function renderAgentsBlock(manifest) {
     `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read role rules from ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
-    '4. Read target `AGENTS.md`, then target `.ai/context.md`.',
+    '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
     'Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.',
