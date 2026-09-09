@@ -2,11 +2,13 @@
 
 Use this separately from Luna execution state/result.
 
-Routine published PR review belongs to managed Codex GitHub Code Review and is
-triggered manually with `@codex review`. Use this template only when Sol 5.6 High
-is explicitly needed for escalation or fallback: architecture/high-risk review,
-ambiguous or disputed Codex findings, Codex unavailability, or explicit human
-request.
+Routine published PR review belongs to managed Codex GitHub Code Review and
+runs automatically on every push to an open PR. Use `@codex review` only as a
+manual fallback/retrigger when automatic review does not start or an explicit
+retry is needed; never duplicate an automatic review already running. Use this
+template only when Sol 5.6 High is explicitly needed for escalation or fallback:
+architecture/high-risk review, ambiguous or disputed Codex findings, Codex
+unavailability, or explicit human request.
 
 ## Reviewer
 
