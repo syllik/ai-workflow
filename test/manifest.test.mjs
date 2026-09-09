@@ -28,6 +28,7 @@ describe('manifest', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       }]
     });
@@ -36,6 +37,19 @@ describe('manifest', () => {
 
     assert.equal(result.valid, true);
     assert.deepEqual(result.findings, []);
+  });
+
+  test('requires a safe explicit integration branch for every project', () => {
+    const manifest = fixtureManifest();
+    delete manifest.projects[0].integrationBranch;
+    manifest.projects[1].integrationBranch = '../dev';
+
+    const result = validateManifest(manifest);
+
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_INTEGRATION_BRANCH').map(({ path }) => path), [
+      'manifest.projects[0].integrationBranch',
+      'manifest.projects[1].integrationBranch'
+    ]);
   });
 
   test('rejects unknown keys at every manifest level', () => {
