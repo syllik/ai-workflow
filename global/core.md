@@ -2,6 +2,7 @@
 
 - GitHub is the only project registry; use `workspace.yaml` and never auto-discover repositories.
 - Resolve target repository instructions from the selected record's `integrationBranch`. Active managed projects may receive normal work; onboarding managed projects are limited to onboarding/alignment until their routing/context exists.
+- `contextDependencies` are explicit approved read-only context sources, not write targets or repository-discovery hints. Read them only when target instructions or task scope requires them; if required context is unavailable, block instead of guessing.
 - Read the smallest relevant context in the order defined by `FLOW.md`.
 - Preserve target-repository rules and user scope. Do not store secrets, credentials, tokens, private keys, `.env` content, or conversation dumps.
 - `read-only` projects are never write targets. Managed updates require valid `ai-workflow` markers and a clean, single-worktree repository.
