@@ -37,21 +37,24 @@ export function renderProjectIndex(manifest) {
       } else {
         link = `[repository source of truth](${repositoryUrl}/tree/${project.integrationBranch})`;
       }
-      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} |`;
+      const dependencies = (project.contextDependencies ?? [])
+        .map((dependency) => `[${dependency.repository}](https://github.com/${dependency.repository}/tree/${dependency.integrationBranch})`)
+        .join('<br>') || '—';
+      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} | ${dependencies} |`;
     });
   return finalNewline([
     '# Workspace project index',
     '',
-    'Generated from `workspace.yaml`. Active managed projects route to context on their integration branch; onboarding records route only to repository source.',
+    'Generated from `workspace.yaml`. Active managed projects route to context on their integration branch; onboarding records route only to repository source. Context dependencies are explicit read-only sources.',
     '',
-    '| Repository | Group | Access | Status | Integration branch | GitHub source |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Repository | Group | Access | Status | Integration branch | GitHub source | Context dependencies |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
     ...rows
   ].join('\n'));
 }
 
 export function renderProfileNavigation(manifest) {
-  return finalNewline([
+  const body = [
     '# Canonical AI workflow',
     '',
     `This profile AI entry covers the workspace rooted at \`${manifest.canonicalRoot}\`.`,
@@ -62,10 +65,13 @@ export function renderProfileNavigation(manifest) {
     `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
     '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
-    '5. Read only relevant `.ai/decisions.md` and task files.',
+    '5. Read only relevant `.ai/decisions.md`, task files, and explicitly declared `contextDependencies` when required.',
     '',
-    'GitHub is the only project registry. Do not auto-discover repositories or route into legacy central contexts.'
-  ].join('\n'));
+    'GitHub records are authoritative. Do not auto-discover repositories or route into legacy central contexts.'
+  ].join('\n');
+  const rendered = renderManagedBlock('profile-navigation', body);
+  if (Buffer.byteLength(rendered, 'utf8') > BUDGETS['AI.md']) throw new Error('Rendered profile AI entry exceeds budget');
+  return rendered;
 }
 
 export function renderAgentsBlock(manifest) {
