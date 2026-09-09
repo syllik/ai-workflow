@@ -19,7 +19,8 @@ export const HARD_BUDGETS = Object.freeze({
 });
 
 const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'projects']);
-const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath']);
+const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
+const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
@@ -106,6 +107,39 @@ export function validateManifest(value) {
       else if (project.access === 'managed' && project.contextPath !== '.ai/context.md') findings.push(finding('MANAGED_CONTEXT_PATH_INVALID', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.contextPath !== undefined) findings.push(finding('READ_ONLY_CONTEXT_FORBIDDEN', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.status !== 'active') findings.push(finding('INVALID_COMBINATION', `${projectPath}.status`));
+      if (project.contextDependencies !== undefined) {
+        if (!Array.isArray(project.contextDependencies)) {
+          findings.push(finding('INVALID_CONTEXT_DEPENDENCIES', `${projectPath}.contextDependencies`));
+        } else {
+          const dependencyRepositories = new Set();
+          project.contextDependencies.forEach((dependency, dependencyIndex) => {
+            const dependencyPath = `${projectPath}.contextDependencies[${dependencyIndex}]`;
+            if (!isObject(dependency)) {
+              findings.push(finding('INVALID_CONTEXT_DEPENDENCY', dependencyPath));
+              return;
+            }
+            checkUnknownKeys(dependency, DEPENDENCY_KEYS, dependencyPath, findings);
+            if (typeof dependency.repository !== 'string' || !REPOSITORY_PATTERN.test(dependency.repository)) {
+              findings.push(finding('INVALID_DEPENDENCY_REPOSITORY', `${dependencyPath}.repository`));
+            }
+            if (!isSafeRelativePath(dependency.integrationBranch)) {
+              findings.push(finding('INVALID_DEPENDENCY_BRANCH', `${dependencyPath}.integrationBranch`));
+            }
+            if (dependency.access !== 'read-only') {
+              findings.push(finding('INVALID_DEPENDENCY_ACCESS', `${dependencyPath}.access`));
+            }
+            if (dependency.repository === project.repository) {
+              findings.push(finding('SELF_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+            }
+            if (typeof dependency.repository === 'string') {
+              if (dependencyRepositories.has(dependency.repository)) {
+                findings.push(finding('DUPLICATE_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+              }
+              dependencyRepositories.add(dependency.repository);
+            }
+          });
+        }
+      }
     });
     checkDuplicates(value.projects, findings);
     value.projects.forEach((project, index) => {
