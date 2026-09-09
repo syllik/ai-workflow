@@ -60,8 +60,9 @@ describe('renderers', () => {
     assert.equal(renderManagedBlock('routing', block), block);
   });
 
-  test('render agents block stays within its hard budget', () => {
-    const output = renderAgentsBlock(fixtureManifest());
+  test('render agents block stays within its hard budget and routes declared dependencies', () => {
+    const manifest = fixtureManifest();
+    const output = renderAgentsBlock(manifest);
     assert.equal(output.startsWith('<!-- ai-workflow:agents-routing:start -->\n'), true);
     assert.equal(output.endsWith('<!-- ai-workflow:agents-routing:end -->\n'), true);
     assert.ok(Buffer.byteLength(output, 'utf8') <= 1024);
@@ -74,6 +75,17 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
     ]) assert.equal(output.includes(url), true, url);
     assert.match(output, /integrationBranch/);
+    assert.doesNotMatch(output, /contextDependencies/u);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
+
+    manifest.projects[2].contextDependencies = [{
+      repository: 'ChipIn-one/chipin-knowledge-base',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+    const withDependencies = renderAgentsBlock(manifest);
+    assert.match(withDependencies, /required declared `contextDependencies`/u);
+    assert.match(withDependencies, /block if required dependency context is unavailable/iu);
+    assert.ok(Buffer.byteLength(withDependencies, 'utf8') <= 1024);
   });
 });
