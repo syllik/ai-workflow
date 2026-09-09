@@ -482,6 +482,29 @@ describe('workspace operations', () => {
     }
   });
 
+  test('reports a profile AI directory as a destination collision without throwing', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+      mkdirSync(path.join(repositoryPath, 'AI.md'), { recursive: true });
+      writeFileSync(path.join(repositoryPath, 'AI.md/.keep'), 'directory collision\n', 'utf8');
+      git(repositoryPath, 'add', 'AI.md/.keep');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'profile AI directory collision');
+
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code, path: findingPath }) =>
+        code === 'DESTINATION_COLLISION' && findingPath === 'profile/syllik/AI.md'), true);
+      assert.equal(plan.operations.some(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('replaces the exact legacy markerless profile bootstrap instead of appending', () => {
     const root = makeFixtureRoot();
     try {
