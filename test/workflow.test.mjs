@@ -85,6 +85,8 @@ describe('workflow documentation', () => {
     assert.match(flow, /integrationBranch/u);
     assert.match(flow, /onboarding managed projects only onboarding\/alignment/iu);
     assert.match(flow, /Read-only projects are never write targets/iu);
+    assert.match(flow, /contextDependencies/u);
+    assert.match(flow, /unavailable required context blocks work/iu);
   });
 
 });
