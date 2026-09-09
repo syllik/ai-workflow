@@ -73,6 +73,38 @@ describe('manifest', () => {
     assert.equal(codes.includes('DUPLICATE_CONTEXT_DEPENDENCY'), true);
   });
 
+  test('rejects excluded repositories used as context dependencies', () => {
+    const manifest = fixtureManifest();
+    manifest.projects[2].contextDependencies = [{
+      repository: 'tangem/private-context',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'EXCLUDED_REPOSITORY').map(({ path }) => path), [
+      'manifest.projects[2].contextDependencies[0].repository'
+    ]);
+  });
+
+  test('rejects context dependencies that alias managed workspace projects', () => {
+    const manifest = fixtureManifest();
+    manifest.projects[2].contextDependencies = [{
+      repository: 'syllik/syllik',
+      integrationBranch: 'master',
+      access: 'read-only'
+    }];
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY').map(({ path }) => path), [
+      'manifest.projects[2].contextDependencies[0].repository'
+    ]);
+  });
+
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
