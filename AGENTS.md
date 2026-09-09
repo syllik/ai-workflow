@@ -10,7 +10,7 @@ storage. Before working, read:
 3. one record from `workspace.yaml` and `projects/index.md`;
 4. the relevant role file from `global/architect.md`, `global/executor.md`, or `global/reviewer.md`;
 5. `AGENTS.md` and `.ai/context.md` in the target repository;
-6. only relevant `.ai/decisions.md` and task files.
+6. only relevant `.ai/decisions.md`, task files, and explicit `contextDependencies` required by the target/task.
 
 For a persisted task, also use its `prompt.md` and current `state.md`. The
 human-only `plan.md` is reviewed by the user; Luna never reads it. Do not reread
@@ -25,6 +25,7 @@ project, prompt, task, or history file without a concrete reason.
 * GPT-5.6 Sol is the planner, architect, and research agent; it issues one self-contained execution prompt for implementation. Managed Codex GitHub Code Review is the default independent PR reviewer, while Sol 5.6 High is reserved for escalation, architecture/high-risk review, ambiguous findings, reviewer unavailability, or explicit human request.
 * Luna xhigh is the executor and coder only; it reads target repository instructions, implements the authorized scope, and runs authorized validation.
 * Resolve target repository instructions through the selected `workspace.yaml` record's `integrationBranch`. Normal implementation requires `status: active`; `status: onboarding` permits onboarding/alignment only.
+* `contextDependencies` are approved read-only context only. Read the minimum required dependency context; never mutate it or discover additional repositories from it.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
 * The default persisted structure is a human-only planning record, `prompt.md`, `state.md`, and `result.md`.
