@@ -29,7 +29,8 @@ describe('workspace operations', () => {
         kind: 'clone',
         repository: 'syllik/syllik',
         path: 'profile/syllik',
-        destination: path.join(root, 'profile/syllik')
+        destination: path.join(root, 'profile/syllik'),
+        integrationBranch: 'master'
       });
       assert.equal(result.blocked, false);
     } finally {
@@ -45,6 +46,25 @@ describe('workspace operations', () => {
       const manifest = fixtureManifest();
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
       assert.equal(result.operations.some((operation) => operation.kind === 'clone' && operation.path === 'profile/syllik'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('blocks an existing repository checked out on the wrong integration branch', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+      const manifest = fixtureManifest({ projects: [project] });
+      const projectPath = path.join(root, project.localPath);
+      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, 'wrong-branch');
+
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(result.blocked, true);
+      assert.equal(result.findings.some(({ code, expected, actual }) =>
+        code === 'BRANCH_MISMATCH' && expected === project.integrationBranch && actual === 'wrong-branch'), true);
+      assert.deepEqual(result.operations, []);
     } finally {
       removeFixtureRoot(root);
     }
