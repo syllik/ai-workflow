@@ -10,6 +10,7 @@ export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-m
 
 const GENERATED_OUTPUT_TOKEN = {};
 const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
+const PROFILE_REPOSITORY = 'syllik/syllik';
 const CENTRAL_INDEX_PATH = 'projects/index.md';
 const CENTRAL_IDENTITY_FINDING = 'CENTRAL_REPOSITORY_UNVERIFIED';
 
@@ -120,6 +121,14 @@ function command(directory, args) {
   } catch {
     return null;
   }
+}
+
+function normalizedRepository(repository) {
+  return typeof repository === 'string' ? repository.toLowerCase() : repository;
+}
+
+function isProfileRepository(repository) {
+  return normalizedRepository(repository) === PROFILE_REPOSITORY;
 }
 
 function normalizedRemote(value) {
@@ -447,7 +456,7 @@ export function planWorkspace(options = {}) {
     if (!safeRepository) continue;
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
-      if (project.repository === 'syllik/syllik') {
+      if (isProfileRepository(project.repository)) {
         addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
       }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
@@ -497,7 +506,7 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
         const normalizedCurrent = normalizeText(currentText);
         const legacyProfileMatches = state.kind === 'missing'
           && operation.marker === 'profile-navigation'
-          && operation.repository === 'syllik/syllik'
+          && isProfileRepository(operation.repository)
           && normalizedCurrent === normalizeText(renderLegacyProfileNavigation(plan.manifest));
         expectedContent = legacyProfileMatches
           ? normalizeText(operation.block)
@@ -713,7 +722,7 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
       continue;
     }
     if (!isDirectory(repository)) continue;
-    if (project.repository === 'syllik/syllik') {
+    if (isProfileRepository(project.repository)) {
       const profileAi = readKnownArtifact(repository, 'AI.md', findings);
       if (profileAi) entries.push({ path: path.posix.join(project.localPath, profileAi.path), text: profileAi.text });
     }
@@ -763,7 +772,7 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     }
     if (!isDirectory(repository)) continue;
     checkAgents(repository, 'AGENTS.md', path.posix.join(project.localPath, 'AGENTS.md'));
-    if (project.repository === 'syllik/syllik') {
+    if (isProfileRepository(project.repository)) {
       const aiPath = resolveInside(repository, 'AI.md');
       const findingPath = path.posix.join(project.localPath, 'AI.md');
       const desired = renderProfileNavigation(manifest);
