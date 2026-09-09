@@ -51,9 +51,9 @@ export function writeFixtureManifest(root, manifest = fixtureManifest()) {
   return path.join(root, 'workspace.yaml');
 }
 
-export function initFixtureRepo(directory, remote = 'https://github.com/example/project.git') {
+export function initFixtureRepo(directory, remote = 'https://github.com/example/project.git', branch = 'master') {
   mkdirSync(directory, { recursive: true });
-  execFileSync('git', ['init', '--quiet', directory]);
+  execFileSync('git', ['init', '--quiet', '--initial-branch', branch, directory]);
   execFileSync('git', ['-C', directory, 'config', 'user.email', 'fixture@example.test']);
   execFileSync('git', ['-C', directory, 'config', 'user.name', 'Fixture']);
   execFileSync('git', ['-C', directory, 'config', 'commit.gpgsign', 'false']);
@@ -70,7 +70,7 @@ export function git(directory, ...args) {
 export function initCentralManifestRepo(root, manifest, { indexManifest = manifest, includeIndex = true } = {}) {
   const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
   const centralPath = path.join(root, central.localPath);
-  initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git');
+  initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git', central.integrationBranch);
   mkdirSync(path.join(centralPath, '.ai'), { recursive: true });
   writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
   writeFileSync(path.join(centralPath, central.contextPath), renderContextScaffold(central), 'utf8');
