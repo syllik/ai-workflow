@@ -184,6 +184,7 @@ function centralManifestIdentity(root, manifest, manifestPath, findings, options
     centralProject.localPath,
     findings,
     resolveExpectedRemote(CENTRAL_REPOSITORY, options),
+    centralProject.integrationBranch,
     options.generatedOutputs
   );
   if (!safe) {
@@ -239,7 +240,7 @@ function addCentralGeneratedIndexOperation(root, operations, findings, manifest,
   });
 }
 
-function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), generatedOutputs = null) {
+function repositorySafety(destination, repository, localPath, findings, expectedOrigin = expectedRemote(repository), expectedBranch = null, generatedOutputs = null) {
   const gitPath = path.join(destination, '.git');
   let gitStat;
   try {
@@ -266,6 +267,13 @@ function repositorySafety(destination, repository, localPath, findings, expected
   if (normalizedRemote(origin) !== normalizedRemote(expectedOrigin)) {
     findings.push(finding('ORIGIN_MISMATCH', localPath));
     valid = false;
+  }
+  if (expectedBranch !== null) {
+    const currentBranch = command(destination, ['branch', '--show-current']);
+    if (currentBranch !== expectedBranch) {
+      findings.push(finding('BRANCH_MISMATCH', localPath, { expected: expectedBranch, actual: currentBranch || null }));
+      valid = false;
+    }
   }
   const status = command(destination, ['status', '--porcelain', '--untracked-files=all']) ?? '';
   const statusPaths = status.split('\n').filter(Boolean).map((line) => line.slice(3).trim());
@@ -415,7 +423,7 @@ export function planWorkspace(options = {}) {
     }
     if (!existsSync(destination)) {
       const source = resolveCloneSource(project.repository, options);
-      const operation = { kind: 'clone', repository: project.repository, path: project.localPath, destination };
+      const operation = { kind: 'clone', repository: project.repository, path: project.localPath, destination, integrationBranch: project.integrationBranch };
       if (source !== null) operation.source = source;
       operations.push(operation);
       continue;
@@ -424,10 +432,10 @@ export function planWorkspace(options = {}) {
       findings.push(finding('DESTINATION_COLLISION', project.localPath));
       continue;
     }
-    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), options.generatedOutputs);
+    const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), project.integrationBranch, options.generatedOutputs);
     if (!safeRepository) continue;
     if (project.access === 'managed') {
-      const repository = { repositoryPath: project.localPath, repository: project.repository };
+      const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addContextOperation(root, operations, findings, project);
       addDecisionsOperation(root, operations, findings, project);
@@ -436,7 +444,7 @@ export function planWorkspace(options = {}) {
 
   addCentralGeneratedIndexOperation(root, operations, findings, manifest, manifestPath, options);
 
-  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED', CENTRAL_IDENTITY_FINDING]);
+  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'BRANCH_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED', CENTRAL_IDENTITY_FINDING]);
   const blocked = findings.some(({ code }) => blockedCodes.has(code));
   const fingerprints = Object.fromEntries(operations.map((operation) => [operation.path, fingerprint(operation.destination)]));
   return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
@@ -501,7 +509,7 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
   }
   if (operation.repositoryPath && operation.kind !== 'replace-generated-file' && existsSync(resolveInside(root, operation.repositoryPath))) {
     const repositoryDestination = resolveInside(root, operation.repositoryPath);
-    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), options.generatedOutputs);
+    repositorySafety(repositoryDestination, operation.repository, operation.repositoryPath, findings, resolveExpectedRemote(operation.repository, options), operation.integrationBranch ?? null, options.generatedOutputs);
   }
 }
 
@@ -544,7 +552,7 @@ export function applyOperations(options = {}) {
           findings.push(finding('UNSAFE_PATH', operation.path));
           return { root, applied, findings, generatedOutputs: generatedOutputs(generatedEntries), blocked: true };
         }
-        execFileSync('git', ['clone', '--quiet', operation.source ?? resolveExpectedRemote(operation.repository, options), destination], { stdio: 'pipe' });
+        execFileSync('git', ['clone', '--quiet', '--branch', operation.integrationBranch, '--single-branch', operation.source ?? resolveExpectedRemote(operation.repository, options), destination], { stdio: 'pipe' });
       } else {
         mkdirSync(path.dirname(destination), { recursive: true });
         destination = resolveInside(root, operation.path);
