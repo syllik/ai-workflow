@@ -29,18 +29,23 @@ export function renderProjectIndex(manifest) {
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((project) => {
       const repositoryUrl = `https://github.com/${project.repository}`;
-      const link = project.access === 'managed'
-        ? `[${project.contextPath}](${repositoryUrl}/blob/HEAD/${project.contextPath})`
-        : `[repository source of truth](${repositoryUrl})`;
-      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${link} |`;
+      let link;
+      if (project.access === 'managed' && project.status === 'active') {
+        link = `[${project.contextPath}](${repositoryUrl}/blob/${project.integrationBranch}/${project.contextPath})`;
+      } else if (project.status === 'onboarding') {
+        link = `[onboarding source](${repositoryUrl}/tree/${project.integrationBranch})`;
+      } else {
+        link = `[repository source of truth](${repositoryUrl}/tree/${project.integrationBranch})`;
+      }
+      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} |`;
     });
   return finalNewline([
     '# Workspace project index',
     '',
-    'Generated from `workspace.yaml`. Read the target repository context; legacy central project contexts are migration-only.',
+    'Generated from `workspace.yaml`. Active managed projects route to context on their integration branch; onboarding records route only to repository source.',
     '',
-    '| Repository | Group | Access | Status | GitHub source |',
-    '| --- | --- | --- | --- | --- |',
+    '| Repository | Group | Access | Status | Integration branch | GitHub source |',
+    '| --- | --- | --- | --- | --- | --- |',
     ...rows
   ].join('\n'));
 }
