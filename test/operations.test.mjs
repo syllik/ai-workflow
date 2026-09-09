@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
 import { run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
-import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderLegacyProfileNavigation, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
@@ -477,6 +477,35 @@ describe('workspace operations', () => {
 
       const second = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
       assert.equal(second.operations.some(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('replaces the exact legacy markerless profile bootstrap instead of appending', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+      writeFileSync(path.join(repositoryPath, 'AI.md'), renderLegacyProfileNavigation(manifest), 'utf8');
+      git(repositoryPath, 'add', 'AI.md');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'legacy profile bootstrap');
+
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      const operation = plan.operations.find(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md');
+
+      assert.equal(operation?.kind, 'replace-managed-block');
+      assert.equal(operation?.content, renderProfileNavigation(manifest));
+
+      const applied = applyOperations({ root, plan });
+      assert.equal(applied.blocked, false);
+      const migrated = readFileSync(path.join(repositoryPath, 'AI.md'), 'utf8');
+      assert.equal(migrated, renderProfileNavigation(manifest));
+      assert.equal((migrated.match(/^# Canonical AI workflow$/gmu) ?? []).length, 1);
+      assert.equal(migrated.includes('ai-workflow:profile-navigation:start'), true);
+      assert.ok(Buffer.byteLength(migrated, 'utf8') <= 1024);
     } finally {
       removeFixtureRoot(root);
     }
