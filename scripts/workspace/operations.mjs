@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block', 'replace-generated-file']);
 
@@ -303,7 +303,7 @@ function isGeneratedOutput(statusPath, repositoryDestination, repositoryPath, ge
   return generatedOutputs.entries.some((entry) => entry.path === workspacePath && entry.fingerprint === currentFingerprint);
 }
 
-function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository) {
+function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository, legacyGeneratedContent = null) {
   const destination = resolveInside(root, relativePath);
   if (!destination) {
     findings.push(finding('UNSAFE_PATH', relativePath));
@@ -327,8 +327,15 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     findings.push(finding('MALFORMED_MARKER', relativePath));
     return;
   }
-  const content = replaceManagedBlock(current, name, desiredBlock);
-  if (content !== normalizeText(current)) {
+  const normalizedCurrent = normalizeText(current);
+  const normalizedLegacy = legacyGeneratedContent === null ? null : normalizeText(legacyGeneratedContent);
+  const migratesLegacyGeneratedFile = state.kind === 'missing'
+    && normalizedLegacy !== null
+    && normalizedCurrent === normalizedLegacy;
+  const content = migratesLegacyGeneratedFile
+    ? normalizeText(desiredBlock)
+    : replaceManagedBlock(current, name, desiredBlock);
+  if (content !== normalizedCurrent) {
     operations.push({
       kind: 'replace-managed-block',
       path: relativePath,
@@ -336,6 +343,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
       marker: name,
       block: desiredBlock,
       content,
+      legacyGeneratedContent: migratesLegacyGeneratedFile ? normalizedLegacy : null,
       expectedFingerprint: fingerprint(destination),
       ...repository
     });
@@ -439,7 +447,7 @@ export function planWorkspace(options = {}) {
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
       if (project.repository === 'syllik/syllik') {
-        addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository);
+        addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
       }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addContextOperation(root, operations, findings, project);
@@ -485,7 +493,14 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
     else {
       let expectedContent;
       try {
-        expectedContent = replaceManagedBlock(currentText, operation.marker, operation.block);
+        const normalizedCurrent = normalizeText(currentText);
+        const legacyMatches = state.kind === 'missing'
+          && operation.legacyGeneratedContent !== null
+          && operation.legacyGeneratedContent !== undefined
+          && normalizedCurrent === normalizeText(operation.legacyGeneratedContent);
+        expectedContent = legacyMatches
+          ? normalizeText(operation.block)
+          : replaceManagedBlock(currentText, operation.marker, operation.block);
       } catch {
         findings.push(finding('MALFORMED_MARKER', operation.path));
         return;
