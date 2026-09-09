@@ -18,6 +18,7 @@ projects:
     group: profile
     access: managed
     status: onboarding
+    integrationBranch: master
     contextPath: .ai/context.md
   - id: ChipIn-one/chipin-frontend
     repository: ChipIn-one/chipin-frontend
@@ -25,6 +26,7 @@ projects:
     group: products/chipin
     access: managed
     status: active
+    integrationBranch: dev
     contextPath: .ai/context.md
   - id: ChipIn-one/chipin-backend
     repository: ChipIn-one/chipin-backend
@@ -32,12 +34,14 @@ projects:
     group: products/chipin
     access: read-only
     status: active
+    integrationBranch: develop
   - id: syllik/chatgpt-archive-cleanup
     repository: syllik/chatgpt-archive-cleanup
     localPath: tools/ai/chatgpt-archive-cleanup
     group: tools/ai
     access: managed
     status: onboarding
+    integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/codex-local-runner
     repository: syllik/codex-local-runner
@@ -45,6 +49,7 @@ projects:
     group: tools/ai
     access: managed
     status: onboarding
+    integrationBranch: master
     contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
@@ -52,6 +57,7 @@ projects:
     group: tools/content
     access: managed
     status: onboarding
+    integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/ai-workflow
     repository: syllik/ai-workflow
@@ -59,6 +65,7 @@ projects:
     group: workflows/ai
     access: managed
     status: active
+    integrationBranch: master
     contextPath: .ai/context.md
   - id: syllik/gpg-signed-commits
     repository: syllik/gpg-signed-commits
@@ -66,4 +73,5 @@ projects:
     group: guides/git
     access: managed
     status: onboarding
+    integrationBranch: main
     contextPath: .ai/context.md
