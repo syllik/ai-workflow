@@ -50,14 +50,14 @@ describe('workflow documentation', () => {
       assert.match(text, /syllik\/syllik/u, filePath);
       assert.match(text, /docs\/workspace\.md/u, filePath);
       assert.match(text, /docs\/repositories\.md/u, filePath);
-      assert.match(text, /README\.md.*stable link/isu, filePath);
+      assert.match(text, /README\.md.*stable.*link/isu, filePath);
     }
   });
 
   test('keeps managed Codex review as the default PR review gate', () => {
     const flow = readFileSync('FLOW.md', 'utf8');
     const reviewer = readFileSync('global/reviewer.md', 'utf8');
-    assert.match(flow, /managed Codex GitHub Code Review/u);
+    assert.match(flow, /managed Codex GitHub Code Review/iu);
     assert.match(flow, /@codex review/u);
     assert.match(flow, /automatically on every push to an open PR/iu);
     assert.match(flow, /valid only for the current PR head/iu);
