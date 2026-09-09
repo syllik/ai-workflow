@@ -511,6 +511,36 @@ describe('workspace operations', () => {
     }
   });
 
+  test('blocks an oversized complete profile AI file during plan and verification', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+      mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
+      const oversizedAi = `${'x'.repeat(900)}\n${renderProfileNavigation(manifest)}`;
+      writeFileSync(path.join(repositoryPath, 'AI.md'), oversizedAi, 'utf8');
+      writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(repositoryPath, project.contextPath), renderContextScaffold(project), 'utf8');
+      writeFileSync(path.join(repositoryPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      git(repositoryPath, 'add', '.');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'oversized profile AI');
+
+      const manifestPath = writeFixtureManifest(root, manifest);
+      const plan = planWorkspace({ root, manifestPath, manifest });
+      assert.equal(plan.findings.some(({ code, path: findingPath, maxBytes }) =>
+        code === 'BUDGET_EXCEEDED' && findingPath === 'profile/syllik/AI.md' && maxBytes === 1024), true);
+      assert.equal(plan.blocked, true);
+
+      const findings = checkGeneratedFiles(root, manifest, manifestPath);
+      assert.equal(findings.some(({ code, path: findingPath, maxBytes }) =>
+        code === 'BUDGET_EXCEEDED' && findingPath === 'profile/syllik/AI.md' && maxBytes === 1024), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('does not clone or mutate explicit context dependencies', () => {
     const root = makeFixtureRoot();
     try {
