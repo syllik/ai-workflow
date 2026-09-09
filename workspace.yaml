@@ -17,7 +17,7 @@ projects:
     localPath: profile/syllik
     group: profile
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: master
     contextPath: .ai/context.md
   - id: ChipIn-one/chipin-frontend
@@ -40,7 +40,7 @@ projects:
     localPath: tools/ai/chatgpt-archive-cleanup
     group: tools/ai
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/codex-local-runner
@@ -56,7 +56,7 @@ projects:
     localPath: tools/content/youtube-metadata-translator
     group: tools/content
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/ai-workflow
@@ -72,6 +72,6 @@ projects:
     localPath: guides/git/gpg-signed-commits
     group: guides/git
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: main
     contextPath: .ai/context.md
