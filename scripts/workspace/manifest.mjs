@@ -19,7 +19,7 @@ export const HARD_BUDGETS = Object.freeze({
 });
 
 const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'projects']);
-const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'contextPath']);
+const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
@@ -98,6 +98,7 @@ export function validateManifest(value) {
       if (typeof project.repository !== 'string' || !REPOSITORY_PATTERN.test(project.repository)) findings.push(finding('INVALID_REPOSITORY', `${projectPath}.repository`));
       if (!isSafeRelativePath(project.localPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.localPath`));
       if (typeof project.group !== 'string' || !isSafeRelativePath(project.group)) findings.push(finding('INVALID_GROUP', `${projectPath}.group`));
+      if (!isSafeRelativePath(project.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
       if (!['managed', 'read-only'].includes(project.access)) findings.push(finding('INVALID_ACCESS', `${projectPath}.access`));
       if (!['onboarding', 'active'].includes(project.status)) findings.push(finding('INVALID_STATUS', `${projectPath}.status`));
       if (project.contextPath !== undefined && !isSafeRelativePath(project.contextPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.contextPath`));
