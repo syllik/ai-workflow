@@ -482,6 +482,30 @@ describe('workspace operations', () => {
     }
   });
 
+  test('routes and validates the profile repository case-insensitively', () => {
+    const root = makeFixtureRoot();
+    try {
+      const canonicalProject = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const project = { ...canonicalProject, repository: canonicalProject.repository.toUpperCase() };
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, 'https://github.com/syllik/syllik.git', project.integrationBranch);
+
+      const first = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(first.operations.some(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md'), true);
+
+      const applied = applyOperations({ root, plan: first });
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(repositoryPath, 'AI.md'), 'utf8'), renderProfileNavigation(manifest));
+
+      git(repositoryPath, 'add', '.');
+      git(repositoryPath, 'commit', '--quiet', '-m', 'generated uppercase profile contracts');
+      assert.deepEqual(checkGeneratedFiles(root, manifest, writeFixtureManifest(root, manifest)), []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('reports a profile AI directory as a destination collision without throwing', () => {
     const root = makeFixtureRoot();
     try {
