@@ -29,18 +29,23 @@ export function renderProjectIndex(manifest) {
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((project) => {
       const repositoryUrl = `https://github.com/${project.repository}`;
-      const link = project.access === 'managed'
-        ? `[${project.contextPath}](${repositoryUrl}/blob/HEAD/${project.contextPath})`
-        : `[repository source of truth](${repositoryUrl})`;
-      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${link} |`;
+      let link;
+      if (project.access === 'managed' && project.status === 'active') {
+        link = `[${project.contextPath}](${repositoryUrl}/blob/${project.integrationBranch}/${project.contextPath})`;
+      } else if (project.status === 'onboarding') {
+        link = `[onboarding source](${repositoryUrl}/tree/${project.integrationBranch})`;
+      } else {
+        link = `[repository source of truth](${repositoryUrl}/tree/${project.integrationBranch})`;
+      }
+      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} |`;
     });
   return finalNewline([
     '# Workspace project index',
     '',
-    'Generated from `workspace.yaml`. Read the target repository context; legacy central project contexts are migration-only.',
+    'Generated from `workspace.yaml`. Active managed projects route to context on their integration branch; onboarding records route only to repository source.',
     '',
-    '| Repository | Group | Access | Status | GitHub source |',
-    '| --- | --- | --- | --- | --- |',
+    '| Repository | Group | Access | Status | Integration branch | GitHub source |',
+    '| --- | --- | --- | --- | --- | --- |',
     ...rows
   ].join('\n'));
 }
@@ -56,7 +61,7 @@ export function renderProfileNavigation(manifest) {
     `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
-    '4. Read the target AGENTS.md and `.ai/context.md`.',
+    '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
     'GitHub is the only project registry. Do not auto-discover repositories or route into legacy central contexts.'
@@ -69,7 +74,7 @@ export function renderAgentsBlock(manifest) {
     `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read role rules from ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
-    '4. Read target `AGENTS.md`, then target `.ai/context.md`.',
+    '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
     'Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.',

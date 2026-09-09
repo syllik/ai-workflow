@@ -50,20 +50,21 @@ describe('workflow documentation', () => {
       assert.match(text, /syllik\/syllik/u, filePath);
       assert.match(text, /docs\/workspace\.md/u, filePath);
       assert.match(text, /docs\/repositories\.md/u, filePath);
-      assert.match(text, /README\.md.*stable link/isu, filePath);
+      assert.match(text, /README\.md.*stable.*link/isu, filePath);
     }
   });
 
   test('keeps managed Codex review as the default PR review gate', () => {
     const flow = readFileSync('FLOW.md', 'utf8');
     const reviewer = readFileSync('global/reviewer.md', 'utf8');
-    assert.match(flow, /managed Codex GitHub Code Review/u);
+    assert.match(flow, /managed Codex GitHub Code Review/iu);
     assert.match(flow, /@codex review/u);
-    assert.match(flow, /automatic review is disabled/iu);
-    assert.match(flow, /reviewed commit SHA matches the current PR head/iu);
+    assert.match(flow, /automatically on every push to an open PR/iu);
+    assert.match(flow, /valid only for the current PR head/iu);
     assert.match(flow, /@codex fix/u);
-    assert.match(flow, /Sol 5\.6 High is reserved for escalation or fallback/iu);
+    assert.match(flow, /Sol 5\.6 High is escalation\/fallback only/iu);
     assert.match(reviewer, /previous review is stale/iu);
+    assert.match(reviewer, /manual fallback\/retrigger/iu);
     assert.match(reviewer, /human\s+explicitly authorizes/iu);
     const executor = readFileSync('global/executor.md', 'utf8');
     assert.match(executor, /Routine published-PR review belongs to managed Codex GitHub Code Review/iu);
@@ -75,6 +76,15 @@ describe('workflow documentation', () => {
     assert.match(promptTemplate, /trusted\s+publication[\s\S]*managed\s+Codex\s+GitHub\s+Code\s+Review/iu);
     assert.match(reviewTemplate, /escalation\s*\/\s*fallback/iu);
     assert.match(reviewTemplate, /routine published PR review belongs to managed Codex GitHub Code Review/iu);
+    assert.match(reviewTemplate, /runs automatically on every push to an open PR/iu);
+    assert.match(reviewTemplate, /manual fallback\/retrigger/iu);
+  });
+
+  test('routes active work through explicit integration branches and restricts onboarding', () => {
+    const flow = readFileSync('FLOW.md', 'utf8');
+    assert.match(flow, /integrationBranch/u);
+    assert.match(flow, /onboarding managed projects only onboarding\/alignment/iu);
+    assert.match(flow, /Read-only projects are never write targets/iu);
   });
 
 });

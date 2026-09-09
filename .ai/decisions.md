@@ -7,3 +7,4 @@
 - Managed edits are deterministic, LF-only, idempotent, and limited to valid `ai-workflow` markers.
 - Canonical apply is supported after normal safety checks; Phase 1A used isolated fixtures and did not execute it against `~/Desktop/WORK`.
 - Managed Codex GitHub Code Review uses automatic review on every push to an open PR as the routine default; `@codex review` is the manual fallback/retrigger, and only a review of the current PR head is valid.
+- Each workspace record declares an explicit `integrationBranch`; active managed context is resolved on that branch, while onboarding records do not advertise context as ready for normal execution.

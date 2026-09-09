@@ -11,9 +11,13 @@ describe('renderers', () => {
     assert.equal(first, second);
     assert.equal(first.endsWith('\n'), true);
     assert.equal(first.includes('\r'), false);
-    assert.equal(first.includes('| ChipIn-one/chipin-backend | products/chipin | read-only | active | [repository source of truth](https://github.com/ChipIn-one/chipin-backend) |'), true);
-    assert.equal(first.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/HEAD/.ai/context.md) |'), true);
+    assert.equal(first.includes('| ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) |'), true);
+    assert.equal(first.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | dev | [onboarding source](https://github.com/ChipIn-one/chipin-frontend/tree/dev) |'), true);
+    manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend').status = 'active';
+    const active = renderProjectIndex(manifest);
+    assert.equal(active.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/.ai/context.md) |'), true);
     assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
+    assert.equal(first.includes('/blob/HEAD/.ai/context.md'), false);
     assert.equal(first.includes('../../../'), false);
   });
 
@@ -29,6 +33,7 @@ describe('renderers', () => {
     assert.match(output, /workspace\.yaml/);
     assert.match(output, /global\/architect\.md/);
     assert.match(output, /target AGENTS\.md/);
+    assert.match(output, /integrationBranch/);
     assert.equal(output.endsWith('\n'), true);
     assert.equal(output.includes('\r'), false);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
@@ -61,6 +66,7 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md',
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
     ]) assert.equal(output.includes(url), true, url);
+    assert.match(output, /integrationBranch/);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
   });
 });

@@ -29,7 +29,8 @@ describe('workspace operations', () => {
         kind: 'clone',
         repository: 'syllik/syllik',
         path: 'profile/syllik',
-        destination: path.join(root, 'profile/syllik')
+        destination: path.join(root, 'profile/syllik'),
+        integrationBranch: 'master'
       });
       assert.equal(result.blocked, false);
     } finally {
@@ -50,6 +51,25 @@ describe('workspace operations', () => {
     }
   });
 
+  test('blocks an existing repository checked out on the wrong integration branch', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+      const manifest = fixtureManifest({ projects: [project] });
+      const projectPath = path.join(root, project.localPath);
+      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, 'wrong-branch');
+
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(result.blocked, true);
+      assert.equal(result.findings.some(({ code, expected, actual }) =>
+        code === 'BRANCH_MISMATCH' && expected === project.integrationBranch && actual === 'wrong-branch'), true);
+      assert.deepEqual(result.operations, []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('plans a central generated index replacement alongside a new project clone', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();
@@ -62,6 +82,7 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, newProject] });
@@ -78,7 +99,7 @@ describe('workspace operations', () => {
       git(centralPath, 'commit', '--quiet', '-m', 'committed manifest change');
 
       const source = path.join(remoteRoot, 'new-approved-repository');
-      initFixtureRepo(source, 'https://github.com/syllik/new-approved-repository.git');
+      initFixtureRepo(source, 'https://github.com/syllik/new-approved-repository.git', newProject.integrationBranch);
       const plan = planWorkspace({
         root,
         manifestPath,
@@ -105,7 +126,7 @@ describe('workspace operations', () => {
       const manifest = fixtureManifest({ projects: [central, project] });
       const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
       const projectPath = path.join(root, project.localPath);
-      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
       writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       writeFileSync(path.join(projectPath, project.contextPath), renderContextScaffold(project), 'utf8');
@@ -165,6 +186,7 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, project] });
@@ -378,7 +400,7 @@ describe('workspace operations', () => {
       const manifest = fixtureManifest({ projects: [central, readOnly] });
       const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
       const source = path.join(remoteRoot, 'chipin-backend');
-      initFixtureRepo(source, `https://github.com/${readOnly.repository}.git`);
+      initFixtureRepo(source, `https://github.com/${readOnly.repository}.git`, readOnly.integrationBranch);
 
       const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
         cloneSource: { [readOnly.repository]: source },
@@ -407,12 +429,13 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, project] });
       const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest, { indexManifest: { ...manifest, projects: [central] } });
       const source = path.join(remoteRoot, 'new-approved-repository');
-      initFixtureRepo(source, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(source, `https://github.com/${project.repository}.git`, project.integrationBranch);
 
       const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
         cloneSource: { [project.repository]: source },
@@ -443,8 +466,8 @@ describe('workspace operations', () => {
       });
       const frontendPath = path.join(root, manifest.projects[0].localPath);
       const archivePath = path.join(root, manifest.projects[1].localPath);
-      initFixtureRepo(frontendPath, 'https://github.com/ChipIn-one/chipin-frontend.git');
-      initFixtureRepo(archivePath, 'https://github.com/syllik/chatgpt-archive-cleanup.git');
+      initFixtureRepo(frontendPath, 'https://github.com/ChipIn-one/chipin-frontend.git', manifest.projects[0].integrationBranch);
+      initFixtureRepo(archivePath, 'https://github.com/syllik/chatgpt-archive-cleanup.git', manifest.projects[1].integrationBranch);
 
       writeFileSync(path.join(frontendPath, 'AGENTS.md'), `Repository rules\n${renderManagedBlock('agents-routing', 'old routing')}\n`, 'utf8');
       mkdirSync(path.join(frontendPath, '.ai'), { recursive: true });
@@ -496,7 +519,7 @@ describe('workspace operations', () => {
     const root = makeFixtureRoot();
     try {
       const manifest = fixtureManifest({ projects: [fixtureManifest().projects[2]] });
-      initFixtureRepo(path.join(root, 'products/chipin/chipin-backend'), 'https://github.com/ChipIn-one/chipin-backend.git');
+      initFixtureRepo(path.join(root, 'products/chipin/chipin-backend'), 'https://github.com/ChipIn-one/chipin-backend.git', manifest.projects[0].integrationBranch);
       mkdirSync(path.join(root, 'projects'), { recursive: true });
       writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
@@ -519,7 +542,7 @@ describe('workspace operations', () => {
       initFixtureRepo(dirty, 'https://github.com/syllik/codex-local-runner.git');
       writeFileSync(path.join(dirty, 'dirty.txt'), 'dirty\n');
       const backend = path.join(root, 'products/chipin/chipin-backend');
-      initFixtureRepo(backend, 'https://github.com/ChipIn-one/chipin-backend.git');
+      initFixtureRepo(backend, 'https://github.com/ChipIn-one/chipin-backend.git', 'develop');
       const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root), manifest: fixtureManifest() });
       const codes = new Set(result.findings.map(({ code }) => code));
       assert.equal(codes.has('ORIGIN_MISMATCH'), true);
@@ -539,7 +562,7 @@ describe('workspace operations', () => {
         const project = fixtureManifest().projects[0];
         const manifest = fixtureManifest({ projects: [project] });
         const repositoryPath = path.join(root, project.localPath);
-        initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+        initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
         const content = `pre-existing ${relativePath}\n`;
         mkdirSync(path.dirname(path.join(repositoryPath, relativePath)), { recursive: true });
         writeFileSync(path.join(repositoryPath, relativePath), content, 'utf8');
@@ -563,7 +586,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const repositoryPath = path.join(root, project.localPath);
-      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
 
       const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
@@ -578,7 +601,7 @@ describe('workspace operations', () => {
     const root = makeFixtureRoot();
     try {
       const target = path.join(root, 'workflows/ai/ai-workflow');
-      initFixtureRepo(target, 'https://github.com/syllik/ai-workflow.git');
+      initFixtureRepo(target, 'https://github.com/syllik/ai-workflow.git', 'master');
       mkdirSync(path.join(target, '.ai'), { recursive: true });
       writeFileSync(path.join(target, '.ai/context.md'), 'existing context\n', 'utf8');
       git(target, 'add', '.ai/context.md');
@@ -601,7 +624,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const repositoryPath = path.join(root, project.localPath);
-      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
       const context = '# Project\n\n## Repository\nsyllik/syllik\n\n## Purpose\nDurable project facts.\n';
       writeFileSync(path.join(repositoryPath, project.contextPath), context, 'utf8');
@@ -635,7 +658,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const repositoryPath = path.join(root, project.localPath);
-      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
       writeFileSync(path.join(repositoryPath, project.contextPath), `# Project\n${'🙂'.repeat(2048)}\n`, 'utf8');
       git(repositoryPath, 'add', '.ai/context.md');
@@ -656,7 +679,7 @@ describe('workspace operations', () => {
       const manifest = fixtureManifest();
       for (const project of manifest.projects) {
         const projectPath = path.join(root, project.localPath);
-        initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`);
+        initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
         if (project.access === 'managed') {
           mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
           writeFileSync(path.join(projectPath, project.contextPath), renderContextScaffold(project), 'utf8');
@@ -722,7 +745,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [{ ...project, localPath: 'linked/repository' }] });
       const outsideRepository = path.join(outside, 'repository');
-      initFixtureRepo(outsideRepository, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(outsideRepository, `https://github.com/${project.repository}.git`, project.integrationBranch);
       symlinkSync(outside, path.join(root, 'linked'));
       const sentinel = path.join(outsideRepository, 'sentinel.txt');
       writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
@@ -745,7 +768,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const repositoryPath = path.join(root, project.localPath);
-      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       const sentinel = path.join(outside, 'sentinel.txt');
       writeFileSync(sentinel, 'outside remains unchanged\n', 'utf8');
       symlinkSync(outside, path.join(repositoryPath, '.ai'));
@@ -771,7 +794,7 @@ describe('workspace operations', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const repositoryPath = path.join(root, project.localPath);
-      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
       writeFileSync(path.join(repositoryPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
       mkdirSync(path.join(repositoryPath, '.ai'), { recursive: true });
       writeFileSync(path.join(repositoryPath, project.contextPath), renderContextScaffold(project), 'utf8');
@@ -819,7 +842,7 @@ describe('workspace operations', () => {
       writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
 
       const managedPath = path.join(root, managed.localPath);
-      initFixtureRepo(managedPath, `https://github.com/${managed.repository}.git`);
+      initFixtureRepo(managedPath, `https://github.com/${managed.repository}.git`, managed.integrationBranch);
       mkdirSync(path.join(managedPath, '.ai/tasks/target-task'), { recursive: true });
       writeFileSync(path.join(managedPath, managed.contextPath), 'x'.repeat(8193), 'utf8');
       writeFileSync(path.join(managedPath, '.ai/tasks/target-task/prompt.md'), 'x'.repeat(8193), 'utf8');
@@ -827,7 +850,7 @@ describe('workspace operations', () => {
       writeFileSync(path.join(managedPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
 
       const readOnlyPath = path.join(root, readOnly.localPath);
-      initFixtureRepo(readOnlyPath, `https://github.com/${readOnly.repository}.git`);
+      initFixtureRepo(readOnlyPath, `https://github.com/${readOnly.repository}.git`, readOnly.integrationBranch);
       mkdirSync(path.join(readOnlyPath, '.ai/tasks/should-not-read'), { recursive: true });
       writeFileSync(path.join(readOnlyPath, '.ai/tasks/should-not-read/result.md'), 'x'.repeat(4097), 'utf8');
       mkdirSync(path.join(root, 'unrelated/build-output'), { recursive: true });
