@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
 import { run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
-import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
@@ -451,6 +451,52 @@ describe('workspace operations', () => {
       assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
     } finally {
       removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('manages the profile AI entry as canonical generated routing', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+
+      const first = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(first.operations.some(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md'), true);
+      const applied = applyOperations({ root, plan: first });
+      assert.equal(applied.blocked, false);
+      assert.equal(readFileSync(path.join(repositoryPath, 'AI.md'), 'utf8'), renderProfileNavigation(manifest));
+
+      const second = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+      assert.equal(second.operations.some(({ path: operationPath }) => operationPath === 'profile/syllik/AI.md'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('does not clone or mutate explicit context dependencies', () => {
+    const root = makeFixtureRoot();
+    try {
+      const project = {
+        ...fixtureManifest().projects.find(({ repository }) => repository === 'ChipIn-one/chipin-backend'),
+        contextDependencies: [{
+          repository: 'ChipIn-one/chipin-knowledge-base',
+          integrationBranch: 'main',
+          access: 'read-only'
+        }]
+      };
+      const manifest = fixtureManifest({ projects: [project] });
+      const repositoryPath = path.join(root, project.localPath);
+      initFixtureRepo(repositoryPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+
+      const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(plan.blocked, false);
+      assert.equal(plan.operations.some(({ repository }) => repository === 'ChipIn-one/chipin-knowledge-base'), false);
+      assert.equal(plan.operations.some(({ path: operationPath }) => operationPath.includes('chipin-knowledge-base')), false);
+    } finally {
       removeFixtureRoot(root);
     }
   });
