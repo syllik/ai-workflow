@@ -52,6 +52,27 @@ describe('manifest', () => {
     ]);
   });
 
+  test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
+    const valid = fixtureManifest();
+    valid.projects[2].contextDependencies = [{
+      repository: 'ChipIn-one/chipin-knowledge-base',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+    assert.deepEqual(validateManifest(valid).findings, []);
+
+    const invalid = fixtureManifest();
+    invalid.projects[2].contextDependencies = [
+      { repository: invalid.projects[2].repository, integrationBranch: '../main', access: 'managed' },
+      { repository: invalid.projects[2].repository, integrationBranch: 'main', access: 'read-only' }
+    ];
+    const codes = validateManifest(invalid).findings.map(({ code }) => code);
+    assert.equal(codes.includes('INVALID_DEPENDENCY_BRANCH'), true);
+    assert.equal(codes.includes('INVALID_DEPENDENCY_ACCESS'), true);
+    assert.equal(codes.includes('SELF_CONTEXT_DEPENDENCY'), true);
+    assert.equal(codes.includes('DUPLICATE_CONTEXT_DEPENDENCY'), true);
+  });
+
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
