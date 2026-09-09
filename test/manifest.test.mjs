@@ -105,6 +105,31 @@ describe('manifest', () => {
     ]);
   });
 
+  test('normalizes repository case for dependency alias checks', () => {
+    const selfAlias = fixtureManifest();
+    selfAlias.projects[2].contextDependencies = [{
+      repository: selfAlias.projects[2].repository.toUpperCase(),
+      integrationBranch: 'develop',
+      access: 'read-only'
+    }];
+    assert.equal(validateManifest(selfAlias).findings.some(({ code }) => code === 'SELF_CONTEXT_DEPENDENCY'), true);
+
+    const managedAlias = fixtureManifest();
+    managedAlias.projects[2].contextDependencies = [{
+      repository: 'SYLLIK/SYLLIK',
+      integrationBranch: 'master',
+      access: 'read-only'
+    }];
+    assert.equal(validateManifest(managedAlias).findings.some(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY'), true);
+
+    const duplicateAlias = fixtureManifest();
+    duplicateAlias.projects[2].contextDependencies = [
+      { repository: 'ChipIn-one/chipin-knowledge-base', integrationBranch: 'main', access: 'read-only' },
+      { repository: 'CHIPIN-ONE/CHIPIN-KNOWLEDGE-BASE', integrationBranch: 'main', access: 'read-only' }
+    ];
+    assert.equal(validateManifest(duplicateAlias).findings.some(({ code }) => code === 'DUPLICATE_CONTEXT_DEPENDENCY'), true);
+  });
+
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
