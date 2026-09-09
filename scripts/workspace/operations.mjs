@@ -311,6 +311,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
   }
   const current = existsSync(destination) ? readFileSync(destination, 'utf8') : null;
   if (current === null) {
+    if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: desiredBlock }, BUDGETS));
     operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock, ...repository });
     return;
   }
@@ -335,6 +336,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
   const content = migratesLegacyGeneratedFile
     ? normalizeText(desiredBlock)
     : replaceManagedBlock(current, name, desiredBlock);
+  if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: content }, BUDGETS));
   if (content !== normalizedCurrent) {
     operations.push({
       kind: 'replace-managed-block',
@@ -711,6 +713,10 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
       continue;
     }
     if (!isDirectory(repository)) continue;
+    if (project.repository === 'syllik/syllik') {
+      const profileAi = readKnownArtifact(repository, 'AI.md', findings);
+      if (profileAi) entries.push({ path: path.posix.join(project.localPath, profileAi.path), text: profileAi.text });
+    }
     for (const relativePath of [project.contextPath, '.ai/decisions.md']) {
       const artifact = readKnownArtifact(repository, relativePath, findings);
       if (artifact) entries.push({ path: path.posix.join(project.localPath, artifact.path), text: artifact.text });
