@@ -5,14 +5,14 @@ import path from 'node:path';
 import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
 
 export const expectedProjects = [
-  { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'ChipIn-one/chipin-frontend', repository: 'ChipIn-one/chipin-frontend', localPath: 'products/chipin/chipin-frontend', group: 'products/chipin', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'ChipIn-one/chipin-backend', repository: 'ChipIn-one/chipin-backend', localPath: 'products/chipin/chipin-backend', group: 'products/chipin', access: 'read-only', status: 'active' },
-  { id: 'syllik/chatgpt-archive-cleanup', repository: 'syllik/chatgpt-archive-cleanup', localPath: 'tools/ai/chatgpt-archive-cleanup', group: 'tools/ai', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/codex-local-runner', repository: 'syllik/codex-local-runner', localPath: 'tools/ai/codex-local-runner', group: 'tools/ai', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/youtube-metadata-translator', repository: 'syllik/youtube-metadata-translator', localPath: 'tools/content/youtube-metadata-translator', group: 'tools/content', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' },
-  { id: 'syllik/ai-workflow', repository: 'syllik/ai-workflow', localPath: 'workflows/ai/ai-workflow', group: 'workflows/ai', access: 'managed', status: 'active', contextPath: '.ai/context.md' },
-  { id: 'syllik/gpg-signed-commits', repository: 'syllik/gpg-signed-commits', localPath: 'guides/git/gpg-signed-commits', group: 'guides/git', access: 'managed', status: 'onboarding', contextPath: '.ai/context.md' }
+  { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'onboarding', integrationBranch: 'master', contextPath: '.ai/context.md' },
+  { id: 'ChipIn-one/chipin-frontend', repository: 'ChipIn-one/chipin-frontend', localPath: 'products/chipin/chipin-frontend', group: 'products/chipin', access: 'managed', status: 'onboarding', integrationBranch: 'dev', contextPath: '.ai/context.md' },
+  { id: 'ChipIn-one/chipin-backend', repository: 'ChipIn-one/chipin-backend', localPath: 'products/chipin/chipin-backend', group: 'products/chipin', access: 'read-only', status: 'active', integrationBranch: 'develop' },
+  { id: 'syllik/chatgpt-archive-cleanup', repository: 'syllik/chatgpt-archive-cleanup', localPath: 'tools/ai/chatgpt-archive-cleanup', group: 'tools/ai', access: 'managed', status: 'onboarding', integrationBranch: 'main', contextPath: '.ai/context.md' },
+  { id: 'syllik/codex-local-runner', repository: 'syllik/codex-local-runner', localPath: 'tools/ai/codex-local-runner', group: 'tools/ai', access: 'managed', status: 'onboarding', integrationBranch: 'master', contextPath: '.ai/context.md' },
+  { id: 'syllik/youtube-metadata-translator', repository: 'syllik/youtube-metadata-translator', localPath: 'tools/content/youtube-metadata-translator', group: 'tools/content', access: 'managed', status: 'onboarding', integrationBranch: 'main', contextPath: '.ai/context.md' },
+  { id: 'syllik/ai-workflow', repository: 'syllik/ai-workflow', localPath: 'workflows/ai/ai-workflow', group: 'workflows/ai', access: 'managed', status: 'active', integrationBranch: 'master', contextPath: '.ai/context.md' },
+  { id: 'syllik/gpg-signed-commits', repository: 'syllik/gpg-signed-commits', localPath: 'guides/git/gpg-signed-commits', group: 'guides/git', access: 'managed', status: 'onboarding', integrationBranch: 'main', contextPath: '.ai/context.md' }
 ];
 
 export const fixtureBudgets = {
