@@ -2,7 +2,7 @@
 
 GitHub is the only project registry:
 `AI.md -> FLOW.md -> workspace record -> role rules -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
-Use `integrationBranch` for target files. Do not auto-discover repos. Active managed projects may receive normal work; onboarding managed projects only onboarding/alignment until routing/context exists. Read-only projects are never write targets. Target repos own invariants; task prompts own scope/validation.
+Use `integrationBranch` for target files. Do not auto-discover repos. Active managed projects may receive normal work; onboarding managed projects only onboarding/alignment until routing/context exists. Read-only projects are never write targets. Read explicit `contextDependencies` only when required; they are read-only, and unavailable required context blocks work.
 
 New repos need human licensing before first commit. Net-new tools require analogue research and should prefer viable licensed reuse/fork over greenfield.
 
@@ -14,4 +14,4 @@ Trusted publication creates or updates the PR. Managed Codex GitHub Code Review 
 
 Use persisted state for long/audit-significant work. Never store secrets or credentials.
 
-Task publication has one source of truth: tracker workflow owns status, fields own priority/scope, descriptions keep `Problem -> Outcome -> Acceptance -> Dependencies -> References`, transient evidence stays in comments/results, and project rules may only narrow this contract.
+Task publication has one source of truth: tracker owns status, fields own priority/scope, descriptions keep `Problem -> Outcome -> Acceptance -> Dependencies -> References`, transient evidence stays in comments/results, and project rules may only narrow this contract.
