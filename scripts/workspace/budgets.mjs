@@ -8,6 +8,7 @@ export function utf8Bytes(text) {
 
 function resolveMaximum(filePath, budgets) {
   if (Object.hasOwn(budgets, filePath)) return budgets[filePath];
+  if (filePath.endsWith('/AI.md')) return budgets['AI.md'];
   if (/^(?:global\/|global\\)/.test(filePath)) return budgets['global role file'];
   if (filePath.endsWith('/.ai/context.md') || filePath === '.ai/context.md') return budgets['.ai/context.md'];
   if (filePath.endsWith('/decisions.md') || filePath === 'decisions.md') return budgets['one decision record'];

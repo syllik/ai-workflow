@@ -52,6 +52,84 @@ describe('manifest', () => {
     ]);
   });
 
+  test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
+    const valid = fixtureManifest();
+    valid.projects[2].contextDependencies = [{
+      repository: 'ChipIn-one/chipin-knowledge-base',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+    assert.deepEqual(validateManifest(valid).findings, []);
+
+    const invalid = fixtureManifest();
+    invalid.projects[2].contextDependencies = [
+      { repository: invalid.projects[2].repository, integrationBranch: '../main', access: 'managed' },
+      { repository: invalid.projects[2].repository, integrationBranch: 'main', access: 'read-only' }
+    ];
+    const codes = validateManifest(invalid).findings.map(({ code }) => code);
+    assert.equal(codes.includes('INVALID_DEPENDENCY_BRANCH'), true);
+    assert.equal(codes.includes('INVALID_DEPENDENCY_ACCESS'), true);
+    assert.equal(codes.includes('SELF_CONTEXT_DEPENDENCY'), true);
+    assert.equal(codes.includes('DUPLICATE_CONTEXT_DEPENDENCY'), true);
+  });
+
+  test('rejects excluded repositories used as context dependencies', () => {
+    const manifest = fixtureManifest();
+    manifest.projects[2].contextDependencies = [{
+      repository: 'tangem/private-context',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'EXCLUDED_REPOSITORY').map(({ path }) => path), [
+      'manifest.projects[2].contextDependencies[0].repository'
+    ]);
+  });
+
+  test('rejects context dependencies that alias managed workspace projects', () => {
+    const manifest = fixtureManifest();
+    manifest.projects[2].contextDependencies = [{
+      repository: 'syllik/syllik',
+      integrationBranch: 'master',
+      access: 'read-only'
+    }];
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY').map(({ path }) => path), [
+      'manifest.projects[2].contextDependencies[0].repository'
+    ]);
+  });
+
+  test('normalizes repository case for dependency alias checks', () => {
+    const selfAlias = fixtureManifest();
+    selfAlias.projects[2].contextDependencies = [{
+      repository: selfAlias.projects[2].repository.toUpperCase(),
+      integrationBranch: 'develop',
+      access: 'read-only'
+    }];
+    assert.equal(validateManifest(selfAlias).findings.some(({ code }) => code === 'SELF_CONTEXT_DEPENDENCY'), true);
+
+    const managedAlias = fixtureManifest();
+    managedAlias.projects[2].contextDependencies = [{
+      repository: 'SYLLIK/SYLLIK',
+      integrationBranch: 'master',
+      access: 'read-only'
+    }];
+    assert.equal(validateManifest(managedAlias).findings.some(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY'), true);
+
+    const duplicateAlias = fixtureManifest();
+    duplicateAlias.projects[2].contextDependencies = [
+      { repository: 'ChipIn-one/chipin-knowledge-base', integrationBranch: 'main', access: 'read-only' },
+      { repository: 'CHIPIN-ONE/CHIPIN-KNOWLEDGE-BASE', integrationBranch: 'main', access: 'read-only' }
+    ];
+    assert.equal(validateManifest(duplicateAlias).findings.some(({ code }) => code === 'DUPLICATE_CONTEXT_DEPENDENCY'), true);
+  });
+
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;

@@ -19,7 +19,8 @@ export const HARD_BUDGETS = Object.freeze({
 });
 
 const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'projects']);
-const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath']);
+const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
+const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
@@ -46,6 +47,15 @@ function isSafeRelativePath(value) {
     && !value.includes('\0')
     && SAFE_RELATIVE_PATH.test(value)
     && !value.split('/').some((part) => part === '.' || part === '..');
+}
+
+function isExcludedRepository(repository) {
+  return typeof repository === 'string'
+    && (/^tangem(?:\/|$)/i.test(repository) || /syllik\.github\.io/i.test(repository));
+}
+
+function normalizedRepository(repository) {
+  return typeof repository === 'string' ? repository.toLowerCase() : repository;
 }
 
 function checkDuplicates(projects, findings) {
@@ -87,6 +97,10 @@ export function validateManifest(value) {
   if (!Array.isArray(value.projects)) {
     findings.push(finding('INVALID_PROJECTS', 'manifest.projects'));
   } else {
+    const managedRepositories = new Set(value.projects
+      .filter((project) => isObject(project) && project.access === 'managed' && typeof project.repository === 'string')
+      .map((project) => normalizedRepository(project.repository)));
+
     value.projects.forEach((project, index) => {
       const projectPath = `manifest.projects[${index}]`;
       if (!isObject(project)) {
@@ -106,10 +120,51 @@ export function validateManifest(value) {
       else if (project.access === 'managed' && project.contextPath !== '.ai/context.md') findings.push(finding('MANAGED_CONTEXT_PATH_INVALID', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.contextPath !== undefined) findings.push(finding('READ_ONLY_CONTEXT_FORBIDDEN', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.status !== 'active') findings.push(finding('INVALID_COMBINATION', `${projectPath}.status`));
+      if (project.contextDependencies !== undefined) {
+        if (!Array.isArray(project.contextDependencies)) {
+          findings.push(finding('INVALID_CONTEXT_DEPENDENCIES', `${projectPath}.contextDependencies`));
+        } else {
+          const dependencyRepositories = new Set();
+          project.contextDependencies.forEach((dependency, dependencyIndex) => {
+            const dependencyPath = `${projectPath}.contextDependencies[${dependencyIndex}]`;
+            if (!isObject(dependency)) {
+              findings.push(finding('INVALID_CONTEXT_DEPENDENCY', dependencyPath));
+              return;
+            }
+            checkUnknownKeys(dependency, DEPENDENCY_KEYS, dependencyPath, findings);
+            if (typeof dependency.repository !== 'string' || !REPOSITORY_PATTERN.test(dependency.repository)) {
+              findings.push(finding('INVALID_DEPENDENCY_REPOSITORY', `${dependencyPath}.repository`));
+            }
+            if (isExcludedRepository(dependency.repository)) {
+              findings.push(finding('EXCLUDED_REPOSITORY', `${dependencyPath}.repository`));
+            }
+            if (!isSafeRelativePath(dependency.integrationBranch)) {
+              findings.push(finding('INVALID_DEPENDENCY_BRANCH', `${dependencyPath}.integrationBranch`));
+            }
+            if (dependency.access !== 'read-only') {
+              findings.push(finding('INVALID_DEPENDENCY_ACCESS', `${dependencyPath}.access`));
+            }
+            const normalizedDependencyRepository = normalizedRepository(dependency.repository);
+            const normalizedProjectRepository = normalizedRepository(project.repository);
+            if (normalizedDependencyRepository === normalizedProjectRepository) {
+              findings.push(finding('SELF_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+            }
+            if (normalizedDependencyRepository !== normalizedProjectRepository && managedRepositories.has(normalizedDependencyRepository)) {
+              findings.push(finding('MANAGED_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+            }
+            if (typeof dependency.repository === 'string') {
+              if (dependencyRepositories.has(normalizedDependencyRepository)) {
+                findings.push(finding('DUPLICATE_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
+              }
+              dependencyRepositories.add(normalizedDependencyRepository);
+            }
+          });
+        }
+      }
     });
     checkDuplicates(value.projects, findings);
     value.projects.forEach((project, index) => {
-      if (typeof project?.repository === 'string' && (/^tangem(?:\/|$)/i.test(project.repository) || /syllik\.github\.io/i.test(project.repository))) {
+      if (isExcludedRepository(project?.repository)) {
         findings.push(finding('EXCLUDED_REPOSITORY', `manifest.projects[${index}].repository`));
       }
     });

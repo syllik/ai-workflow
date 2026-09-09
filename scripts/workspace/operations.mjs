@@ -4,12 +4,13 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block', 'replace-generated-file']);
 
 const GENERATED_OUTPUT_TOKEN = {};
 const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
+const PROFILE_REPOSITORY = 'syllik/syllik';
 const CENTRAL_INDEX_PATH = 'projects/index.md';
 const CENTRAL_IDENTITY_FINDING = 'CENTRAL_REPOSITORY_UNVERIFIED';
 
@@ -120,6 +121,14 @@ function command(directory, args) {
   } catch {
     return null;
   }
+}
+
+function normalizedRepository(repository) {
+  return typeof repository === 'string' ? repository.toLowerCase() : repository;
+}
+
+function isProfileRepository(repository) {
+  return normalizedRepository(repository) === PROFILE_REPOSITORY;
 }
 
 function normalizedRemote(value) {
@@ -303,14 +312,14 @@ function isGeneratedOutput(statusPath, repositoryDestination, repositoryPath, ge
   return generatedOutputs.entries.some((entry) => entry.path === workspacePath && entry.fingerprint === currentFingerprint);
 }
 
-function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository) {
+function addManagedFileOperation(root, operations, findings, relativePath, name, desiredBlock, repository, legacyGeneratedContent = null) {
   const destination = resolveInside(root, relativePath);
   if (!destination) {
     findings.push(finding('UNSAFE_PATH', relativePath));
     return;
   }
-  const current = existsSync(destination) ? readFileSync(destination, 'utf8') : null;
-  if (current === null) {
+  if (!existsSync(destination)) {
+    if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: desiredBlock }, BUDGETS));
     operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock, ...repository });
     return;
   }
@@ -318,6 +327,7 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     findings.push(finding('DESTINATION_COLLISION', relativePath));
     return;
   }
+  const current = readFileSync(destination, 'utf8');
   const state = markerState(current, name);
   if (state.kind === 'duplicate') {
     findings.push(finding('DUPLICATE_MARKER', relativePath));
@@ -327,8 +337,16 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     findings.push(finding('MALFORMED_MARKER', relativePath));
     return;
   }
-  const content = replaceManagedBlock(current, name, desiredBlock);
-  if (content !== normalizeText(current)) {
+  const normalizedCurrent = normalizeText(current);
+  const normalizedLegacy = legacyGeneratedContent === null ? null : normalizeText(legacyGeneratedContent);
+  const migratesLegacyGeneratedFile = state.kind === 'missing'
+    && normalizedLegacy !== null
+    && normalizedCurrent === normalizedLegacy;
+  const content = migratesLegacyGeneratedFile
+    ? normalizeText(desiredBlock)
+    : replaceManagedBlock(current, name, desiredBlock);
+  if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: content }, BUDGETS));
+  if (content !== normalizedCurrent) {
     operations.push({
       kind: 'replace-managed-block',
       path: relativePath,
@@ -356,7 +374,8 @@ function addDecisionsOperation(root, operations, findings, project) {
       destination,
       content: renderDecisionsScaffold(),
       repositoryPath: project.localPath,
-      repository: project.repository
+      repository: project.repository,
+      integrationBranch: project.integrationBranch
     });
   } else if (!lstatSync(destination).isFile()) {
     findings.push(finding('DESTINATION_COLLISION', relativePath));
@@ -380,7 +399,8 @@ function addContextOperation(root, operations, findings, project) {
       destination,
       content: desired,
       repositoryPath: project.localPath,
-      repository: project.repository
+      repository: project.repository,
+      integrationBranch: project.integrationBranch
     });
     return;
   }
@@ -436,6 +456,9 @@ export function planWorkspace(options = {}) {
     if (!safeRepository) continue;
     if (project.access === 'managed') {
       const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
+      if (isProfileRepository(project.repository)) {
+        addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
+      }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addContextOperation(root, operations, findings, project);
       addDecisionsOperation(root, operations, findings, project);
@@ -480,7 +503,14 @@ function preflightOperation(root, operation, plan, findings, options = {}) {
     else {
       let expectedContent;
       try {
-        expectedContent = replaceManagedBlock(currentText, operation.marker, operation.block);
+        const normalizedCurrent = normalizeText(currentText);
+        const legacyProfileMatches = state.kind === 'missing'
+          && operation.marker === 'profile-navigation'
+          && isProfileRepository(operation.repository)
+          && normalizedCurrent === normalizeText(renderLegacyProfileNavigation(plan.manifest));
+        expectedContent = legacyProfileMatches
+          ? normalizeText(operation.block)
+          : replaceManagedBlock(currentText, operation.marker, operation.block);
       } catch {
         findings.push(finding('MALFORMED_MARKER', operation.path));
         return;
@@ -692,6 +722,10 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
       continue;
     }
     if (!isDirectory(repository)) continue;
+    if (isProfileRepository(project.repository)) {
+      const profileAi = readKnownArtifact(repository, 'AI.md', findings);
+      if (profileAi) entries.push({ path: path.posix.join(project.localPath, profileAi.path), text: profileAi.text });
+    }
     for (const relativePath of [project.contextPath, '.ai/decisions.md']) {
       const artifact = readKnownArtifact(repository, relativePath, findings);
       if (artifact) entries.push({ path: path.posix.join(project.localPath, artifact.path), text: artifact.text });
@@ -738,6 +772,21 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     }
     if (!isDirectory(repository)) continue;
     checkAgents(repository, 'AGENTS.md', path.posix.join(project.localPath, 'AGENTS.md'));
+    if (isProfileRepository(project.repository)) {
+      const aiPath = resolveInside(repository, 'AI.md');
+      const findingPath = path.posix.join(project.localPath, 'AI.md');
+      const desired = renderProfileNavigation(manifest);
+      if (!aiPath || !isRegularFile(aiPath)) {
+        if (!aiPath) addUniqueFinding(findings, 'UNSAFE_PATH', findingPath);
+        else findings.push(finding('GENERATED_DRIFT', findingPath));
+      } else {
+        const current = readFileSync(aiPath, 'utf8');
+        const state = markerState(current, 'profile-navigation');
+        if (state.kind !== 'valid' || replaceManagedBlock(current, 'profile-navigation', desired) !== normalizeText(current)) {
+          findings.push(finding('GENERATED_DRIFT', findingPath));
+        }
+      }
+    }
     const contextPath = resolveInside(repository, project.contextPath);
     if (!contextPath || !isRegularFile(contextPath)) {
       if (!contextPath) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join(project.localPath, project.contextPath));

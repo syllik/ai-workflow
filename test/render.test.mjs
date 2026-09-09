@@ -11,11 +11,15 @@ describe('renderers', () => {
     assert.equal(first, second);
     assert.equal(first.endsWith('\n'), true);
     assert.equal(first.includes('\r'), false);
-    assert.equal(first.includes('| ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) |'), true);
-    assert.equal(first.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | dev | [onboarding source](https://github.com/ChipIn-one/chipin-frontend/tree/dev) |'), true);
-    manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend').status = 'active';
-    const active = renderProjectIndex(manifest);
-    assert.equal(active.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/.ai/context.md) |'), true);
+    assert.equal(first.includes('| ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) | — |'), true);
+    assert.equal(first.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/.ai/context.md) | — |'), true);
+    manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend').status = 'onboarding';
+    const onboarding = renderProjectIndex(manifest);
+    assert.equal(onboarding.includes('| ChipIn-one/chipin-frontend | products/chipin | managed | onboarding | dev | [onboarding source](https://github.com/ChipIn-one/chipin-frontend/tree/dev) | — |'), true);
+    const backend = manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-backend');
+    backend.contextDependencies = [{ repository: 'ChipIn-one/chipin-knowledge-base', integrationBranch: 'main', access: 'read-only' }];
+    const withDependency = renderProjectIndex(manifest);
+    assert.equal(withDependency.includes('[ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/main)'), true);
     assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
     assert.equal(first.includes('/blob/HEAD/.ai/context.md'), false);
     assert.equal(first.includes('../../../'), false);
@@ -34,6 +38,9 @@ describe('renderers', () => {
     assert.match(output, /global\/architect\.md/);
     assert.match(output, /target AGENTS\.md/);
     assert.match(output, /integrationBranch/);
+    assert.match(output, /contextDependencies/);
+    assert.match(output, /ai-workflow:profile-navigation:start/);
+    assert.ok(Buffer.byteLength(output, 'utf8') <= 1024);
     assert.equal(output.endsWith('\n'), true);
     assert.equal(output.includes('\r'), false);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
@@ -53,8 +60,9 @@ describe('renderers', () => {
     assert.equal(renderManagedBlock('routing', block), block);
   });
 
-  test('render agents block stays within its hard budget', () => {
-    const output = renderAgentsBlock(fixtureManifest());
+  test('render agents block stays within its hard budget and routes declared dependencies', () => {
+    const manifest = fixtureManifest();
+    const output = renderAgentsBlock(manifest);
     assert.equal(output.startsWith('<!-- ai-workflow:agents-routing:start -->\n'), true);
     assert.equal(output.endsWith('<!-- ai-workflow:agents-routing:end -->\n'), true);
     assert.ok(Buffer.byteLength(output, 'utf8') <= 1024);
@@ -67,6 +75,17 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
     ]) assert.equal(output.includes(url), true, url);
     assert.match(output, /integrationBranch/);
+    assert.doesNotMatch(output, /contextDependencies/u);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
+
+    manifest.projects[2].contextDependencies = [{
+      repository: 'ChipIn-one/chipin-knowledge-base',
+      integrationBranch: 'main',
+      access: 'read-only'
+    }];
+    const withDependencies = renderAgentsBlock(manifest);
+    assert.match(withDependencies, /required declared `contextDependencies`/u);
+    assert.match(withDependencies, /block if required dependency context is unavailable/iu);
+    assert.ok(Buffer.byteLength(withDependencies, 'utf8') <= 1024);
   });
 });

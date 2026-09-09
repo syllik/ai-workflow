@@ -13,7 +13,8 @@
 its generated navigation. Resolve target files from the record's
 `integrationBranch`. Active managed projects route to repository context;
 onboarding projects are limited to onboarding/alignment until that context
-exists. Legacy central project contexts remain migration-only.
+exists. Optional `contextDependencies` are explicit read-only context sources,
+loaded only when required. Legacy central project contexts remain migration-only.
 
 The workspace validator is intentionally bounded:
 
