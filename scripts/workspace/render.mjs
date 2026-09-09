@@ -53,6 +53,24 @@ export function renderProjectIndex(manifest) {
   ].join('\n'));
 }
 
+export function renderLegacyProfileNavigation(manifest) {
+  return finalNewline([
+    '# Canonical AI workflow',
+    '',
+    `This profile AI entry covers the workspace rooted at \`${manifest.canonicalRoot}\`.`,
+    '',
+    'Reading route:',
+    '',
+    `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
+    `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
+    `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
+    '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
+    '5. Read only relevant `.ai/decisions.md` and task files.',
+    '',
+    'GitHub is the only project registry. Do not auto-discover repositories or route into legacy central contexts.'
+  ].join('\n'));
+}
+
 export function renderProfileNavigation(manifest) {
   const body = [
     '# Canonical AI workflow',
@@ -75,13 +93,17 @@ export function renderProfileNavigation(manifest) {
 }
 
 export function renderAgentsBlock(manifest) {
+  const hasContextDependencies = manifest.projects.some((project) => (project.contextDependencies ?? []).length > 0);
+  const finalRoute = hasContextDependencies
+    ? '5. Read relevant `.ai/decisions.md`, task files, and required declared `contextDependencies`; block if required dependency context is unavailable.'
+    : '5. Read only relevant `.ai/decisions.md` and task files.';
   const body = [
     'Canonical AI routing:',
     `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read role rules from ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
     '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
-    '5. Read only relevant `.ai/decisions.md` and task files.',
+    finalRoute,
     '',
     'Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.',
     `Canonical root: ${manifest.canonicalRoot}`
