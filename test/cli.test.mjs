@@ -82,7 +82,7 @@ describe('workspace CLI', () => {
     try {
       const manifest = fixtureManifest({ projects: [fixtureManifest().projects[1]] });
       const projectPath = path.join(root, manifest.projects[0].localPath);
-      initFixtureRepo(projectPath, 'https://github.com/ChipIn-one/chipin-frontend.git');
+      initFixtureRepo(projectPath, 'https://github.com/ChipIn-one/chipin-frontend.git', manifest.projects[0].integrationBranch);
       mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
       writeFileSync(path.join(projectPath, manifest.projects[0].contextPath), renderContextScaffold(manifest.projects[0]), 'utf8');
       writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n\nRecord durable decisions for this repository here.\n', 'utf8');
@@ -162,7 +162,7 @@ describe('workspace CLI', () => {
       const project = fixtureManifest().projects[0];
       const manifest = fixtureManifest({ projects: [project] });
       const remote = path.join(remoteRoot, 'syllik');
-      initFixtureRepo(remote, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(remote, `https://github.com/${project.repository}.git`, project.integrationBranch);
       const manifestPath = writeFixtureManifest(root, manifest);
       const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
         cloneSource: () => remote,
@@ -188,7 +188,7 @@ describe('workspace CLI', () => {
       const project = fixtureManifest().projects[2];
       const manifest = fixtureManifest({ projects: [project] });
       const remote = path.join(remoteRoot, 'backend');
-      initFixtureRepo(remote, `https://github.com/${project.repository}.git`);
+      initFixtureRepo(remote, `https://github.com/${project.repository}.git`, project.integrationBranch);
       const manifestPath = writeFixtureManifest(root, manifest);
       const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
         cloneSource: () => remote,
