@@ -60,9 +60,9 @@ describe('workflow documentation', () => {
     assert.match(flow, /managed Codex GitHub Code Review/u);
     assert.match(flow, /@codex review/u);
     assert.match(flow, /automatically on every push to an open PR/iu);
-    assert.match(flow, /reviewed commit SHA matches the current PR head/iu);
+    assert.match(flow, /valid only for the current PR head/iu);
     assert.match(flow, /@codex fix/u);
-    assert.match(flow, /Sol 5\.6 High is reserved for escalation or fallback/iu);
+    assert.match(flow, /Sol 5\.6 High is escalation\/fallback only/iu);
     assert.match(reviewer, /previous review is stale/iu);
     assert.match(reviewer, /manual fallback\/retrigger/iu);
     assert.match(reviewer, /human\s+explicitly authorizes/iu);
