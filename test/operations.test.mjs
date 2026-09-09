@@ -135,10 +135,16 @@ describe('workspace operations', () => {
       git(projectPath, 'commit', '--quiet', '-m', 'existing project contracts');
 
       const plan = planWorkspace({ root, manifestPath, manifest });
-      assert.deepEqual(plan.operations.map(({ kind, path: operationPath }) => ({ kind, path: operationPath })), [{
-        kind: 'replace-generated-file',
-        path: `${central.localPath}/projects/index.md`
-      }]);
+      assert.deepEqual(plan.operations.map(({ kind, path: operationPath }) => ({ kind, path: operationPath })), [
+        {
+          kind: 'create-file',
+          path: `${project.localPath}/AI.md`
+        },
+        {
+          kind: 'replace-generated-file',
+          path: `${central.localPath}/projects/index.md`
+        }
+      ]);
       const applied = applyOperations({ root, plan });
 
       assert.equal(applied.blocked, false);
