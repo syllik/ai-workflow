@@ -28,6 +28,10 @@ projects:
     status: active
     integrationBranch: dev
     contextPath: .ai/context.md
+    contextDependencies:
+      - repository: ChipIn-one/chipin-knowledge-base
+        integrationBranch: main
+        access: read-only
   - id: ChipIn-one/chipin-backend
     repository: ChipIn-one/chipin-backend
     localPath: products/chipin/chipin-backend
@@ -35,6 +39,25 @@ projects:
     access: read-only
     status: active
     integrationBranch: develop
+    contextDependencies:
+      - repository: ChipIn-one/chipin-knowledge-base
+        integrationBranch: main
+        access: read-only
+  - id: ChipIn-one/chipin-knowledge-base
+    repository: ChipIn-one/chipin-knowledge-base
+    localPath: products/chipin/chipin-knowledge-base
+    group: products/chipin
+    access: read-only
+    status: active
+    integrationBranch: main
+  - id: ChipIn-one/.github
+    repository: ChipIn-one/.github
+    localPath: products/chipin/.github
+    group: products/chipin
+    access: managed
+    status: onboarding
+    integrationBranch: main
+    contextPath: .ai/context.md
   - id: syllik/chatgpt-archive-cleanup
     repository: syllik/chatgpt-archive-cleanup
     localPath: tools/ai/chatgpt-archive-cleanup
