@@ -66,6 +66,29 @@ describe('workflow documentation', () => {
     assert.match(promptTemplate, /Luna must not perform any GitHub\s+mutation, including PR\s+creation\/update\/publication, merge, auto-merge, Issue\s+metadata\/state, Project\s+#5 fields\/status, labels\/comments, releases, milestones,\s+deployments,\s+repository settings, Actions variables, or any other mutable GitHub\s+state\.\s+Trello mutation is also prohibited\./u);
   });
 
+  test('keeps the executor prohibition blanket and non-exhaustive', () => {
+    const executor = readFileSync('global/executor.md', 'utf8');
+
+    assert.match(executor, /Luna must not perform any GitHub mutation, including PR\s+creation\/update\/publication, merge, auto-merge, Issue\s+metadata\/state, Project\s+#5 fields\/status, labels\/comments, releases, milestones,\s+deployments,\s+repository settings, Actions variables, or any other mutable GitHub\s+state\.\s+Trello mutation is also prohibited\./u);
+  });
+
+  test('requires supplied approval provenance to be copied unchanged and fail closed when absent', () => {
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+    const stateTemplate = readFileSync('templates/state.md', 'utf8');
+    const resultTemplate = readFileSync('templates/result.md', 'utf8');
+
+    assert.match(promptTemplate, /The prepared task context must explicitly supply an approval reference for this bounded scope\./u);
+    assert.match(promptTemplate, /- Approval reference: `<supplied approval reference>`/u);
+    assert.match(promptTemplate, /Luna must copy the supplied approval reference unchanged into persisted `state\.md` and\s+final `result\.md`\./u);
+    assert.match(promptTemplate, /must not infer, invent, derive, normalize, or replace it/u);
+    assert.match(promptTemplate, /If\s+the required approval reference is absent from the prepared task context, fail closed\s+with `BLOCKED` rather than guessing\./u);
+
+    for (const template of [stateTemplate, resultTemplate]) {
+      assert.match(template, /Copy the supplied approval reference unchanged from the prepared task prompt; do not infer, invent, derive, normalize, or replace it\./u);
+      assert.match(template, /- Scope \/ approval reference:/u);
+    }
+  });
+
   test('supports supplied task identities for ChipIn and non-ChipIn persisted tasks', () => {
     const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
     const stateTemplate = readFileSync('templates/state.md', 'utf8');

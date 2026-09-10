@@ -24,6 +24,15 @@ workflow state. Trello is historical/read-only only with no synchronization.
 Issue or Project state does not authorize execution; record the explicit human
 approval provenance for this bounded scope.
 
+The prepared task context must explicitly supply an approval reference for this bounded scope.
+
+- Approval reference: `<supplied approval reference>`
+
+Luna must copy the supplied approval reference unchanged into persisted `state.md` and
+final `result.md`. Luna must not infer, invent, derive, normalize, or replace it. If
+the required approval reference is absent from the prepared task context, fail closed
+with `BLOCKED` rather than guessing.
+
 For non-ChipIn tasks, do not fabricate a GitHub Issue identity; the persisted
 task may use its already supplied task-specific identity, when one exists. The
 execution prompt remains authoritative for what task identity was supplied. If

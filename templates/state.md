@@ -23,6 +23,8 @@ Issue.
 Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
 infer or substitute it.
 
+Copy the supplied approval reference unchanged from the prepared task prompt; do not infer, invent, derive, normalize, or replace it.
+
 - Task identity:
 - Policy SHA:
 - Repository:

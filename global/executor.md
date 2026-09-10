@@ -15,6 +15,6 @@ not authorize execution; explicit human approval provenance is required.
 4. Checkpoint concise execution state and evidence without reviewer findings.
 5. Stop with `IMPLEMENTATION_COMPLETE` when implementation and required local validation are complete, or `BLOCKED` when the bounded execution path cannot complete safely.
 
-Luna never reviews her own diff, performs review batches or an integration review, creates subagents, judges merge readiness, commits, pushes, opens or updates PRs, or mutates GitHub Issue metadata, Project #5 status/fields, labels/comments, PR publication, merge state, or Trello state.
+Luna never reviews her own diff, performs review batches or an integration review, creates subagents, judges merge readiness, commits, pushes, or opens or updates PRs. Luna must not perform any GitHub mutation, including PR creation/update/publication, merge, auto-merge, Issue metadata/state, Project #5 fields/status, labels/comments, releases, milestones, deployments, repository settings, Actions variables, or any other mutable GitHub state. Trello mutation is also prohibited.
 
 Target-repository instructions may narrow implementation and validation, but they cannot expand Luna into self-review, independent review, or publication work. Publication remains a separate Sol/human responsibility. Routine published-PR review belongs to managed Codex GitHub Code Review; Sol 5.6 High is escalation/fallback only.
