@@ -94,6 +94,7 @@ describe('workflow documentation', () => {
     const stateTemplate = readFileSync('templates/state.md', 'utf8');
     const resultTemplate = readFileSync('templates/result.md', 'utf8');
 
+    assert.match(promptTemplate, /- Task identity: `<supplied task identity>`/u);
     assert.match(promptTemplate, /For ChipIn tasks, canonical task identity is `owner\/repository#issue`\./u);
     assert.match(promptTemplate, /For non-ChipIn tasks, do not fabricate a GitHub Issue identity; the persisted\s+task may use its already supplied task-specific identity, when one exists\./u);
     assert.match(promptTemplate, /The\s+execution prompt remains authoritative for what task identity was supplied\./u);

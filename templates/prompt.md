@@ -17,6 +17,8 @@ and does not repeat Sol's broad research.
 
 ## Canonical task authority and approval
 
+- Task identity: `<supplied task identity>`
+
 For ChipIn tasks, canonical task identity is `owner/repository#issue`. The GitHub Issue
 title/body is the specification and dependency record, Organization Issue
 Fields are structured metadata, and Project #5 (`ChipIn Development`) Status is
