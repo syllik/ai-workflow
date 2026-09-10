@@ -12,16 +12,41 @@ reviewer findings.
 
 Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
 
+## Task identity and provenance
+
+Copy the supplied task identity unchanged from the prepared task prompt; do not
+infer, substitute, or fabricate a GitHub Issue identity. For ChipIn tasks,
+canonical task identity is `owner/repository#issue`. For non-ChipIn tasks,
+preserve the supplied task-specific identity unchanged; do not invent a GitHub
+Issue.
+
+Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
+infer or substitute it.
+
+Copy the supplied approval reference unchanged from the prepared task prompt; do not infer, invent, derive, normalize, or replace it.
+
+- Task identity:
+- Policy SHA:
+- Repository:
+- Branch:
+- Base SHA:
+- Head SHA:
+- Scope / approval reference:
+
 ## Completed
 
-## Changed files
+## Changed paths
 
-## Validation
+## Validation receipt
 
 ## Decisions / assumptions
 
 Only task-local facts required for executor continuation.
 
+## Pending external action
+
 ## Next
+
+Record exactly one next step.
 
 ## Blockers

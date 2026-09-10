@@ -36,7 +36,7 @@ project, prompt, task, or history file without a concrete reason.
 * Task context is optional and must not duplicate the human-only planning record.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
 * Do not use subagents, repeat broad research, or expand scope.
-* Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub/Trello publication state.
+* Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub Issue metadata, Project #5 fields, labels/comments, PR publication, merge state, or Trello state.
 * Routine Codex review is automatic on every push to an open PR by default. Use `@codex review` only as a manual fallback/retrigger when automatic review does not start or an explicit retry is needed; do not duplicate an automatic review already running.
 * A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head invalidates the previous review and requires a new Codex review before human merge.
 * Codex review is review-only. Do not use `@codex fix`, `@codex address that feedback`, or any other command that asks Codex to mutate the branch.
@@ -44,6 +44,14 @@ project, prompt, task, or history file without a concrete reason.
 * Update canonical project context only when durable knowledge appears.
 * Never store secrets, credentials, tokens, private keys, or `.env` contents.
 * User-facing explanations and documentation should be in English for agent-executable workflow files; retain technical identifiers in English.
+
+## Canonical ChipIn task model
+
+- Task identity is `ChipIn-one/<repository>#<issue-number>`.
+- The GitHub Issue title/body is the task specification and dependency record.
+- Organization Issue Fields are canonical structured metadata; Project #5 (`ChipIn Development`) Status is canonical workflow state.
+- Trello is historical/read-only reference only; there is no bidirectional synchronization.
+- Issue or Project state never authorizes AI execution; explicit human approval provenance is required.
 <!-- ai-workflow:agents-routing:start -->
 Canonical AI routing:
 1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.

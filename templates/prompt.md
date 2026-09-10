@@ -15,6 +15,47 @@ and does not repeat Sol's broad research.
 
 ## Goal
 
+## Canonical task authority and approval
+
+- Task identity: `<supplied task identity>`
+
+For ChipIn tasks, canonical task identity is `owner/repository#issue`. The GitHub Issue
+title/body is the specification and dependency record, Organization Issue
+Fields are structured metadata, and Project #5 (`ChipIn Development`) Status is
+workflow state. Trello is historical/read-only only with no synchronization.
+Issue or Project state does not authorize execution; record the explicit human
+approval provenance for this bounded scope.
+
+The prepared task context must explicitly supply an approval reference for this bounded scope.
+
+- Approval reference: `<supplied approval reference>`
+
+Luna must copy the supplied approval reference unchanged into persisted `state.md` and
+final `result.md`. Luna must not infer, invent, derive, normalize, or replace it. If
+the required approval reference is absent from the prepared task context, fail closed
+with `BLOCKED` rather than guessing.
+
+For non-ChipIn tasks, do not fabricate a GitHub Issue identity; the persisted
+task may use its already supplied task-specific identity, when one exists. The
+execution prompt remains authoritative for what task identity was supplied. If
+a task type requires an identity but the prepared task context does not supply
+one, fail closed with `BLOCKED` rather than inventing one.
+
+## Policy SHA provenance
+
+Policy SHA is the exact immutable commit SHA of `syllik/ai-workflow` whose
+canonical policy was used to assemble the execution context for this task. The
+task-specific execution prompt must explicitly supply this SHA.
+
+- Policy SHA: `<supplied immutable ai-workflow commit SHA>`
+
+Luna must copy the supplied Policy SHA unchanged into persisted `state.md` and
+final `result.md`. Luna must never infer Policy SHA from current HEAD at
+execution time, target repository SHA, approval reference, Issue state, Project
+state, or timestamps. If a persisted execution requires Policy SHA but it was not
+supplied by the prepared task context, fail closed with `BLOCKED` rather than
+guessing.
+
 ## Current state
 
 ## Required changes
@@ -55,7 +96,11 @@ Reviewer findings are not part of Luna's execution state.
 ## Publication boundary
 
 Luna does not stage, commit, push, create/update PRs, merge, enable auto-merge,
-or mutate GitHub/Trello publication state. After Luna reaches
+or mutate GitHub/Trello publication state. Luna must not perform any GitHub
+mutation, including PR creation/update/publication, merge, auto-merge, Issue
+metadata/state, Project #5 fields/status, labels/comments, releases, milestones,
+deployments, repository settings, Actions variables, or any other mutable GitHub
+state. Trello mutation is also prohibited. After Luna reaches
 `IMPLEMENTATION_COMPLETE` and local validation evidence is available, trusted
 publication is handled separately by Sol/human to create or update the PR. The
 published PR is then reviewed independently through managed Codex GitHub Code
