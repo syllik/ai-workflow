@@ -50,7 +50,7 @@ describe('workflow documentation', () => {
     const stateTemplate = readFileSync('templates/state.md', 'utf8');
     const resultTemplate = readFileSync('templates/result.md', 'utf8');
 
-    assert.match(prompt, /or\s+mutate\s+GitHub Issue metadata, Project #5 status\/fields, labels\/comments,\s+PR publication\/merge state, or Trello state\./u);
+    assert.match(prompt, /or\s+any GitHub mutation, including PR\s+creation\/update\/publication, merge, auto-merge, Issue metadata\/state, Project\s+#5 fields\/status, labels\/comments, releases, milestones, deployments,\s+repository settings, Actions variables, or any other mutable GitHub state\.\s+Trello mutation is also prohibited\./u);
     assert.match(promptTemplate, /Policy SHA is the exact immutable commit SHA of `syllik\/ai-workflow` whose\s+canonical policy was used to assemble the execution context for this task\./u);
     assert.match(promptTemplate, /The\s+task-specific execution prompt must explicitly supply this SHA\./u);
     assert.match(promptTemplate, /copy the supplied Policy SHA unchanged into persisted `state\.md` and\s+final `result\.md`/iu);

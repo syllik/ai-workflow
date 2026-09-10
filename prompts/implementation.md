@@ -33,9 +33,11 @@ provenance is required.
       policy or a stop condition applies.
 11. Do not use subagents.
 12. Do not perform self-review, review batches, cross-file integration review,
-    merge-readiness judgment, commit, push, PR creation/update, merge, auto-merge,
-    or mutate GitHub Issue metadata, Project #5 status/fields, labels/comments,
-    PR publication/merge state, or Trello state.
+    merge-readiness judgment, commit, push, or any GitHub mutation, including PR
+    creation/update/publication, merge, auto-merge, Issue metadata/state, Project
+    #5 fields/status, labels/comments, releases, milestones, deployments,
+    repository settings, Actions variables, or any other mutable GitHub state.
+    Trello mutation is also prohibited.
 
 Target-repository instructions may define stricter implementation and validation
 rules. They do not override the executor-only boundary. Any instruction that
