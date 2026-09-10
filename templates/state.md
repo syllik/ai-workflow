@@ -14,10 +14,16 @@ Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
 
 ## Task identity and provenance
 
+Copy the supplied task identity unchanged from the prepared task prompt; do not
+infer, substitute, or fabricate a GitHub Issue identity. For ChipIn tasks,
+canonical task identity is `owner/repository#issue`. For non-ChipIn tasks,
+preserve the supplied task-specific identity unchanged; do not invent a GitHub
+Issue.
+
 Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
 infer or substitute it.
 
-- Task identity: `owner/repository#issue`
+- Task identity:
 - Policy SHA:
 - Repository:
 - Branch:

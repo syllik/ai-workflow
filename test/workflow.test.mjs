@@ -60,6 +60,31 @@ describe('workflow documentation', () => {
     assert.match(resultTemplate, /Copy the supplied Policy SHA unchanged from the prepared task prompt; do not\s+infer or substitute it\./u);
   });
 
+  test('keeps the generated execution prompt free of every GitHub mutation', () => {
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+
+    assert.match(promptTemplate, /Luna must not perform any GitHub\s+mutation, including PR\s+creation\/update\/publication, merge, auto-merge, Issue\s+metadata\/state, Project\s+#5 fields\/status, labels\/comments, releases, milestones,\s+deployments,\s+repository settings, Actions variables, or any other mutable GitHub\s+state\.\s+Trello mutation is also prohibited\./u);
+  });
+
+  test('supports supplied task identities for ChipIn and non-ChipIn persisted tasks', () => {
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+    const stateTemplate = readFileSync('templates/state.md', 'utf8');
+    const resultTemplate = readFileSync('templates/result.md', 'utf8');
+
+    assert.match(promptTemplate, /For ChipIn tasks, canonical task identity is `owner\/repository#issue`\./u);
+    assert.match(promptTemplate, /For non-ChipIn tasks, do not fabricate a GitHub Issue identity; the persisted\s+task may use its already supplied task-specific identity, when one exists\./u);
+    assert.match(promptTemplate, /The\s+execution prompt remains authoritative for what task identity was supplied\./u);
+    assert.match(promptTemplate, /If\s+a task type requires an identity but the prepared task context does not supply\s+one, fail closed with `BLOCKED` rather than inventing one\./u);
+
+    for (const template of [stateTemplate, resultTemplate]) {
+      assert.match(template, /- Task identity:\n/u);
+      assert.match(template, /Copy the supplied task identity unchanged from the prepared task prompt; do not\s+infer, substitute, or fabricate a GitHub Issue identity\./u);
+      assert.match(template, /Copy the supplied Policy SHA unchanged from the prepared task prompt; do not\s+infer or substitute it\./u);
+      assert.match(template, /For ChipIn tasks,\s+canonical task identity is `owner\/repository#issue`\./u);
+      assert.match(template, /For non-ChipIn tasks,\s+preserve the supplied task-specific identity unchanged; do not invent a GitHub\s+Issue\./u);
+    }
+  });
+
   test('keeps workspace documentation sync as a canonical repository-creation gate', () => {
     for (const filePath of ['FLOW.md', 'global/core.md', 'global/architect.md']) {
       const text = readFileSync(filePath, 'utf8');
