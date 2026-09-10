@@ -4,7 +4,7 @@ Generated from `workspace.yaml`. Active managed projects route to context on the
 
 | Repository | Group | Access | Status | Integration branch | GitHub source | Context dependencies |
 | --- | --- | --- | --- | --- | --- | --- |
-| ChipIn-one/.github | products/chipin | managed | onboarding | main | [onboarding source](https://github.com/ChipIn-one/.github/tree/main) | — |
+| ChipIn-one/.github | products/chipin | managed | active | main | [.ai/context.md](https://github.com/ChipIn-one/.github/blob/main/.ai/context.md) | — |
 | ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/main) |
 | ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/.ai/context.md) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/main) |
 | ChipIn-one/chipin-knowledge-base | products/chipin | read-only | active | main | [repository source of truth](https://github.com/ChipIn-one/chipin-knowledge-base/tree/main) | — |

@@ -55,7 +55,7 @@ projects:
     localPath: products/chipin/.github
     group: products/chipin
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/chatgpt-archive-cleanup
