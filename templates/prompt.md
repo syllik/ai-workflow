@@ -24,6 +24,21 @@ workflow state. Trello is historical/read-only only with no synchronization.
 Issue or Project state does not authorize execution; record the explicit human
 approval provenance for this bounded scope.
 
+## Policy SHA provenance
+
+Policy SHA is the exact immutable commit SHA of `syllik/ai-workflow` whose
+canonical policy was used to assemble the execution context for this task. The
+task-specific execution prompt must explicitly supply this SHA.
+
+- Policy SHA: `<supplied immutable ai-workflow commit SHA>`
+
+Luna must copy the supplied Policy SHA unchanged into persisted `state.md` and
+final `result.md`. Luna must never infer Policy SHA from current HEAD at
+execution time, target repository SHA, approval reference, Issue state, Project
+state, or timestamps. If a persisted execution requires Policy SHA but it was not
+supplied by the prepared task context, fail closed with `BLOCKED` rather than
+guessing.
+
 ## Current state
 
 ## Required changes

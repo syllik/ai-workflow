@@ -14,6 +14,9 @@ Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
 
 ## Task identity and provenance
 
+Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
+infer or substitute it.
+
 - Task identity: `owner/repository#issue`
 - Policy SHA:
 - Repository:

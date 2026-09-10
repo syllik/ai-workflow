@@ -44,6 +44,22 @@ describe('workflow documentation', () => {
     assert.match(prompt, /Luna.*never reads.*plan\.md/isu);
   });
 
+  test('makes mutation prohibitions and Policy SHA provenance explicit', () => {
+    const prompt = readFileSync('prompts/implementation.md', 'utf8');
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+    const stateTemplate = readFileSync('templates/state.md', 'utf8');
+    const resultTemplate = readFileSync('templates/result.md', 'utf8');
+
+    assert.match(prompt, /or\s+mutate\s+GitHub Issue metadata, Project #5 status\/fields, labels\/comments,\s+PR publication\/merge state, or Trello state\./u);
+    assert.match(promptTemplate, /Policy SHA is the exact immutable commit SHA of `syllik\/ai-workflow` whose\s+canonical policy was used to assemble the execution context for this task\./u);
+    assert.match(promptTemplate, /The\s+task-specific execution prompt must explicitly supply this SHA\./u);
+    assert.match(promptTemplate, /copy the supplied Policy SHA unchanged into persisted `state\.md` and\s+final `result\.md`/iu);
+    assert.match(promptTemplate, /never infer Policy SHA from current HEAD at\s+execution time, target repository SHA, approval reference, Issue state, Project\s+state, or timestamps\./u);
+    assert.match(promptTemplate, /If a persisted execution requires Policy SHA but it was not\s+supplied by the prepared task context, fail closed with `BLOCKED` rather than\s+guessing\./u);
+    assert.match(stateTemplate, /Copy the supplied Policy SHA unchanged from the prepared task prompt; do not\s+infer or substitute it\./u);
+    assert.match(resultTemplate, /Copy the supplied Policy SHA unchanged from the prepared task prompt; do not\s+infer or substitute it\./u);
+  });
+
   test('keeps workspace documentation sync as a canonical repository-creation gate', () => {
     for (const filePath of ['FLOW.md', 'global/core.md', 'global/architect.md']) {
       const text = readFileSync(filePath, 'utf8');
