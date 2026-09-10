@@ -7,11 +7,27 @@ lightweight task.
 
 Use `IMPLEMENTATION_COMPLETE` or `BLOCKED`.
 
+## Task identity and provenance
+
+- Task identity: `owner/repository#issue`
+- Policy SHA:
+- Repository:
+- Branch:
+- Base SHA:
+- Head SHA:
+- Scope / approval reference:
+
 ## Done
 
-## Changed files
+## Changed paths
 
-## Checks
+## Validation receipt
+
+## Pending external action
+
+## Next
+
+Record exactly one next step.
 
 ## Remaining blockers
 

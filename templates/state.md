@@ -12,16 +12,30 @@ reviewer findings.
 
 Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
 
+## Task identity and provenance
+
+- Task identity: `owner/repository#issue`
+- Policy SHA:
+- Repository:
+- Branch:
+- Base SHA:
+- Head SHA:
+- Scope / approval reference:
+
 ## Completed
 
-## Changed files
+## Changed paths
 
-## Validation
+## Validation receipt
 
 ## Decisions / assumptions
 
 Only task-local facts required for executor continuation.
 
+## Pending external action
+
 ## Next
+
+Record exactly one next step.
 
 ## Blockers

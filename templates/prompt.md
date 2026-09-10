@@ -15,6 +15,15 @@ and does not repeat Sol's broad research.
 
 ## Goal
 
+## Canonical task authority and approval
+
+For ChipIn tasks, record identity as `owner/repository#issue`. The GitHub Issue
+title/body is the specification and dependency record, Organization Issue
+Fields are structured metadata, and Project #5 (`ChipIn Development`) Status is
+workflow state. Trello is historical/read-only only with no synchronization.
+Issue or Project state does not authorize execution; record the explicit human
+approval provenance for this bounded scope.
+
 ## Current state
 
 ## Required changes
