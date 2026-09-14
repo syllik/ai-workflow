@@ -24,6 +24,7 @@ export const fixtureBudgets = {
   'one decision record': 4096,
   'prompt.md': 8192,
   'state.md': 2048,
+  'assembled execution context': 32768,
   'result.md': 4096,
   'human plan.md': 16384
 };
