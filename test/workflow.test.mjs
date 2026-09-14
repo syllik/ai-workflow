@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
-import { BUDGETS } from '../scripts/workspace/budgets.mjs';
+import { BUDGETS, checkAssembledExecutionContext } from '../scripts/workspace/budgets.mjs';
 
 const workflowFiles = [
   'AGENTS.md',
@@ -233,6 +233,38 @@ describe('workflow documentation', () => {
     assert.match(policy, /actual bytes[^\n]*(?:at or below|less than or equal to|<=)[^\n]*32768/iu);
     assert.match(policy, /measured[^\n]*UTF-8[^\n]*byte/iu);
     assert.match(policy, /continue|implementation may start/iu);
+  });
+
+  test('requires positive integer actual bytes for normal implementation provenance', () => {
+    const architect = readFileSync('global/architect.md', 'utf8');
+    const consumerPolicy = [
+      'global/executor.md',
+      'prompts/implementation.md',
+      'templates/prompt.md'
+    ].map((filePath) => readFileSync(filePath, 'utf8')).join('\n');
+
+    assert.match(architect, /producer\/planner[^\n]*positive integer[^\n]*(?:greater than zero|at least 1)[^\n]*(?:at most|<=) 32768/iu);
+    assert.match(architect, /zero-byte[^\n]*(?:not valid|not equivalent)[^\n]*(?:normal|handoff)[^\n]*PASS/iu);
+    assert.match(consumerPolicy, /fail closed[^\n]*(?:zero|negative|non-integer)[^\n]*missing[^\n]*explicit measured UTF-8 byte count[^\n]*(?:greater than|exceed)[^\n]*32768/iu);
+    assert.match(consumerPolicy, /positive integer[^\n]*(?:greater than zero|at least 1)[^\n]*(?:at most|<=) 32768/iu);
+  });
+
+  test('separates generic zero-byte measurement from normal-handoff PASS provenance', () => {
+    assert.deepEqual(checkAssembledExecutionContext([]), {
+      actualBytes: 0,
+      maxBytes: 32768,
+      findings: []
+    });
+
+    const policy = [
+      'global/architect.md',
+      'global/executor.md',
+      'prompts/implementation.md',
+      'templates/prompt.md'
+    ].map((filePath) => readFileSync(filePath, 'utf8')).join('\n');
+
+    assert.match(policy, /generic[^\n]*(?:measurement|checker)[^\n]*(?:not|does not)[^\n]*(?:semantic completeness|normal handoff)/iu);
+    assert.match(policy, /zero-byte[^\n]*(?:not valid|not equivalent)[^\n]*(?:normal|handoff)[^\n]*PASS/iu);
   });
 
   test('does not allow Luna to infer, fabricate, reinterpret, or silently truncate provenance', () => {
