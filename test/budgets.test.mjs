@@ -46,6 +46,49 @@ describe('budgets', () => {
     assert.deepEqual(result.findings, []);
   });
 
+  test('rejects every object entry that owns both assembled payload fields', () => {
+    const entries = [
+      { text: 'a', content: 'b' },
+      { text: '', content: 'x'.repeat(40000) },
+      { text: 'x'.repeat(40000), content: '' },
+      { text: '', content: '' },
+      { text: 'same', content: 'same' }
+    ];
+
+    for (const entry of entries) {
+      assert.deepEqual(checkAssembledExecutionContext([entry]), {
+        actualBytes: 0,
+        maxBytes: 32768,
+        findings: [{
+          code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+          index: 0
+        }]
+      });
+    }
+  });
+
+  test('reports the zero-based index for a dual-field entry without measuring either field', () => {
+    const result = checkAssembledExecutionContext(['a', { text: 'same', content: 'same' }, { content: 'b' }]);
+    assert.equal(result.actualBytes, 2);
+    assert.deepEqual(result.findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 1
+    }]);
+  });
+
+  test('reports both a dual-field entry and an aggregate budget finding', () => {
+    const result = checkAssembledExecutionContext([{ text: 'a', content: 'b' }, 'x'.repeat(32769)]);
+    assert.equal(result.actualBytes, 32769);
+    assert.deepEqual(result.findings, [
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 0 },
+      {
+        code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
+        actualBytes: 32769,
+        maxBytes: 32768
+      }
+    ]);
+  });
+
   test('rejects an object with an unmeasurable body instead of counting it as zero bytes', () => {
     const result = checkAssembledExecutionContext([{ path: 'x', body: 'x'.repeat(40000) }]);
     assert.equal(result.actualBytes, 0);

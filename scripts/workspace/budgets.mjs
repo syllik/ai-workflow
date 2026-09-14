@@ -26,7 +26,7 @@ function contextEntryText(entry) {
 
   const hasText = Object.hasOwn(entry, 'text');
   const hasContent = Object.hasOwn(entry, 'content');
-  if (!hasText && !hasContent) return undefined;
+  if (hasText === hasContent) return undefined;
   if ((hasText && typeof entry.text !== 'string') || (hasContent && typeof entry.content !== 'string')) return undefined;
   return hasText ? entry.text : entry.content;
 }
