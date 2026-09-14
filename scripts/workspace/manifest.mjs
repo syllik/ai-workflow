@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
 export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
+export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY = 'assembled execution context';
+export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET = 32768;
 
 export const HARD_BUDGETS = Object.freeze({
   'AI.md': 1024,
@@ -14,6 +16,7 @@ export const HARD_BUDGETS = Object.freeze({
   'one decision record': 4096,
   'prompt.md': 8192,
   'state.md': 2048,
+  [ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY]: ASSEMBLED_EXECUTION_CONTEXT_BUDGET,
   'result.md': 4096,
   'human plan.md': 16384
 });

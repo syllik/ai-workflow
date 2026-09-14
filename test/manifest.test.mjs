@@ -1,13 +1,73 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { loadManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
-import { expectedProjects, fixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
+import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
+
+function fixtureManifest(overrides = {}) {
+  const base = baseFixtureManifest();
+  return {
+    ...base,
+    ...overrides,
+    budgets: {
+      ...base.budgets,
+      'assembled execution context': 32768,
+      ...overrides.budgets
+    }
+  };
+}
 
 describe('manifest', () => {
+  test('accepts the canonical assembled execution context budget', () => {
+    const manifest = fixtureManifest({
+      budgets: {
+        ...fixtureManifest().budgets,
+        'assembled execution context': 32768
+      }
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects a missing assembled execution context budget', () => {
+    const manifest = fixtureManifest({
+      budgets: {
+        ...fixtureManifest().budgets,
+        'assembled execution context': 32768
+      }
+    });
+    delete manifest.budgets['assembled execution context'];
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
+      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
+    ]);
+  });
+
+  test('rejects an incorrect assembled execution context budget', () => {
+    const manifest = fixtureManifest({
+      budgets: {
+        ...fixtureManifest().budgets,
+        'assembled execution context': 32767
+      }
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
+      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
+    ]);
+  });
+
   test('loads the canonical manifest with exactly the approved project records', () => {
     const root = makeFixtureRoot();
     try {
-      const manifestPath = writeFixtureManifest(root);
+      const manifestPath = writeFixtureManifest(root, fixtureManifest());
       const manifest = loadManifest(manifestPath);
       const result = validateManifest(manifest);
 
