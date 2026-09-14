@@ -11,6 +11,10 @@ describe('budgets', () => {
     });
   });
 
+  test('exposes the canonical aggregate execution context budget', () => {
+    assert.equal(checkAssembledExecutionContext([]).maxBytes, 32768);
+  });
+
   test('sums multiple assembled execution context entries by UTF-8 bytes', () => {
     const result = checkAssembledExecutionContext(['AI', 'é', '🙂']);
     assert.equal(result.actualBytes, 8);
@@ -136,6 +140,28 @@ describe('budgets', () => {
     assert.deepEqual(result.findings, [{
       code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
       actualBytes: 32769,
+      maxBytes: 32768
+    }]);
+  });
+
+  test('rejects oversized assembled context when the aggregate config object is empty', () => {
+    const result = checkAssembledExecutionContext(['x'.repeat(40000)], {});
+    assert.equal(result.maxBytes, 32768);
+    assert.deepEqual(result.findings, [{
+      code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
+      actualBytes: 40000,
+      maxBytes: 32768
+    }]);
+  });
+
+  test('ignores a caller-supplied larger aggregate budget', () => {
+    const result = checkAssembledExecutionContext(['x'.repeat(40000)], {
+      'assembled execution context': 999999
+    });
+    assert.equal(result.maxBytes, 32768);
+    assert.deepEqual(result.findings, [{
+      code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
+      actualBytes: 40000,
       maxBytes: 32768
     }]);
   });

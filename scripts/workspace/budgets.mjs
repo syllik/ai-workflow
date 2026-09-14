@@ -31,7 +31,7 @@ function contextEntryText(entry) {
   return hasText ? entry.text : entry.content;
 }
 
-export function checkAssembledExecutionContext(entries, budgets = BUDGETS) {
+export function checkAssembledExecutionContext(entries) {
   const findings = [];
   const actualBytes = [...entries].reduce((total, entry, index) => {
     const text = contextEntryText(entry);
@@ -44,7 +44,7 @@ export function checkAssembledExecutionContext(entries, budgets = BUDGETS) {
     }
     return total + utf8Bytes(text);
   }, 0);
-  const maxBytes = budgets[ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY];
+  const maxBytes = BUDGETS[ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY];
   if (actualBytes > maxBytes) {
     findings.push({
       code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
