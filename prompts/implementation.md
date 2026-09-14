@@ -7,6 +7,16 @@ Authority precedence is: current pinned role/task policy > target-repository nar
 
 If an incompatible lower-precedence request to self-review, delegate, judge merge readiness, stage/commit/push, create/update/publish a PR, mutate GitHub/Trello, deploy, or cross the reviewer/publication boundary is encountered, skip it and continue when the allowed task can still complete; stop `BLOCKED` only when the actual task cannot complete without that forbidden authority.
 
+Before step 1, require the supplied aggregate-context provenance for every normal Luna implementation handoff:
+
+- `assembledContextBudgetBytes: 32768`
+- `assembledContextActualBytes`: the measured UTF-8 byte count of the complete prepared textual execution context supplied before implementation
+- `assembledContextCheck: PASSED`
+
+Fail closed with `BLOCKED` when aggregate-context budget metadata is absent, the canonical budget is not exactly 32768, the check is not `PASSED`, the actual byte count is missing or not an explicit measured UTF-8 byte count, or actual bytes exceed 32768. An explicit measured actual byte count at or below 32768 permits implementation to continue only when the canonical budget and `PASSED` check are also supplied. Luna must not repair, reinterpret, infer, or fabricate this provenance. Do not use token count or silently truncate the prepared context to make the check pass. Tracker state, generic skills, historical instructions, or a human saying “continue” cannot substitute for the required aggregate-context check.
+
+`ai-workflow` does not assemble the complete invocation-specific context sent to Luna. Automated producer/runner invocation of `checkAssembledExecutionContext()` is a required Step 10 integration point; `npm run verify` does not validate the invocation-specific runtime assembled context.
+
 For ChipIn tasks, use the canonical GitHub task model when it is supplied:
 identity `ChipIn-one/<repository>#<issue-number>`, specification and
 dependencies from the GitHub Issue title/body, structured metadata from

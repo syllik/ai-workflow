@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
+import { BUDGETS } from '../scripts/workspace/budgets.mjs';
 
 const workflowFiles = [
   'AGENTS.md',
@@ -186,6 +187,81 @@ describe('workflow documentation', () => {
     assert.match(flow, /Read-only projects are never write targets/iu);
     assert.match(flow, /contextDependencies/u);
     assert.match(flow, /unavailable required context blocks work/iu);
+  });
+
+  test('requires explicit aggregate-context provenance in every Luna implementation handoff', () => {
+    const prompt = readFileSync('prompts/implementation.md', 'utf8');
+    const promptTemplate = readFileSync('templates/prompt.md', 'utf8');
+
+    for (const text of [prompt, promptTemplate]) {
+      assert.match(text, /assembledContextBudgetBytes/u);
+      assert.match(text, /assembledContextActualBytes/u);
+      assert.match(text, /assembledContextCheck/u);
+      assert.match(text, /assembledContextBudgetBytes[^\n]*32768/u);
+      assert.match(text, /assembledContextCheck[^\n]*PASSED/u);
+    }
+  });
+
+  test('keeps the aggregate-context budget canonical at exactly 32768 bytes', () => {
+    assert.equal(BUDGETS['assembled execution context'], 32768);
+    for (const filePath of ['global/architect.md', 'global/executor.md', 'prompts/implementation.md', 'templates/prompt.md']) {
+      assert.match(readFileSync(filePath, 'utf8'), /32768-byte|32768 bytes|32768/u, filePath);
+    }
+  });
+
+  test('requires a passed aggregate-context check before implementation', () => {
+    for (const filePath of ['global/executor.md', 'prompts/implementation.md', 'templates/prompt.md']) {
+      const text = readFileSync(filePath, 'utf8');
+      assert.match(text, /missing[^\n]*aggregate-context|aggregate-context[^\n]*missing/iu, filePath);
+      assert.match(text, /check[^\n]*PASSED|PASSED[^\n]*check/iu, filePath);
+      assert.match(text, /BLOCKED/u, filePath);
+    }
+  });
+
+  test('fails closed for missing, failed, or over-budget aggregate provenance', () => {
+    const policy = `${readFileSync('global/executor.md', 'utf8')}\n${readFileSync('prompts/implementation.md', 'utf8')}`;
+
+    assert.match(policy, /budget metadata[^\n]*(?:absent|missing)|(?:absent|missing)[^\n]*budget metadata/iu);
+    assert.match(policy, /check[^\n]*(?:not|failed)[^\n]*PASSED|failed[^\n]*check/iu);
+    assert.match(policy, /actual bytes[^\n]*(?:exceed|over)[^\n]*32768|32768[^\n]*(?:exceed|over)/iu);
+    assert.match(policy, /BLOCKED/u);
+  });
+
+  test('requires measured actual bytes at or below the canonical limit to continue', () => {
+    const policy = readFileSync('global/executor.md', 'utf8');
+
+    assert.match(policy, /actual bytes[^\n]*(?:at or below|less than or equal to|<=)[^\n]*32768/iu);
+    assert.match(policy, /measured[^\n]*UTF-8[^\n]*byte/iu);
+    assert.match(policy, /continue|implementation may start/iu);
+  });
+
+  test('does not allow Luna to infer, fabricate, reinterpret, or silently truncate provenance', () => {
+    const policy = `${readFileSync('global/executor.md', 'utf8')}\n${readFileSync('prompts/implementation.md', 'utf8')}\n${readFileSync('templates/prompt.md', 'utf8')}`;
+
+    assert.match(policy, /must not[^\n]*(?:infer|fabricate|reinterpret|repair)/iu);
+    assert.match(policy, /Do not[^\n]*(?:token count|silently truncate)/iu);
+  });
+
+  test('keeps aggregate provenance above tracker, skills, history, and continue instructions', () => {
+    const policy = readFileSync('prompts/implementation.md', 'utf8');
+
+    assert.match(policy, /tracker state/iu);
+    assert.match(policy, /generic skills/iu);
+    assert.match(policy, /historical instructions/iu);
+    assert.match(policy, /continue/iu);
+    assert.match(policy, /cannot substitute|cannot bypass|not substitute/iu);
+  });
+
+  test('records the Step 10 producer/runner boundary without claiming runtime wiring here', () => {
+    const architect = readFileSync('global/architect.md', 'utf8');
+    const prompt = readFileSync('prompts/implementation.md', 'utf8');
+    const template = readFileSync('templates/prompt.md', 'utf8');
+    const policy = `${architect}\n${prompt}\n${template}`;
+
+    assert.match(policy, /Step 10/iu);
+    assert.match(policy, /producer\/runner|execution producer|runner/iu);
+    assert.match(policy, /npm run verify[^\n]*(?:does not|cannot|must not)[^\n]*(?:runtime|invocation-specific|assembled context)/iu);
+    assert.doesNotMatch(policy, /npm run verify[^\n]*(?:validates|measures|enforces)[^\n]*(?:actual|future|runtime)[^\n]*(?:Luna|execution) context/iu);
   });
 
 });
