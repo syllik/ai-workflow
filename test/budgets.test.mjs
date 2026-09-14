@@ -18,6 +18,112 @@ describe('budgets', () => {
     assert.deepEqual(result.findings, []);
   });
 
+  test('accepts an assembled execution context entry with text', () => {
+    const result = checkAssembledExecutionContext([{ text: 'AI' }]);
+    assert.equal(result.actualBytes, 2);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('accepts an assembled execution context entry with content', () => {
+    const result = checkAssembledExecutionContext([{ content: 'AI' }]);
+    assert.equal(result.actualBytes, 2);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('accepts an explicitly empty text entry as zero bytes', () => {
+    const result = checkAssembledExecutionContext([{ text: '' }]);
+    assert.equal(result.actualBytes, 0);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('accepts an explicitly empty content entry as zero bytes', () => {
+    const result = checkAssembledExecutionContext([{ content: '' }]);
+    assert.equal(result.actualBytes, 0);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects an object with an unmeasurable body instead of counting it as zero bytes', () => {
+    const result = checkAssembledExecutionContext([{ path: 'x', body: 'x'.repeat(40000) }]);
+    assert.equal(result.actualBytes, 0);
+    assert.deepEqual(result.findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects an empty object assembled execution context entry', () => {
+    assert.deepEqual(checkAssembledExecutionContext([{}]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects null assembled execution context entries', () => {
+    assert.deepEqual(checkAssembledExecutionContext([null]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects numeric assembled execution context entries', () => {
+    assert.deepEqual(checkAssembledExecutionContext([42]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects boolean assembled execution context entries', () => {
+    assert.deepEqual(checkAssembledExecutionContext([true]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects array assembled execution context entries', () => {
+    assert.deepEqual(checkAssembledExecutionContext([[]]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects a non-string text value', () => {
+    assert.deepEqual(checkAssembledExecutionContext([{ text: 42 }]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('rejects a non-string content value', () => {
+    assert.deepEqual(checkAssembledExecutionContext([{ content: false }]).findings, [{
+      code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+      index: 0
+    }]);
+  });
+
+  test('reports multiple invalid assembled entries in input order', () => {
+    const result = checkAssembledExecutionContext([{}, 'valid', null, { content: 1 }]);
+    assert.equal(result.actualBytes, 5);
+    assert.deepEqual(result.findings, [
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 0 },
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 2 },
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 3 }
+    ]);
+  });
+
+  test('does not suppress an aggregate finding when malformed entries accompany over-budget valid content', () => {
+    const result = checkAssembledExecutionContext([{}, 'x'.repeat(32769), null]);
+    assert.equal(result.actualBytes, 32769);
+    assert.deepEqual(result.findings, [
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 0 },
+      { code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY', index: 2 },
+      {
+        code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
+        actualBytes: 32769,
+        maxBytes: 32768
+      }
+    ]);
+  });
+
   test('accepts assembled execution context at the exact aggregate boundary', () => {
     const result = checkAssembledExecutionContext(['x'.repeat(32768)]);
     assert.equal(result.actualBytes, 32768);

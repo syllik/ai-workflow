@@ -21,20 +21,37 @@ function resolveMaximum(filePath, budgets) {
 }
 
 function contextEntryText(entry) {
-  if (entry && typeof entry === 'object') return entry.text ?? entry.content ?? '';
-  return entry;
+  if (typeof entry === 'string') return entry;
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+
+  const hasText = Object.hasOwn(entry, 'text');
+  const hasContent = Object.hasOwn(entry, 'content');
+  if (!hasText && !hasContent) return undefined;
+  if ((hasText && typeof entry.text !== 'string') || (hasContent && typeof entry.content !== 'string')) return undefined;
+  return hasText ? entry.text : entry.content;
 }
 
 export function checkAssembledExecutionContext(entries, budgets = BUDGETS) {
-  const actualBytes = [...entries].reduce((total, entry) => total + utf8Bytes(contextEntryText(entry)), 0);
+  const findings = [];
+  const actualBytes = [...entries].reduce((total, entry, index) => {
+    const text = contextEntryText(entry);
+    if (typeof text !== 'string') {
+      findings.push({
+        code: 'INVALID_ASSEMBLED_CONTEXT_ENTRY',
+        index
+      });
+      return total;
+    }
+    return total + utf8Bytes(text);
+  }, 0);
   const maxBytes = budgets[ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY];
-  const findings = actualBytes > maxBytes
-    ? [{
+  if (actualBytes > maxBytes) {
+    findings.push({
       code: 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED',
       actualBytes,
       maxBytes
-    }]
-    : [];
+    });
+  }
   return { actualBytes, maxBytes, findings };
 }
 
