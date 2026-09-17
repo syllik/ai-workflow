@@ -176,9 +176,8 @@ jobs:
           const central = sourceManifest.projects.find((project) => project.repository === 'syllik/ai-workflow');
           if (!central) throw new Error('The manifest has no registered ai-workflow project');
           const manifestPath = path.join(workspaceRoot, central.localPath, 'workspace.yaml');
-          const manifest = loadManifest(manifestPath);
           const expectedShas = JSON.parse(readFileSync(process.env.FULL_WORKSPACE_EXPECTED_SHAS, 'utf8'));
-          const result = checkFullWorkspace(workspaceRoot, manifest, manifestPath, { expectedShas });
+          const result = checkFullWorkspace(workspaceRoot, sourceManifest, manifestPath, { expectedShas });
           process.stdout.write(JSON.stringify(result.receipts) + '\n');
           if (!result.passed) process.exitCode = 1;
           NODE
