@@ -956,7 +956,10 @@ export function checkFullWorkspace(root, manifest, manifestPath = DEFAULT_MANIFE
   const workspaceRoot = path.resolve(root);
   const projects = Array.isArray(manifest?.projects) ? manifest.projects : [];
   const validation = validateManifest(manifest);
-  const centralProject = projects.find((project) => project?.repository === CENTRAL_REPOSITORY && project?.id === CENTRAL_REPOSITORY);
+  const centralProject = projects.find((project) => project?.repository === CENTRAL_REPOSITORY
+    && project?.id === CENTRAL_REPOSITORY
+    && project?.access === 'managed'
+    && project?.status === 'active');
   const centralFindings = [];
   const workspaceAvailable = trustedRoot(workspaceRoot) !== null;
   const centralManifestValid = validation.valid

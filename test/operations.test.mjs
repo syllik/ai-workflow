@@ -35,6 +35,21 @@ describe('workspace operations', () => {
     }
   }
 
+  function initReadOnlyCentralManifestRepo(root, manifest) {
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    const centralPath = path.join(root, central.localPath);
+    initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git', central.integrationBranch);
+    mkdirSync(path.join(centralPath, '.ai'), { recursive: true });
+    mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+    writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+    writeFileSync(path.join(centralPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+    writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+    const manifestPath = writeFixtureManifest(centralPath, manifest);
+    git(centralPath, 'add', '.');
+    git(centralPath, 'commit', '--quiet', '-m', 'committed manifest change');
+    return { manifestPath, centralPath };
+  }
+
   test('returns one full-workspace receipt per project in manifest order', () => {
     const root = makeFixtureRoot();
     try {
@@ -116,6 +131,51 @@ describe('workspace operations', () => {
       assert.equal(result.receipts[3].reason.length > 0, true);
       assert.equal(result.receipts[3].findings, undefined);
       assert.equal(centralPath.endsWith('workflows/ai/ai-workflow'), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('fails closed when the canonical central record is read-only', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const readOnlyCentral = { ...central, access: 'read-only' };
+      delete readOnlyCentral.contextPath;
+      const manifest = fixtureManifest({ projects: [readOnlyCentral] });
+      const { manifestPath, centralPath } = initReadOnlyCentralManifestRepo(root, manifest);
+      const expectedSha = git(centralPath, 'rev-parse', 'HEAD');
+      detachRepository(centralPath);
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, {
+        expectedShas: { [central.repository]: expectedSha }
+      });
+
+      assert.equal(result.passed, false);
+      assert.equal(result.receipts[0].outcome, 'unavailable');
+      assert.equal(result.receipts[0].reason, 'CENTRAL_REPOSITORY_UNVERIFIED');
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('fails closed when the canonical central record is not active', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const onboardingCentral = { ...central, status: 'onboarding' };
+      const manifest = fixtureManifest({ projects: [onboardingCentral] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest);
+      const expectedSha = git(centralPath, 'rev-parse', 'HEAD');
+      detachRepository(centralPath);
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, {
+        expectedShas: { [central.repository]: expectedSha }
+      });
+
+      assert.equal(result.passed, false);
+      assert.equal(result.receipts[0].outcome, 'unavailable');
+      assert.equal(result.receipts[0].reason, 'CENTRAL_REPOSITORY_UNVERIFIED');
     } finally {
       removeFixtureRoot(root);
     }
