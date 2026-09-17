@@ -24,6 +24,17 @@ describe('workspace operations', () => {
     ]));
   }
 
+  function detachRepository(repositoryPath) {
+    git(repositoryPath, 'checkout', '--quiet', '--detach', 'HEAD');
+  }
+
+  function detachRepositories(root, manifest) {
+    for (const project of manifest.projects) {
+      const repositoryPath = path.join(root, project.localPath);
+      if (existsSync(repositoryPath)) detachRepository(repositoryPath);
+    }
+  }
+
   test('returns one full-workspace receipt per project in manifest order', () => {
     const root = makeFixtureRoot();
     try {
@@ -88,9 +99,9 @@ describe('workspace operations', () => {
       git(readOnlyPath, 'add', 'AGENTS.md', '.ai');
       git(readOnlyPath, 'commit', '--quiet', '-m', 'read-only source');
 
-      const result = checkFullWorkspace(root, manifest, manifestPath, {
-        expectedShas: expectedShasFor(root, manifest)
-      });
+      const expectedShas = expectedShasFor(root, manifest);
+      detachRepositories(root, manifest);
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
 
       assert.equal(result.passed, true);
       assert.deepEqual(result.receipts.map(({ repository, outcome }) => ({ repository, outcome })), [
@@ -125,10 +136,12 @@ describe('workspace operations', () => {
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, missing] });
-      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest);
+      const expectedCentralSha = git(centralPath, 'rev-parse', 'HEAD');
+      detachRepository(centralPath);
       const result = checkFullWorkspace(root, manifest, manifestPath, {
         expectedShas: {
-          [central.repository]: git(path.join(root, central.localPath), 'rev-parse', 'HEAD'),
+          [central.repository]: expectedCentralSha,
           [missing.repository]: '0000000000000000000000000000000000000000'
         }
       });
@@ -160,11 +173,14 @@ describe('workspace operations', () => {
         contextPath: '.ai/context.md'
       };
       const manifest = fixtureManifest({ projects: [central, onboarding] });
-      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest);
       initFixtureRepo(path.join(root, onboarding.localPath), 'https://github.com/' + onboarding.repository + '.git', onboarding.integrationBranch);
+      const expectedCentralSha = git(centralPath, 'rev-parse', 'HEAD');
+      detachRepository(centralPath);
+      detachRepository(path.join(root, onboarding.localPath));
       const result = checkFullWorkspace(root, manifest, manifestPath, {
         expectedShas: {
-          [central.repository]: git(path.join(root, central.localPath), 'rev-parse', 'HEAD')
+          [central.repository]: expectedCentralSha
         }
       });
 
@@ -196,15 +212,162 @@ describe('workspace operations', () => {
       const activePath = path.join(root, active.localPath);
       initFixtureRepo(activePath, 'https://github.com/' + active.repository + '.git', active.integrationBranch);
       commitManagedContracts(activePath, active, manifest, 'wrong generated content\n');
-      const result = checkFullWorkspace(root, manifest, manifestPath, {
-        expectedShas: expectedShasFor(root, manifest)
-      });
+      const expectedShas = expectedShasFor(root, manifest);
+      detachRepositories(root, manifest);
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
       const activeReceipt = result.receipts[1];
 
       assert.equal(result.passed, false);
       assert.equal(activeReceipt.outcome, 'unavailable');
       assert.match(activeReceipt.sha, /^[0-9a-f]{40}$/);
       assert.equal(activeReceipt.findings.some(({ path: findingPath }) => findingPath.startsWith(active.localPath + '/')), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects an attached active repository even when its branch ref matches the expected SHA', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const active = {
+        id: 'syllik/active-repository',
+        repository: 'syllik/active-repository',
+        localPath: 'tools/active-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'main',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, active] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest);
+      const activePath = path.join(root, active.localPath);
+      initFixtureRepo(activePath, 'https://github.com/' + active.repository + '.git', active.integrationBranch);
+      commitManagedContracts(activePath, active, manifest);
+      const expectedShas = expectedShasFor(root, manifest);
+      detachRepository(centralPath);
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
+      const activeReceipt = result.receipts[1];
+
+      assert.equal(result.passed, false);
+      assert.equal(activeReceipt.outcome, 'unavailable');
+      assert.equal(activeReceipt.sha, null);
+      assert.equal(git(activePath, 'branch', '--show-current'), active.integrationBranch);
+      assert.equal(git(activePath, 'rev-parse', `refs/heads/${active.integrationBranch}`), expectedShas[active.repository]);
+      assert.equal(activeReceipt.findings.some(({ code }) => code === 'HEAD_NOT_DETACHED'), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('fails closed when a detached repository HEAD SHA differs from the expected SHA', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const active = {
+        id: 'syllik/active-repository',
+        repository: 'syllik/active-repository',
+        localPath: 'tools/active-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'main',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, active] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const activePath = path.join(root, active.localPath);
+      initFixtureRepo(activePath, 'https://github.com/' + active.repository + '.git', active.integrationBranch);
+      commitManagedContracts(activePath, active, manifest);
+      const expectedShas = expectedShasFor(root, manifest);
+      detachRepositories(root, manifest);
+      expectedShas[active.repository] = '1'.repeat(40);
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
+      const activeReceipt = result.receipts[1];
+
+      assert.equal(result.passed, false);
+      assert.equal(activeReceipt.outcome, 'unavailable');
+      assert.equal(activeReceipt.reason, 'SHA_UNVERIFIED');
+      assert.equal(activeReceipt.findings.some(({ code }) => code === 'HEAD_SHA_MISMATCH'), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('fails closed when a detached repository integration branch ref differs from the expected SHA', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const active = {
+        id: 'syllik/active-repository',
+        repository: 'syllik/active-repository',
+        localPath: 'tools/active-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'main',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, active] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const activePath = path.join(root, active.localPath);
+      initFixtureRepo(activePath, 'https://github.com/' + active.repository + '.git', active.integrationBranch);
+      commitManagedContracts(activePath, active, manifest);
+      const expectedShas = expectedShasFor(root, manifest);
+      git(activePath, 'switch', '--quiet', '-c', 'alternate');
+      writeFileSync(path.join(activePath, 'alternate.txt'), 'alternate\n', 'utf8');
+      git(activePath, 'add', 'alternate.txt');
+      git(activePath, 'commit', '--quiet', '-m', 'alternate branch');
+      const alternateSha = git(activePath, 'rev-parse', 'HEAD');
+      git(activePath, 'switch', '--quiet', '--detach', expectedShas[active.repository]);
+      git(activePath, 'update-ref', `refs/heads/${active.integrationBranch}`, alternateSha);
+      detachRepository(path.join(root, central.localPath));
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
+      const activeReceipt = result.receipts[1];
+
+      assert.equal(result.passed, false);
+      assert.equal(activeReceipt.outcome, 'unavailable');
+      assert.equal(activeReceipt.reason, 'SHA_UNVERIFIED');
+      assert.equal(activeReceipt.findings.some(({ code }) => code === 'BRANCH_SHA_MISMATCH'), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('fails closed when a detached repository origin differs from the expected origin', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const active = {
+        id: 'syllik/active-repository',
+        repository: 'syllik/active-repository',
+        localPath: 'tools/active-repository',
+        group: 'tools',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'main',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, active] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const activePath = path.join(root, active.localPath);
+      initFixtureRepo(activePath, 'https://github.com/' + active.repository + '.git', active.integrationBranch);
+      commitManagedContracts(activePath, active, manifest);
+      const expectedShas = expectedShasFor(root, manifest);
+      detachRepositories(root, manifest);
+      git(activePath, 'remote', 'set-url', 'origin', 'https://github.com/other/repository.git');
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, { expectedShas });
+      const activeReceipt = result.receipts[1];
+
+      assert.equal(result.passed, false);
+      assert.equal(activeReceipt.outcome, 'unavailable');
+      assert.equal(activeReceipt.reason, 'REPOSITORY_UNVERIFIED');
+      assert.equal(activeReceipt.findings.some(({ code }) => code === 'ORIGIN_MISMATCH'), true);
     } finally {
       removeFixtureRoot(root);
     }

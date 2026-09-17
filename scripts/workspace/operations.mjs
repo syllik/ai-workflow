@@ -889,6 +889,29 @@ function centralManifestPathIsSafe(root, centralProject, manifestPath, findings)
   return true;
 }
 
+function verifyDetachedHead(destination, project, findings) {
+  try {
+    const symbolicHead = execFileSync('git', [
+      '-C',
+      destination,
+      'symbolic-ref',
+      '--quiet',
+      '--short',
+      'HEAD'
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (!symbolicHead) {
+      findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
+      return false;
+    }
+    findings.push(repositoryFinding(project, 'HEAD_NOT_DETACHED', { actual: symbolicHead }));
+    return false;
+  } catch (error) {
+    if (error?.status === 1) return true;
+    findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
+    return false;
+  }
+}
+
 function verifyExpectedHeadSha(destination, project, expectedShas, findings) {
   const expected = expectedShas
     && typeof expectedShas === 'object'
@@ -987,13 +1010,16 @@ export function checkFullWorkspace(root, manifest, manifestPath = DEFAULT_MANIFE
         project.repository,
         project.localPath,
         findings,
-        resolveExpectedRemote(project.repository, options),
-        project.integrationBranch
+        resolveExpectedRemote(project.repository, options)
       );
     } catch {
       findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
     }
     if (!safelyMaterialized) {
+      return fullWorkspaceReceipt(project, 'unavailable', null, 'REPOSITORY_UNVERIFIED', findings);
+    }
+
+    if (!verifyDetachedHead(destination, project, findings)) {
       return fullWorkspaceReceipt(project, 'unavailable', null, 'REPOSITORY_UNVERIFIED', findings);
     }
 
