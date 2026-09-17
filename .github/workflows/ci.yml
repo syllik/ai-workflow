@@ -119,9 +119,12 @@ jobs:
                 '--single-branch',
                 '--branch',
                 project.integrationBranch,
+                '--no-checkout',
                 remote,
                 destination
               ], { env: gitEnvironment, stdio: ['ignore', 'pipe', 'pipe'] });
+              runGit(['-C', destination, 'fetch', '--quiet', '--no-tags', '--update-head-ok', 'origin',
+                `+${resolvedSha}:refs/heads/${project.integrationBranch}`], gitEnvironment);
             } catch {
               throw new Error('Unable to materialize ' + project.repository);
             }
