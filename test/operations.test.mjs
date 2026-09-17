@@ -121,6 +121,26 @@ describe('workspace operations', () => {
     }
   });
 
+  test('fails closed when the central repository keeps its repository but changes its valid id', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const malformedCentral = { ...central, id: 'syllik/another-valid-id' };
+      const manifest = fixtureManifest({ projects: [malformedCentral] });
+      const { manifestPath, centralPath } = initCentralManifestRepo(root, manifest);
+      const expectedSha = git(centralPath, 'rev-parse', 'HEAD');
+      detachRepository(centralPath);
+
+      const result = checkFullWorkspace(root, manifest, manifestPath, {
+        expectedShas: { [central.repository]: expectedSha }
+      });
+
+      assert.equal(result.passed, false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('marks a missing registered repository unavailable instead of passing centrally', () => {
     const root = makeFixtureRoot();
     try {

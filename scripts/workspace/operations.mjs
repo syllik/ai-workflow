@@ -1057,6 +1057,7 @@ export function checkFullWorkspace(root, manifest, manifestPath = DEFAULT_MANIFE
   });
 
   const passed = validation.valid
+    && centralManifestValid === true
     && receipts.length === projects.length
     && receipts.length > 0
     && receipts.every((receipt, index) => {
