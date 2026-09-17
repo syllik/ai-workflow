@@ -45,10 +45,11 @@ jobs:
         run: npm ci
       - name: Materialize registered repositories
         env:
-          WORKSPACE_READ_TOKEN: ${{ secrets.WORKSPACE_READ_TOKEN }}
+          WORKSPACE_READ_TOKEN_SYLLIK: ${{ secrets.WORKSPACE_READ_TOKEN_SYLLIK }}
+          WORKSPACE_READ_TOKEN_CHIPIN: ${{ secrets.WORKSPACE_READ_TOKEN_CHIPIN }}
         run: |
-          if [ -z "${WORKSPACE_READ_TOKEN:-}" ]; then
-            echo "WORKSPACE_READ_TOKEN is required for full-workspace verification." >&2
+          if [ -z "${WORKSPACE_READ_TOKEN_SYLLIK:-}" ] || [ -z "${WORKSPACE_READ_TOKEN_CHIPIN:-}" ]; then
+            echo "WORKSPACE_READ_TOKEN_SYLLIK and WORKSPACE_READ_TOKEN_CHIPIN are required for full-workspace verification." >&2
             exit 1
           fi
           export FULL_WORKSPACE_ROOT="${RUNNER_TEMP}/ai-workflow-full-workspace"
@@ -64,17 +65,14 @@ jobs:
           const manifest = parse(readFileSync('workspace.yaml', 'utf8'));
           const validation = validateManifest(manifest);
           if (!validation.valid) throw new Error('workspace.yaml is invalid');
-          const token = process.env.WORKSPACE_READ_TOKEN;
-          const gitEnvironment = {
-            ...process.env,
-            GIT_CONFIG_COUNT: '1',
-            GIT_CONFIG_KEY_0: 'http.extraHeader',
-            GIT_CONFIG_VALUE_0: 'Authorization: Bearer ' + token
-          };
+          const tokenEnvByOwner = new Map([
+            ['syllik', 'WORKSPACE_READ_TOKEN_SYLLIK'],
+            ['ChipIn-one', 'WORKSPACE_READ_TOKEN_CHIPIN']
+          ]);
           const workspaceRoot = path.resolve(process.env.FULL_WORKSPACE_ROOT);
           const expectedShas = {};
 
-          function runGit(args) {
+          function runGit(args, gitEnvironment) {
             return execFileSync('git', args, {
               encoding: 'utf8',
               env: gitEnvironment,
@@ -83,11 +81,26 @@ jobs:
           }
 
           for (const project of manifest.projects) {
+            const [owner] = project.repository.split('/');
+            const tokenEnv = tokenEnvByOwner.get(owner);
+            if (!tokenEnv) {
+              throw new Error('No read credential configured for repository owner ' + owner);
+            }
+            const token = process.env[tokenEnv];
+            if (!token) {
+              throw new Error(tokenEnv + ' is required for full-workspace verification.');
+            }
+            const gitEnvironment = {
+              ...process.env,
+              GIT_CONFIG_COUNT: '1',
+              GIT_CONFIG_KEY_0: 'http.extraHeader',
+              GIT_CONFIG_VALUE_0: 'Authorization: Bearer ' + token
+            };
             const remote = 'https://github.com/' + project.repository + '.git';
             const branchRef = 'refs/heads/' + project.integrationBranch;
             let resolvedSha;
             try {
-              const output = runGit(['ls-remote', remote, branchRef]);
+              const output = runGit(['ls-remote', remote, branchRef], gitEnvironment);
               resolvedSha = output.split(/\s+/u)[0];
             } catch {
               throw new Error('Unable to resolve ' + project.repository + ' integration branch');
@@ -112,17 +125,17 @@ jobs:
             } catch {
               throw new Error('Unable to materialize ' + project.repository);
             }
-            const head = runGit(['-C', destination, 'rev-parse', 'HEAD']).toLowerCase();
-            const branchHead = runGit(['-C', destination, 'rev-parse', '--verify', branchRef + '^{commit}']).toLowerCase();
+            const head = runGit(['-C', destination, 'rev-parse', 'HEAD'], gitEnvironment).toLowerCase();
+            const branchHead = runGit(['-C', destination, 'rev-parse', '--verify', branchRef + '^{commit}'], gitEnvironment).toLowerCase();
             if (head !== resolvedSha.toLowerCase() || branchHead !== resolvedSha.toLowerCase()) {
               throw new Error('Materialized SHA verification failed for ' + project.repository);
             }
             try {
-              runGit(['-C', destination, 'checkout', '--detach', resolvedSha]);
+              runGit(['-C', destination, 'checkout', '--detach', resolvedSha], gitEnvironment);
             } catch {
               throw new Error('Unable to detach ' + project.repository + ' at resolved SHA');
             }
-            const actualSha = runGit(['-C', destination, 'rev-parse', 'HEAD']).toLowerCase();
+            const actualSha = runGit(['-C', destination, 'rev-parse', 'HEAD'], gitEnvironment).toLowerCase();
             if (actualSha !== resolvedSha.toLowerCase()) {
               throw new Error('Detached SHA verification failed for ' + project.repository);
             }
