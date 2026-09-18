@@ -85,7 +85,7 @@ export function validateManifest(value) {
   }
 
   checkUnknownKeys(value, MANIFEST_KEYS, 'manifest', findings);
-  if (value.schemaVersion !== 1) findings.push(finding('INVALID_SCHEMA_VERSION', 'manifest.schemaVersion'));
+  if (value.schemaVersion !== 2) findings.push(finding('INVALID_SCHEMA_VERSION', 'manifest.schemaVersion'));
   if (value.canonicalRoot !== '~/Desktop/WORK') findings.push(finding('INVALID_CANONICAL_ROOT', 'manifest.canonicalRoot'));
 
   if (!isObject(value.budgets)) {
