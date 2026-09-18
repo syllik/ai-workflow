@@ -31,7 +31,7 @@ export const fixtureBudgets = {
 
 export function fixtureManifest(overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     canonicalRoot: '~/Desktop/WORK',
     budgets: { ...fixtureBudgets },
     projects: expectedProjects.map((project) => ({ ...project })),
