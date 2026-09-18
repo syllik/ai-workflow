@@ -29,6 +29,10 @@ node scripts/workspace/cli.mjs apply --root <path>
 Phase 1A includes isolated fixture apply tests. The product supports canonical
 apply after normal safety checks; canonical apply was not executed in Phase 1A.
 
+## Git lifecycle
+
+`workspace.yaml` declares each repository's `lifecycle`, `branchState`, `integrationBranch`, and optional `releaseBranch`. The canonical managed model is `feature/* -> PR -> squash -> master`; deployment uses GitHub Environments rather than mandatory `staging`/`production` branches. Transitional repositories remain explicitly marked `branchState: migration` until their real repository settings and branches are migrated safely. See [`docs/git-workflow.md`](docs/git-workflow.md).
+
 ## Что читает Sol
 
 Sol читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
