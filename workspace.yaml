@@ -21,6 +21,14 @@ projects:
     status: active
     integrationBranch: master
     contextPath: .ai/context.md
+  - id: syllik/life-ops
+    repository: syllik/life-ops
+    localPath: personal/life-ops
+    group: personal
+    access: managed
+    status: active
+    integrationBranch: master
+    contextPath: .ai/context.md
   - id: ChipIn-one/chipin-frontend
     repository: ChipIn-one/chipin-frontend
     localPath: products/chipin/chipin-frontend
