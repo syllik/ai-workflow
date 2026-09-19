@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,5 +25,162 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Verify canonical workflow
+      - name: Verify canonical workflow (central-only)
         run: npm run verify
+
+  full-workspace:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Install ai-workflow dependencies only
+        run: npm ci
+      - name: Materialize registered repositories
+        env:
+          WORKSPACE_READ_TOKEN_SYLLIK: ${{ secrets.WORKSPACE_READ_TOKEN_SYLLIK }}
+          WORKSPACE_READ_TOKEN_CHIPIN: ${{ secrets.WORKSPACE_READ_TOKEN_CHIPIN }}
+        run: |
+          if [ -z "${WORKSPACE_READ_TOKEN_SYLLIK:-}" ] || [ -z "${WORKSPACE_READ_TOKEN_CHIPIN:-}" ]; then
+            echo "WORKSPACE_READ_TOKEN_SYLLIK and WORKSPACE_READ_TOKEN_CHIPIN are required for full-workspace verification." >&2
+            exit 1
+          fi
+          export FULL_WORKSPACE_ROOT="${RUNNER_TEMP}/ai-workflow-full-workspace"
+          export FULL_WORKSPACE_EXPECTED_SHAS="${RUNNER_TEMP}/ai-workflow-full-workspace-shas.json"
+          mkdir -p "${FULL_WORKSPACE_ROOT}"
+          node --input-type=module <<'NODE'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          import { parse } from 'yaml';
+          import { validateManifest } from './scripts/workspace/manifest.mjs';
+
+          const manifest = parse(readFileSync('workspace.yaml', 'utf8'));
+          const validation = validateManifest(manifest);
+          if (!validation.valid) throw new Error('workspace.yaml is invalid');
+          const tokenEnvByOwner = new Map([
+            ['syllik', 'WORKSPACE_READ_TOKEN_SYLLIK'],
+            ['ChipIn-one', 'WORKSPACE_READ_TOKEN_CHIPIN']
+          ]);
+          const workspaceRoot = path.resolve(process.env.FULL_WORKSPACE_ROOT);
+          const expectedShas = {};
+
+          function runGit(args, gitEnvironment) {
+            return execFileSync('git', args, {
+              encoding: 'utf8',
+              env: gitEnvironment,
+              stdio: ['ignore', 'pipe', 'pipe']
+            }).trim();
+          }
+
+          for (const project of manifest.projects) {
+            const [owner] = project.repository.split('/');
+            const tokenEnv = tokenEnvByOwner.get(owner);
+            if (!tokenEnv) {
+              throw new Error('No read credential configured for repository owner ' + owner);
+            }
+            const token = process.env[tokenEnv];
+            if (!token) {
+              throw new Error(tokenEnv + ' is required for full-workspace verification.');
+            }
+            const gitEnvironment = {
+              ...process.env,
+              GIT_CONFIG_COUNT: '1',
+              GIT_CONFIG_KEY_0: 'http.extraHeader',
+              GIT_CONFIG_VALUE_0: 'Authorization: Bearer ' + token
+            };
+            const remote = 'https://github.com/' + project.repository + '.git';
+            const branchRef = 'refs/heads/' + project.integrationBranch;
+            let resolvedSha;
+            try {
+              const output = runGit(['ls-remote', remote, branchRef], gitEnvironment);
+              resolvedSha = output.split(/\s+/u)[0];
+            } catch {
+              throw new Error('Unable to resolve ' + project.repository + ' integration branch');
+            }
+            if (!/^[0-9a-f]{40}$/iu.test(resolvedSha ?? '')) {
+              throw new Error('Integration branch did not resolve to an immutable SHA for ' + project.repository);
+            }
+
+            const destination = path.resolve(workspaceRoot, project.localPath);
+            mkdirSync(path.dirname(destination), { recursive: true });
+            try {
+              execFileSync('git', [
+                'clone',
+                '--quiet',
+                '--no-tags',
+                '--single-branch',
+                '--branch',
+                project.integrationBranch,
+                '--no-checkout',
+                remote,
+                destination
+              ], { env: gitEnvironment, stdio: ['ignore', 'pipe', 'pipe'] });
+              runGit(['-C', destination, 'fetch', '--quiet', '--no-tags', '--update-head-ok', 'origin',
+                `+${resolvedSha}:refs/heads/${project.integrationBranch}`], gitEnvironment);
+            } catch {
+              throw new Error('Unable to materialize ' + project.repository);
+            }
+            const head = runGit(['-C', destination, 'rev-parse', 'HEAD'], gitEnvironment).toLowerCase();
+            const branchHead = runGit(['-C', destination, 'rev-parse', '--verify', branchRef + '^{commit}'], gitEnvironment).toLowerCase();
+            if (head !== resolvedSha.toLowerCase() || branchHead !== resolvedSha.toLowerCase()) {
+              throw new Error('Materialized SHA verification failed for ' + project.repository);
+            }
+            try {
+              runGit(['-C', destination, 'checkout', '--detach', resolvedSha], gitEnvironment);
+            } catch {
+              throw new Error('Unable to detach ' + project.repository + ' at resolved SHA');
+            }
+            const actualSha = runGit(['-C', destination, 'rev-parse', 'HEAD'], gitEnvironment).toLowerCase();
+            if (actualSha !== resolvedSha.toLowerCase()) {
+              throw new Error('Detached SHA verification failed for ' + project.repository);
+            }
+            let headIsAttached = false;
+            try {
+              execFileSync('git', ['-C', destination, 'symbolic-ref', '-q', 'HEAD'], {
+                env: gitEnvironment,
+                stdio: ['ignore', 'ignore', 'ignore']
+              });
+              headIsAttached = true;
+            } catch (error) {
+              if (error?.status !== 1) {
+                throw new Error('Unable to verify detached state for ' + project.repository);
+              }
+            }
+            if (headIsAttached) {
+              throw new Error('repository checkout is not detached for ' + project.repository);
+            }
+            expectedShas[project.repository] = resolvedSha.toLowerCase();
+          }
+
+          writeFileSync(process.env.FULL_WORKSPACE_EXPECTED_SHAS, JSON.stringify(expectedShas) + '\n', 'utf8');
+          NODE
+          {
+            echo "FULL_WORKSPACE_ROOT=${FULL_WORKSPACE_ROOT}"
+            echo "FULL_WORKSPACE_EXPECTED_SHAS=${FULL_WORKSPACE_EXPECTED_SHAS}"
+          } >> "${GITHUB_ENV}"
+      - name: Verify full workspace receipts
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { checkFullWorkspace } from './scripts/workspace/operations.mjs';
+          import { loadManifest } from './scripts/workspace/manifest.mjs';
+
+          const workspaceRoot = path.resolve(process.env.FULL_WORKSPACE_ROOT);
+          const sourceManifest = loadManifest('workspace.yaml');
+          const central = sourceManifest.projects.find((project) => project.repository === 'syllik/ai-workflow');
+          if (!central) throw new Error('The manifest has no registered ai-workflow project');
+          const manifestPath = path.join(workspaceRoot, central.localPath, 'workspace.yaml');
+          const expectedShas = JSON.parse(readFileSync(process.env.FULL_WORKSPACE_EXPECTED_SHAS, 'utf8'));
+          const result = checkFullWorkspace(workspaceRoot, sourceManifest, manifestPath, { expectedShas });
+          process.stdout.write(JSON.stringify(result.receipts) + '\n');
+          if (!result.passed) process.exitCode = 1;
+          NODE
