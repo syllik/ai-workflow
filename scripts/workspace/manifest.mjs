@@ -22,7 +22,7 @@ export const HARD_BUDGETS = Object.freeze({
 });
 
 const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'projects']);
-const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
+const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'lifecycle', 'branchState', 'integrationBranch', 'releaseBranch', 'contextPath', 'contextDependencies']);
 const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -85,7 +85,7 @@ export function validateManifest(value) {
   }
 
   checkUnknownKeys(value, MANIFEST_KEYS, 'manifest', findings);
-  if (value.schemaVersion !== 1) findings.push(finding('INVALID_SCHEMA_VERSION', 'manifest.schemaVersion'));
+  if (value.schemaVersion !== 2) findings.push(finding('INVALID_SCHEMA_VERSION', 'manifest.schemaVersion'));
   if (value.canonicalRoot !== '~/Desktop/WORK') findings.push(finding('INVALID_CANONICAL_ROOT', 'manifest.canonicalRoot'));
 
   if (!isObject(value.budgets)) {
@@ -116,6 +116,9 @@ export function validateManifest(value) {
       if (!isSafeRelativePath(project.localPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.localPath`));
       if (typeof project.group !== 'string' || !isSafeRelativePath(project.group)) findings.push(finding('INVALID_GROUP', `${projectPath}.group`));
       if (!isSafeRelativePath(project.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
+      if (!['code-only', 'staging', 'production'].includes(project.lifecycle)) findings.push(finding('INVALID_LIFECYCLE', `${projectPath}.lifecycle`));
+      if (!['canonical', 'migration', 'external', 'integration-exception'].includes(project.branchState)) findings.push(finding('INVALID_BRANCH_STATE', `${projectPath}.branchState`));
+      if (project.releaseBranch !== undefined && !isSafeRelativePath(project.releaseBranch)) findings.push(finding('INVALID_RELEASE_BRANCH', `${projectPath}.releaseBranch`));
       if (!['managed', 'read-only'].includes(project.access)) findings.push(finding('INVALID_ACCESS', `${projectPath}.access`));
       if (!['onboarding', 'active'].includes(project.status)) findings.push(finding('INVALID_STATUS', `${projectPath}.status`));
       if (project.contextPath !== undefined && !isSafeRelativePath(project.contextPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.contextPath`));
@@ -123,6 +126,14 @@ export function validateManifest(value) {
       else if (project.access === 'managed' && project.contextPath !== '.ai/context.md') findings.push(finding('MANAGED_CONTEXT_PATH_INVALID', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.contextPath !== undefined) findings.push(finding('READ_ONLY_CONTEXT_FORBIDDEN', `${projectPath}.contextPath`));
       if (project.access === 'read-only' && project.status !== 'active') findings.push(finding('INVALID_COMBINATION', `${projectPath}.status`));
+      if (['canonical', 'migration', 'external', 'integration-exception'].includes(project.branchState)) {
+        const invalidBranchState =
+          (project.branchState === 'canonical' && (project.access !== 'managed' || project.integrationBranch !== 'master' || project.releaseBranch !== undefined))
+          || (project.branchState === 'migration' && (project.access !== 'managed' || (project.integrationBranch === 'master' && project.releaseBranch === undefined)))
+          || (project.branchState === 'external' && project.access !== 'read-only')
+          || (project.branchState === 'integration-exception' && (project.access !== 'managed' || project.lifecycle === 'code-only' || project.integrationBranch === 'master' || project.releaseBranch !== 'master'));
+        if (invalidBranchState) findings.push(finding('INVALID_BRANCH_STATE_COMBINATION', `${projectPath}.branchState`));
+      }
       if (project.contextDependencies !== undefined) {
         if (!Array.isArray(project.contextDependencies)) {
           findings.push(finding('INVALID_CONTEXT_DEPENDENCIES', `${projectPath}.contextDependencies`));

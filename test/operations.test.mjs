@@ -82,6 +82,8 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        lifecycle: 'code-only',
+        branchState: 'migration',
         integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
@@ -192,6 +194,8 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        lifecycle: 'code-only',
+        branchState: 'migration',
         integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };
@@ -435,6 +439,8 @@ describe('workspace operations', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        lifecycle: 'code-only',
+        branchState: 'migration',
         integrationBranch: 'main',
         contextPath: '.ai/context.md'
       };

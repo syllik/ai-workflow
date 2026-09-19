@@ -88,6 +88,8 @@ describe('manifest', () => {
         group: 'tools',
         access: 'managed',
         status: 'onboarding',
+        lifecycle: 'code-only',
+        branchState: 'migration',
         integrationBranch: 'main',
         contextPath: '.ai/context.md'
       }]
@@ -110,6 +112,35 @@ describe('manifest', () => {
       'manifest.projects[0].integrationBranch',
       'manifest.projects[1].integrationBranch'
     ]);
+  });
+
+  test('requires explicit lifecycle and branch-state semantics', () => {
+    const manifest = fixtureManifest();
+    delete manifest.projects[0].lifecycle;
+    manifest.projects[1].branchState = 'canonical';
+    manifest.projects[2].branchState = 'migration';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.findings.some(({ code, path }) => code === 'INVALID_LIFECYCLE' && path === 'manifest.projects[0].lifecycle'), true);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BRANCH_STATE_COMBINATION').map(({ path }) => path), [
+      'manifest.projects[1].branchState',
+      'manifest.projects[2].branchState'
+    ]);
+  });
+
+  test('accepts a declared long-lived integration-branch exception only when it releases to master', () => {
+    const manifest = fixtureManifest();
+    const project = manifest.projects[1];
+    project.branchState = 'integration-exception';
+    project.integrationBranch = 'staging';
+    project.releaseBranch = 'master';
+
+    assert.deepEqual(validateManifest(manifest).findings, []);
+
+    project.releaseBranch = 'main';
+    const invalid = validateManifest(manifest);
+    assert.equal(invalid.findings.some(({ code, path }) => code === 'INVALID_BRANCH_STATE_COMBINATION' && path === 'manifest.projects[1].branchState'), true);
   });
 
   test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
