@@ -149,7 +149,7 @@ describe('manifest', () => {
     ]);
   });
 
-  test('accepts read-only context dependencies that also exist as managed workspace projects', () => {
+  test('accepts relationship-scoped read-only dependencies that are independently managed projects', () => {
     const manifest = fixtureManifest();
     manifest.projects[2].contextDependencies = [{
       repository: 'syllik/syllik',
@@ -161,6 +161,8 @@ describe('manifest', () => {
 
     assert.equal(result.valid, true);
     assert.deepEqual(result.findings, []);
+    assert.equal(manifest.projects[0].access, 'managed');
+    assert.equal(manifest.projects[2].contextDependencies[0].access, 'read-only');
   });
 
   test('normalizes repository case for dependency alias checks', () => {
