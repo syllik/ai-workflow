@@ -100,10 +100,6 @@ export function validateManifest(value) {
   if (!Array.isArray(value.projects)) {
     findings.push(finding('INVALID_PROJECTS', 'manifest.projects'));
   } else {
-    const managedRepositories = new Set(value.projects
-      .filter((project) => isObject(project) && project.access === 'managed' && typeof project.repository === 'string')
-      .map((project) => normalizedRepository(project.repository)));
-
     value.projects.forEach((project, index) => {
       const projectPath = `manifest.projects[${index}]`;
       if (!isObject(project)) {
@@ -151,9 +147,6 @@ export function validateManifest(value) {
             const normalizedProjectRepository = normalizedRepository(project.repository);
             if (normalizedDependencyRepository === normalizedProjectRepository) {
               findings.push(finding('SELF_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
-            }
-            if (normalizedDependencyRepository !== normalizedProjectRepository && managedRepositories.has(normalizedDependencyRepository)) {
-              findings.push(finding('MANAGED_CONTEXT_DEPENDENCY', `${dependencyPath}.repository`));
             }
             if (typeof dependency.repository === 'string') {
               if (dependencyRepositories.has(normalizedDependencyRepository)) {
