@@ -186,9 +186,9 @@ describe('workflow documentation', () => {
     assert.match(flow, /onboarding managed projects only onboarding\/alignment/iu);
     assert.match(flow, /Read-only projects are never write targets/iu);
     assert.match(flow, /contextDependencies/u);
-    assert.match(flow, /read-only when consumed by the dependent task/iu);
-    assert.match(flow, /does not override an independently managed workspace record/iu);
-    assert.match(flow, /unavailable required context blocks work/iu);
+    assert.match(flow, /task-scoped read-only context/iu);
+    assert.match(flow, /do not override separate managed records/iu);
+    assert.match(flow, /Missing required context blocks work/iu);
   });
 
   test('requires explicit aggregate-context provenance in every Luna implementation handoff', () => {
