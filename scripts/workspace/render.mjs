@@ -40,15 +40,15 @@ export function renderProjectIndex(manifest) {
       const dependencies = (project.contextDependencies ?? [])
         .map((dependency) => `[${dependency.repository}](https://github.com/${dependency.repository}/tree/${dependency.integrationBranch})`)
         .join('<br>') || '—';
-      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} | ${dependencies} |`;
+      return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.lifecycle} | ${project.branchState} | ${project.integrationBranch} | ${project.releaseBranch ?? '—'} | ${link} | ${dependencies} |`;
     });
   return finalNewline([
     '# Workspace project index',
     '',
-    'Generated from `workspace.yaml`. Active managed projects route to context on their integration branch; onboarding records route only to repository source. Context dependencies are explicit read-only sources.',
+    'Generated from `workspace.yaml`. Lifecycle and branch state are explicit; `migration` marks managed repositories that have not yet reached the canonical `master` model. Context dependencies are explicit read-only sources.',
     '',
-    '| Repository | Group | Access | Status | Integration branch | GitHub source | Context dependencies |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    '| Repository | Group | Access | Status | Lifecycle | Branch state | Integration branch | Release branch | GitHub source | Context dependencies |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...rows
   ].join('\n'));
 }
