@@ -127,6 +127,13 @@ function normalizedRepository(repository) {
   return typeof repository === 'string' ? repository.toLowerCase() : repository;
 }
 
+function contextDependencyRepositories(manifest) {
+  return new Set((manifest?.projects ?? [])
+    .flatMap((project) => project.contextDependencies ?? [])
+    .map((dependency) => normalizedRepository(dependency.repository))
+    .filter(Boolean));
+}
+
 function isProfileRepository(repository) {
   return normalizedRepository(repository) === PROFILE_REPOSITORY;
 }
@@ -435,6 +442,7 @@ export function planWorkspace(options = {}) {
 
   const operations = [];
   const projects = [...manifest.projects];
+  const readOnlyDependencyRepositories = contextDependencyRepositories(manifest);
   for (const project of projects) {
     const destination = resolveInside(root, project.localPath);
     if (!destination) {
@@ -454,7 +462,7 @@ export function planWorkspace(options = {}) {
     }
     const safeRepository = repositorySafety(destination, project.repository, project.localPath, findings, resolveExpectedRemote(project.repository, options), project.integrationBranch, options.generatedOutputs);
     if (!safeRepository) continue;
-    if (project.access === 'managed') {
+    if (project.access === 'managed' && !readOnlyDependencyRepositories.has(normalizedRepository(project.repository))) {
       const repository = { repositoryPath: project.localPath, repository: project.repository, integrationBranch: project.integrationBranch };
       if (isProfileRepository(project.repository)) {
         addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
