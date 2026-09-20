@@ -51,6 +51,33 @@ describe('workspace operations', () => {
     }
   });
 
+  test('does not schedule managed writes for a repository used as a read-only context dependency', () => {
+    const root = makeFixtureRoot();
+    try {
+      const managed = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+      const dependent = {
+        ...fixtureManifest().projects.find(({ repository }) => repository === 'syllik/youtube-metadata-translator'),
+        contextDependencies: [{
+          repository: managed.repository,
+          integrationBranch: managed.integrationBranch,
+          access: 'read-only'
+        }]
+      };
+      const manifest = fixtureManifest({ projects: [managed, dependent] });
+
+      initFixtureRepo(path.join(root, managed.localPath), `https://github.com/${managed.repository}.git`, managed.integrationBranch);
+      initFixtureRepo(path.join(root, dependent.localPath), `https://github.com/${dependent.repository}.git`, dependent.integrationBranch);
+
+      const result = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
+
+      assert.equal(result.validationFailed, false);
+      assert.equal(result.operations.some(({ path: operationPath }) => operationPath.startsWith(`${managed.localPath}/`)), false);
+      assert.equal(result.operations.some(({ path: operationPath }) => operationPath.startsWith(`${dependent.localPath}/`)), true);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('blocks an existing repository checked out on the wrong integration branch', () => {
     const root = makeFixtureRoot();
     try {
