@@ -51,7 +51,6 @@ describe('workspace operations', () => {
     }
   });
 
-
   test('blocks an existing repository checked out on the wrong integration branch', () => {
     const root = makeFixtureRoot();
     try {
