@@ -26,7 +26,7 @@ project, prompt, task, or history file without a concrete reason.
 * GPT-5.6 Sol is the planner, architect, and research agent; it issues one self-contained execution prompt for implementation. Managed Codex GitHub Code Review is the default independent PR reviewer, while Sol 5.6 High is reserved for escalation, architecture/high-risk review, ambiguous findings, reviewer unavailability, or explicit human request.
 * Luna xhigh is the executor and coder only; it reads target repository instructions, implements the authorized scope, and runs authorized validation.
 * Resolve target repository instructions through the selected `workspace.yaml` record's `integrationBranch`. Normal implementation requires `status: active`; `status: onboarding` permits onboarding/alignment only.
-* `contextDependencies` are approved read-only context only. Read the minimum required dependency context; never mutate it or discover additional repositories from it.
+* `contextDependencies` are approved read-only context only for the dependent task. Read the minimum required dependency context; never mutate a repository through that dependency relationship or discover additional repositories from it. A separate managed workspace record for the same repository retains its own management authority.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
 * The default persisted structure is a human-only planning record, `prompt.md`, `state.md`, and `result.md`.
