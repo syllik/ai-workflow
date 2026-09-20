@@ -103,6 +103,14 @@ projects:
     status: active
     integrationBranch: main
     contextPath: .ai/context.md
+  - id: syllik/deep-dark-factory
+    repository: syllik/deep-dark-factory
+    localPath: infrastructure/ai/deep-dark-factory
+    group: infrastructure/ai
+    access: managed
+    status: active
+    integrationBranch: master
+    contextPath: .ai/context.md
   - id: syllik/ai-workflow
     repository: syllik/ai-workflow
     localPath: workflows/ai/ai-workflow
