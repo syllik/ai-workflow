@@ -2,7 +2,7 @@
 
 GitHub is the only project/task authority:
 `AI.md -> FLOW.md -> workspace record -> role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
-Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. Required `contextDependencies` are read-only when consumed by the dependent task; that relationship does not override an independently managed workspace record for the same repository. Unavailable required context blocks work.
+Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. Required `contextDependencies` are task-scoped read-only context; they do not override separate managed records. Missing required context blocks work.
 
 New repos need human licensing before first commit. Net-new tools require analogue research and should prefer viable licensed reuse/fork over greenfield.
 
