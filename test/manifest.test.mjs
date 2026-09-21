@@ -149,7 +149,7 @@ describe('manifest', () => {
     ]);
   });
 
-  test('rejects context dependencies that alias managed workspace projects', () => {
+  test('accepts relationship-scoped read-only dependencies that are independently managed projects', () => {
     const manifest = fixtureManifest();
     manifest.projects[2].contextDependencies = [{
       repository: 'syllik/syllik',
@@ -159,10 +159,10 @@ describe('manifest', () => {
 
     const result = validateManifest(manifest);
 
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY').map(({ path }) => path), [
-      'manifest.projects[2].contextDependencies[0].repository'
-    ]);
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+    assert.equal(manifest.projects[0].access, 'managed');
+    assert.equal(manifest.projects[2].contextDependencies[0].access, 'read-only');
   });
 
   test('normalizes repository case for dependency alias checks', () => {
@@ -173,14 +173,6 @@ describe('manifest', () => {
       access: 'read-only'
     }];
     assert.equal(validateManifest(selfAlias).findings.some(({ code }) => code === 'SELF_CONTEXT_DEPENDENCY'), true);
-
-    const managedAlias = fixtureManifest();
-    managedAlias.projects[2].contextDependencies = [{
-      repository: 'SYLLIK/SYLLIK',
-      integrationBranch: 'master',
-      access: 'read-only'
-    }];
-    assert.equal(validateManifest(managedAlias).findings.some(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY'), true);
 
     const duplicateAlias = fixtureManifest();
     duplicateAlias.projects[2].contextDependencies = [
