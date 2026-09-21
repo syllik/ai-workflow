@@ -4,7 +4,7 @@ GitHub is project/task authority:
 `AI.md -> FLOW.md -> workspace record -> role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
 Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. `contextDependencies` are task-scoped read-only context; they do not override separate managed records. Missing required context blocks work.
 
-New repos need a human license choice before first commit. For new tools, research analogues; prefer viable licensed reuse/forks.
+New repos need a license choice before first commit. For new tools, research analogues; prefer viable licensed reuse/forks.
 
 A new `workspace.yaml` project requires synced `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` keeps a stable workspace link.
 
