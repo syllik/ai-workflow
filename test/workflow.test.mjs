@@ -154,18 +154,32 @@ describe('workflow documentation', () => {
     }
   });
 
-  test('keeps managed Codex review as the default PR review gate', () => {
+  test('requires an explicit Codex review comment after current-head green CI', () => {
+    const core = readFileSync('global/core.md', 'utf8');
     const flow = readFileSync('FLOW.md', 'utf8');
+    const readme = readFileSync('README.md', 'utf8');
     const reviewer = readFileSync('global/reviewer.md', 'utf8');
-    assert.match(flow, /managed Codex GitHub Code Review/iu);
-    assert.match(flow, /@codex review/u);
-    assert.match(flow, /automatically on every push to an open PR/iu);
-    assert.match(flow, /valid only for the current PR head/iu);
-    assert.match(flow, /@codex fix/u);
-    assert.match(flow, /Sol 5\.6 High is escalation\/fallback only/iu);
-    assert.match(reviewer, /previous review is stale/iu);
-    assert.match(reviewer, /manual fallback\/retrigger/iu);
-    assert.match(reviewer, /human\s+explicitly authorizes/iu);
+    const decisions = readFileSync('.ai/decisions.md', 'utf8');
+    const policy = [core, decisions, flow, readme, reviewer].join('\n');
+
+    assert.match(core, /Codex automatic PR review is disabled/iu);
+    assert.match(core, /Opening a PR, marking it Ready, or pushing a new head must not automatically start review/iu);
+    assert.match(policy, /only routine trigger is an explicit `@codex review` PR comment/iu);
+    assert.match(policy, /repository-defined full CI gate for the current PR head is complete and green/iu);
+    assert.match(policy, /never trigger review while CI is pending or failing/iu);
+    assert.match(policy, /never duplicate a review already running or current for the same head/iu);
+    assert.match(policy, /current only when its reviewed commit SHA matches the current PR head/iu);
+    assert.match(policy, /Any head change invalidates prior CI\/review evidence/iu);
+    assert.match(policy, /fresh full green CI[\s\S]*new `@codex review`/iu);
+    assert.match(policy, /Codex (?:is|review is) reviewer-only/iu);
+    assert.match(policy, /`@codex fix`/u);
+    assert.match(policy, /`@codex address that feedback`/u);
+    assert.match(policy, /any other branch-mutation command/iu);
+    assert.match(policy, /findings reach Luna only after explicit human authorization/iu);
+    assert.match(policy, /only a human merges/iu);
+    assert.match(policy, /Sol 5\.6 High is escalation\/fallback only/iu);
+    assert.doesNotMatch(`${core}\n${decisions}`, /automatic review on every push to an open PR|manual fallback\/retrigger/iu);
+
     const executor = readFileSync('global/executor.md', 'utf8');
     assert.match(executor, /Routine published-PR review belongs to managed Codex GitHub Code Review/iu);
     assert.match(executor, /Sol 5\.6 High is escalation\/fallback only/iu);
@@ -176,8 +190,7 @@ describe('workflow documentation', () => {
     assert.match(promptTemplate, /trusted\s+publication[\s\S]*managed\s+Codex\s+GitHub\s+Code\s+Review/iu);
     assert.match(reviewTemplate, /escalation\s*\/\s*fallback/iu);
     assert.match(reviewTemplate, /routine published PR review belongs to managed Codex GitHub Code Review/iu);
-    assert.match(reviewTemplate, /runs automatically on every push to an open PR/iu);
-    assert.match(reviewTemplate, /manual fallback\/retrigger/iu);
+    assert.match(reviewTemplate, /automatic PR review is disabled/iu);
   });
 
   test('routes active work through explicit integration branches and restricts onboarding', () => {
