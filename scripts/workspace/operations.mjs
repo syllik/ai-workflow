@@ -688,34 +688,39 @@ function collectTaskArtifacts(root, taskRootRelative, findings = null) {
   return output;
 }
 
-function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = null) {
+function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = null, {
+  includeCentral = true,
+  projects = manifest.projects.filter(({ access }) => access === 'managed')
+} = {}) {
   const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
   const entries = [];
-  for (const relativePath of ['AI.md', 'FLOW.md']) {
-    const artifact = readKnownArtifact(manifestRoot, relativePath, findings);
-    if (artifact) entries.push(artifact);
-  }
-
-  const globalDirectory = resolveInside(manifestRoot, 'global');
-  if (!globalDirectory && findings) addUniqueFinding(findings, 'UNSAFE_PATH', 'global');
-  if (isDirectory(globalDirectory)) {
-    try {
-      for (const entry of readdirSync(globalDirectory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
-        if (entry.isSymbolicLink()) {
-          if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join('global', entry.name));
-          continue;
-        }
-        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-        const artifact = readKnownArtifact(manifestRoot, path.posix.join('global', entry.name), findings);
-        if (artifact) entries.push(artifact);
-      }
-    } catch {
-      // Unreadable optional central artifacts are skipped safely.
+  if (includeCentral) {
+    for (const relativePath of ['AI.md', 'FLOW.md']) {
+      const artifact = readKnownArtifact(manifestRoot, relativePath, findings);
+      if (artifact) entries.push(artifact);
     }
-  }
-  entries.push(...collectTaskArtifacts(manifestRoot, '.ai/tasks', findings));
 
-  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
+    const globalDirectory = resolveInside(manifestRoot, 'global');
+    if (!globalDirectory && findings) addUniqueFinding(findings, 'UNSAFE_PATH', 'global');
+    if (isDirectory(globalDirectory)) {
+      try {
+        for (const entry of readdirSync(globalDirectory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+          if (entry.isSymbolicLink()) {
+            if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join('global', entry.name));
+            continue;
+          }
+          if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+          const artifact = readKnownArtifact(manifestRoot, path.posix.join('global', entry.name), findings);
+          if (artifact) entries.push(artifact);
+        }
+      } catch {
+        // Unreadable optional central artifacts are skipped safely.
+      }
+    }
+    entries.push(...collectTaskArtifacts(manifestRoot, '.ai/tasks', findings));
+  }
+
+  for (const project of projects) {
     const repository = resolveInside(root, project.localPath);
     if (!repository) {
       if (findings) addUniqueFinding(findings, 'UNSAFE_PATH', project.localPath);
@@ -735,14 +740,20 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
   return entries;
 }
 
-export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
+function checkGeneratedFilesScoped(root, manifest, manifestPath, {
+  includeCentral = true,
+  projects = manifest.projects.filter(({ access }) => access === 'managed'),
+  repositoryScoped = false
+} = {}) {
   const requestedWorkspaceRoot = path.resolve(root);
   const workspaceRoot = requestedWorkspaceRoot;
   const findings = [];
   const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
-  const indexPath = resolveInside(manifestRoot, 'projects/index.md');
-  if (!indexPath) addUniqueFinding(findings, 'UNSAFE_PATH', 'projects/index.md');
-  else if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+  if (includeCentral) {
+    const indexPath = resolveInside(manifestRoot, 'projects/index.md');
+    if (!indexPath) addUniqueFinding(findings, 'UNSAFE_PATH', 'projects/index.md');
+    else if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
+  }
 
   const checkedAgents = new Set();
   const checkAgents = (repositoryRoot, relativePath, findingPath) => {
@@ -763,8 +774,8 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     }
   };
 
-  checkAgents(manifestRoot, 'AGENTS.md', 'AGENTS.md');
-  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
+  if (includeCentral) checkAgents(manifestRoot, 'AGENTS.md', 'AGENTS.md');
+  for (const project of projects) {
     const repository = resolveInside(workspaceRoot, project.localPath);
     if (!repository) {
       addUniqueFinding(findings, 'UNSAFE_PATH', project.localPath);
@@ -798,10 +809,10 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
       else findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
     }
   }
-  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings);
+  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings, { includeCentral, projects });
   findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
   const budgetAgents = new Set();
-  const checkAgentBudget = (agentsPath) => {
+  const checkAgentBudget = (agentsPath, findingPath) => {
     if (!agentsPath || !isRegularFile(agentsPath)) return;
     const identity = realpathSync(agentsPath);
     if (budgetAgents.has(identity)) return;
@@ -810,14 +821,259 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     const state = markerState(agents, 'agents-routing');
     if (state.kind === 'valid') {
       const end = agents.indexOf('-->', state.endIndex) + 3;
-      findings.push(...checkBudget({ path: 'managed AGENTS block', text: agents.slice(state.startIndex, end) }, BUDGETS));
+      findings.push(...checkBudget({
+        path: repositoryScoped ? findingPath : 'managed AGENTS block',
+        text: agents.slice(state.startIndex, end)
+      }, BUDGETS));
     }
   };
-  checkAgentBudget(resolveInside(manifestRoot, 'AGENTS.md'));
-  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
+  if (includeCentral) checkAgentBudget(resolveInside(manifestRoot, 'AGENTS.md'), 'AGENTS.md');
+  for (const project of projects) {
     const repository = resolveInside(workspaceRoot, project.localPath);
     if (!repository || !isDirectory(repository)) continue;
-    checkAgentBudget(resolveInside(repository, 'AGENTS.md'));
+    checkAgentBudget(resolveInside(repository, 'AGENTS.md'), path.posix.join(project.localPath, 'AGENTS.md'));
   }
   return findings;
+}
+
+export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
+  return checkGeneratedFilesScoped(root, manifest, manifestPath);
+}
+
+const IMMUTABLE_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+function validImmutableSha(value) {
+  return typeof value === 'string' && IMMUTABLE_SHA_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+function repositoryFinding(project, code, details = {}) {
+  return finding(code, project.localPath, details);
+}
+
+function scopeRepositoryFindings(project, findings) {
+  const prefix = project.localPath;
+  return findings.map((entry) => {
+    if (entry.path === prefix || entry.path?.startsWith(prefix + '/')) return entry;
+    return { ...entry, path: path.posix.join(prefix, entry.path ?? 'repository') };
+  });
+}
+
+function centralManifestPathIsSafe(root, centralProject, manifestPath, findings) {
+  const centralDestination = resolveInside(root, centralProject.localPath);
+  const resolvedManifestPath = path.resolve(manifestPath);
+  const manifestFile = resolveInside(root, path.relative(root, resolvedManifestPath));
+  const expectedManifestFile = centralDestination && resolveInside(centralDestination, 'workspace.yaml');
+  const expectedManifestRoot = centralDestination && path.resolve(centralDestination);
+  const manifestRoot = path.dirname(resolvedManifestPath);
+  const pathMatches = centralDestination
+    && manifestFile
+    && expectedManifestFile
+    && isDirectory(centralDestination)
+    && isRegularFile(manifestFile)
+    && path.resolve(manifestFile) === path.resolve(expectedManifestFile)
+    && path.resolve(manifestRoot) === expectedManifestRoot;
+  if (!pathMatches) {
+    findings.push(repositoryFinding(centralProject, CENTRAL_IDENTITY_FINDING));
+    return false;
+  }
+  try {
+    if (realpathSync(manifestRoot) !== realpathSync(centralDestination)
+      || !isPathInside(trustedRoot(root), realpathSync(manifestRoot))) {
+      findings.push(repositoryFinding(centralProject, CENTRAL_IDENTITY_FINDING));
+      return false;
+    }
+  } catch {
+    findings.push(repositoryFinding(centralProject, CENTRAL_IDENTITY_FINDING));
+    return false;
+  }
+  return true;
+}
+
+function verifyDetachedHead(destination, project, findings) {
+  try {
+    const symbolicHead = execFileSync('git', [
+      '-C',
+      destination,
+      'symbolic-ref',
+      '--quiet',
+      '--short',
+      'HEAD'
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (!symbolicHead) {
+      findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
+      return false;
+    }
+    findings.push(repositoryFinding(project, 'HEAD_NOT_DETACHED', { actual: symbolicHead }));
+    return false;
+  } catch (error) {
+    if (error?.status === 1) return true;
+    findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
+    return false;
+  }
+}
+
+function verifyExpectedHeadSha(destination, project, expectedShas, findings) {
+  const expected = expectedShas
+    && typeof expectedShas === 'object'
+    && !Array.isArray(expectedShas)
+    && Object.hasOwn(expectedShas, project.repository)
+    ? validImmutableSha(expectedShas[project.repository])
+    : null;
+  if (!expected) {
+    findings.push(repositoryFinding(project, 'EXPECTED_SHA_INVALID'));
+    return null;
+  }
+
+  const head = validImmutableSha(command(destination, ['rev-parse', 'HEAD']));
+  const branchHead = validImmutableSha(command(destination, [
+    'rev-parse',
+    '--verify',
+    'refs/heads/' + project.integrationBranch + '^{commit}'
+  ]));
+  const isCommit = head !== null && command(destination, ['cat-file', '-t', head]) === 'commit';
+  if (!isCommit) findings.push(repositoryFinding(project, 'HEAD_SHA_INVALID'));
+  if (head !== expected) findings.push(repositoryFinding(project, 'HEAD_SHA_MISMATCH', { expected, actual: head }));
+  if (branchHead !== expected) findings.push(repositoryFinding(project, 'BRANCH_SHA_MISMATCH', { expected, actual: branchHead }));
+  if (!isCommit || head !== expected || branchHead !== expected) return null;
+  return head;
+}
+
+function fullWorkspaceReceipt(project, outcome, sha, reason, findings) {
+  const receipt = {
+    repository: project?.repository ?? null,
+    integrationBranch: project?.integrationBranch ?? null,
+    access: project?.access ?? null,
+    status: project?.status ?? null,
+    sha,
+    outcome
+  };
+  if (outcome !== 'compliant') receipt.reason = reason;
+  if (findings.length > 0) receipt.findings = findings;
+  return receipt;
+}
+
+export function checkFullWorkspace(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH, options = {}) {
+  const workspaceRoot = path.resolve(root);
+  const projects = Array.isArray(manifest?.projects) ? manifest.projects : [];
+  const validation = validateManifest(manifest);
+  const centralProject = projects.find((project) => project?.repository === CENTRAL_REPOSITORY
+    && project?.id === CENTRAL_REPOSITORY
+    && project?.access === 'managed'
+    && project?.status === 'active');
+  const centralFindings = [];
+  const workspaceAvailable = trustedRoot(workspaceRoot) !== null;
+  const centralManifestValid = validation.valid
+    && workspaceAvailable
+    && centralProject
+    && centralManifestPathIsSafe(workspaceRoot, centralProject, manifestPath, centralFindings);
+  const expectedShas = options.expectedShas;
+
+  const receipts = projects.map((project) => {
+    if (!project || !validation.valid) {
+      const findings = !project
+        ? [finding('INVALID_PROJECT', 'manifest.projects')]
+        : validation.findings.map((entry) => ({ ...entry }));
+      return fullWorkspaceReceipt(project, 'unavailable', null, 'MANIFEST_INVALID', findings);
+    }
+    if (!workspaceAvailable) {
+      return fullWorkspaceReceipt(
+        project,
+        'unavailable',
+        null,
+        'ROOT_NOT_DIRECTORY',
+        [repositoryFinding(project, 'ROOT_NOT_DIRECTORY')]
+      );
+    }
+
+    const destination = resolveInside(workspaceRoot, project.localPath);
+    if (!destination) {
+      return fullWorkspaceReceipt(
+        project,
+        'unavailable',
+        null,
+        'UNSAFE_PATH',
+        [repositoryFinding(project, 'UNSAFE_PATH')]
+      );
+    }
+    if (!isDirectory(destination)) {
+      return fullWorkspaceReceipt(
+        project,
+        'unavailable',
+        null,
+        'MISSING_MATERIALIZATION',
+        [repositoryFinding(project, 'MISSING_MATERIALIZATION')]
+      );
+    }
+
+    const findings = [];
+    let safelyMaterialized = false;
+    try {
+      safelyMaterialized = repositorySafety(
+        destination,
+        project.repository,
+        project.localPath,
+        findings,
+        resolveExpectedRemote(project.repository, options)
+      );
+    } catch {
+      findings.push(repositoryFinding(project, 'REPOSITORY_UNVERIFIED'));
+    }
+    if (!safelyMaterialized) {
+      return fullWorkspaceReceipt(project, 'unavailable', null, 'REPOSITORY_UNVERIFIED', findings);
+    }
+
+    if (!verifyDetachedHead(destination, project, findings)) {
+      return fullWorkspaceReceipt(project, 'unavailable', null, 'REPOSITORY_UNVERIFIED', findings);
+    }
+
+    const sha = verifyExpectedHeadSha(destination, project, expectedShas, findings);
+    if (!sha) {
+      return fullWorkspaceReceipt(project, 'unavailable', null, 'SHA_UNVERIFIED', findings);
+    }
+
+    const isCentral = project.repository === CENTRAL_REPOSITORY && project.id === CENTRAL_REPOSITORY;
+    if (isCentral && !centralManifestValid) {
+      findings.push(...centralFindings);
+      return fullWorkspaceReceipt(project, 'unavailable', sha, 'CENTRAL_REPOSITORY_UNVERIFIED', findings);
+    }
+    if (project.access === 'managed' && project.status === 'active') {
+      const complianceFindings = checkGeneratedFilesScoped(workspaceRoot, manifest, manifestPath, {
+        includeCentral: isCentral,
+        projects: [project],
+        repositoryScoped: true
+      });
+      findings.push(...scopeRepositoryFindings(project, complianceFindings));
+      if (findings.length > 0) {
+        return fullWorkspaceReceipt(project, 'unavailable', sha, 'COMPLIANCE_FINDINGS', findings);
+      }
+      return fullWorkspaceReceipt(project, 'compliant', sha, null, []);
+    }
+    if (project.access === 'managed' && project.status === 'onboarding') {
+      return fullWorkspaceReceipt(project, 'onboarding', sha, 'ONBOARDING', findings);
+    }
+    if (project.access === 'read-only') {
+      return fullWorkspaceReceipt(project, 'approved-exception', sha, 'READ_ONLY', findings);
+    }
+    return fullWorkspaceReceipt(project, 'unavailable', sha, 'INVALID_COMBINATION', [
+      repositoryFinding(project, 'INVALID_COMBINATION')
+    ]);
+  });
+
+  const passed = validation.valid
+    && centralManifestValid === true
+    && receipts.length === projects.length
+    && receipts.length > 0
+    && receipts.every((receipt, index) => {
+      const project = projects[index];
+      if (receipt.outcome === 'unavailable') return false;
+      if (project.access === 'managed' && project.status === 'active') return receipt.outcome === 'compliant';
+      if (project.access === 'managed' && project.status === 'onboarding') return receipt.outcome === 'onboarding';
+      return project.access === 'read-only' && receipt.outcome === 'approved-exception';
+    });
+  return {
+    root: workspaceRoot,
+    manifestPath: path.resolve(manifestPath),
+    passed,
+    receipts
+  };
 }
