@@ -34,7 +34,7 @@ projects:
     localPath: personal/life-ops-bot
     group: personal
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: master
     contextPath: .ai/context.md
     contextDependencies:
