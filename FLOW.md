@@ -1,14 +1,14 @@
 # Canonical workflow
 
-GitHub is the project/task authority:
+GitHub is project/task authority:
 `AI.md -> FLOW.md -> workspace record -> role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
-Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. Required `contextDependencies` are task-scoped read-only context; they do not override separate managed records. Missing required context blocks work.
+Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. `contextDependencies` are task-scoped read-only context; they do not override separate managed records. Missing required context blocks work.
 
-New repos need a human license choice before first commit. For net-new tools, research analogues and prefer viable licensed reuse/forks.
+New repos need a human license choice before first commit. For new tools, research analogues; prefer viable licensed reuse/forks.
 
-Adding a `workspace.yaml` project requires synced `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` keeps a stable workspace link.
+A new `workspace.yaml` project requires synced `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` keeps a stable workspace link.
 
-Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint, then stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. No self-review, subagents, commit, push, PR publication/update, or publication-state mutation.
+Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint; stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. No self-review, subagents, commit, push, PR publication/update, or publication-state mutation.
 
 Trusted publication creates or updates the PR. Managed Codex GitHub Code Review runs automatically on every push to an open PR. A review is valid only for the current PR head; changed heads require a fresh review. `@codex review` is fallback/retrigger only; never duplicate a running automatic review. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
 
