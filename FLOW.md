@@ -10,7 +10,7 @@ A new `workspace.yaml` project requires synced `syllik/syllik` updates to `docs/
 
 Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint; stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. No self-review, subagents, commit, push, PR publication/update, or publication-state mutation.
 
-Trusted publication creates or updates the PR. Managed Codex GitHub Code Review runs automatically on every push to an open PR. A review is valid only for the current PR head; changed heads require a fresh review. `@codex review` is fallback/retrigger only; never duplicate a running automatic review. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
+Trusted publication creates/updates PRs. Codex automatic review is disabled. For the current head, post `@codex review` only after its full repo CI gate is complete and green; never while CI is pending/failing or when a review is running. Any head change requires fresh green CI and a new comment. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
 
 Persist state for long/audit-significant work. Never store secrets or credentials.
 

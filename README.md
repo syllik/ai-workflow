@@ -54,13 +54,14 @@ session без зависимости от conversation history.
 ## Как проходит code review
 
 1. После local validation trusted publication создаёт или обновляет PR.
-2. Managed Codex review автоматически запускается на каждом push в открытый PR.
-3. Review актуален только для текущего PR head SHA; новый head делает предыдущий review stale и требует нового.
-4. `@codex review` используется только как fallback/retrigger, если automatic review не стартовал или нужен явный retry; не запускайте duplicate review поверх уже идущего automatic run.
-5. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие branch-mutation команды.
-6. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
-7. Sol 5.6 High используется только для architecture/high-risk review, спорных findings, недоступности Codex или явного запроса человека.
-8. Merge выполняет только человек.
+2. Automatic Codex PR review отключён; открытие PR, Ready и push сами по себе review не запускают.
+3. Для текущего PR head сначала должен полностью завершиться зелёным repository-defined CI gate.
+4. После зелёного CI routine review запускается только явным PR-комментарием `@codex review`; при pending/failing CI или уже текущем/идущем review комментарий не отправляется.
+5. Review актуален только для текущего PR head SHA; новый head инвалидирует прежние CI/review evidence и требует нового green CI + нового `@codex review`.
+6. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие branch-mutation команды.
+7. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
+8. Sol 5.6 High используется только для architecture/high-risk review, спорных findings, недоступности Codex или явного запроса человека.
+9. Merge выполняет только человек.
 
 ## Структура
 
