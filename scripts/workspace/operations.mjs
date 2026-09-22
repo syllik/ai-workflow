@@ -789,6 +789,12 @@ export function checkActivatedTargetRouting(manifest, baseManifest, options = {}
         project.integrationBranch
       )) continue;
 
+      const contextPath = resolveInside(destination, project.contextPath);
+      const contextFindingPath = path.posix.join(project.localPath, project.contextPath);
+      if (!contextPath || !isRegularFile(contextPath)) {
+        findings.push(finding(!contextPath ? 'UNSAFE_PATH' : 'GENERATED_DRIFT', contextFindingPath));
+      }
+
       const agentsPath = resolveInside(destination, 'AGENTS.md');
       if (!agentsPath || !isRegularFile(agentsPath)) {
         findings.push(finding('GENERATED_DRIFT', findingPath));

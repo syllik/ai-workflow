@@ -169,7 +169,7 @@ describe('workspace CLI', () => {
     }
   });
 
-  test('accepts standalone activation when the declared integration branch has current routing', () => {
+  test('fails standalone activation when current routing exists but declared context is missing', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();
     try {
@@ -196,7 +196,50 @@ describe('workspace CLI', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
       git(remote, 'add', 'AGENTS.md');
-      git(remote, 'commit', '--quiet', '-m', 'aligned routing');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing without context');
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.equal(status, 1);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('accepts standalone activation when the declared integration branch has current routing', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const baseManifest = fixtureManifest({ projects: [fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow'), baseTarget] });
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const currentManifest = fixtureManifest({ projects: [fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow'), currentTarget] });
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+      writeFixtureManifest(centralPath, currentManifest);
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing and context');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
         cloneSource: () => remote,
@@ -326,9 +369,11 @@ describe('workspace CLI', () => {
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, baseTarget.integrationBranch);
       git(remote, 'switch', '--create', currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', 'AGENTS.md');
-      git(remote, 'commit', '--quiet', '-m', 'aligned routing on changed branch');
+      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing and context on changed branch');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
         cloneSource: () => remote,
