@@ -105,7 +105,7 @@ export function renderAgentsBlock(manifest) {
     '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
     finalRoute,
     '',
-    'Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.',
+    'GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.',
     `Canonical root: ${manifest.canonicalRoot}`
   ].join('\n');
   const rendered = renderManagedBlock('agents-routing', body);

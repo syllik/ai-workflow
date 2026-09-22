@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
@@ -735,11 +736,80 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
   return entries;
 }
 
+function activatedManagedProjects(manifest, baseManifest) {
+  const baseProjects = new Map((baseManifest?.projects ?? []).map((project) => [normalizedRepository(project.repository), project]));
+  return manifest.projects.filter((project) => {
+    if (project.access !== 'managed' || project.status !== 'active') return false;
+    return baseProjects.get(normalizedRepository(project.repository))?.status !== 'active';
+  });
+}
+
+export function checkActivatedTargetRouting(manifest, baseManifest, options = {}) {
+  const projects = activatedManagedProjects(manifest, baseManifest);
+  if (projects.length === 0) return [];
+
+  const findings = [];
+  const targetRoot = options.targetRoot ?? mkdtempSync(path.join(os.tmpdir(), 'ai-workflow-activation-'));
+  const ownsTargetRoot = options.targetRoot === undefined;
+  try {
+    for (const project of projects) {
+      const destination = resolveInside(targetRoot, project.localPath);
+      const findingPath = path.posix.join(project.localPath, 'AGENTS.md');
+      if (!destination) {
+        findings.push(finding('UNSAFE_PATH', project.localPath));
+        continue;
+      }
+      try {
+        mkdirSync(path.dirname(destination), { recursive: true });
+        execFileSync('git', [
+          'clone',
+          '--quiet',
+          '--branch',
+          project.integrationBranch,
+          '--single-branch',
+          resolveCloneSource(project.repository, options) ?? resolveExpectedRemote(project.repository, options),
+          destination
+        ], { stdio: 'pipe' });
+      } catch {
+        findings.push(finding('TARGET_REPOSITORY_UNAVAILABLE', findingPath));
+        continue;
+      }
+
+      if (!repositorySafety(
+        destination,
+        project.repository,
+        project.localPath,
+        findings,
+        resolveExpectedRemote(project.repository, options),
+        project.integrationBranch
+      )) continue;
+
+      const agentsPath = resolveInside(destination, 'AGENTS.md');
+      if (!agentsPath || !isRegularFile(agentsPath)) {
+        findings.push(finding('GENERATED_DRIFT', findingPath));
+        continue;
+      }
+      const current = readFileSync(agentsPath, 'utf8');
+      const state = markerState(current, 'agents-routing');
+      if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', renderAgentsBlock(manifest)) !== normalizeText(current)) {
+        findings.push(finding('GENERATED_DRIFT', findingPath));
+      }
+    }
+  } finally {
+    if (ownsTargetRoot) rmSync(targetRoot, { recursive: true, force: true });
+  }
+  return findings;
+}
+
 export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
   const requestedWorkspaceRoot = path.resolve(root);
   const workspaceRoot = requestedWorkspaceRoot;
   const findings = [];
   const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
+  const trustedWorkspaceRoot = trustedRoot(workspaceRoot) ?? workspaceRoot;
+  const trustedManifestRoot = trustedRoot(manifestRoot) ?? path.resolve(manifestRoot);
+  const validatesDeclaredWorkspaceTargets = trustedWorkspaceRoot !== trustedManifestRoot
+    && isPathInside(trustedWorkspaceRoot, trustedManifestRoot);
   const indexPath = resolveInside(manifestRoot, 'projects/index.md');
   if (!indexPath) addUniqueFinding(findings, 'UNSAFE_PATH', 'projects/index.md');
   else if (!isRegularFile(indexPath) || readFileSync(indexPath, 'utf8') !== renderProjectIndex(manifest)) findings.push(finding('GENERATED_DRIFT', 'projects/index.md'));
@@ -770,7 +840,12 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
       addUniqueFinding(findings, 'UNSAFE_PATH', project.localPath);
       continue;
     }
-    if (!isDirectory(repository)) continue;
+    if (!isDirectory(repository)) {
+      if (validatesDeclaredWorkspaceTargets && project.status === 'active') {
+        findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, 'AGENTS.md')));
+      }
+      continue;
+    }
     checkAgents(repository, 'AGENTS.md', path.posix.join(project.localPath, 'AGENTS.md'));
     if (isProfileRepository(project.repository)) {
       const aiPath = resolveInside(repository, 'AI.md');

@@ -181,6 +181,134 @@ describe('workspace operations', () => {
     }
   });
 
+  test('fails central verification when an active managed target is absent', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const target = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, target] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+
+      const findings = checkGeneratedFiles(root, manifest, manifestPath);
+
+      assert.deepEqual(findings.filter(({ path: findingPath }) => findingPath === `${target.localPath}/AGENTS.md`), [
+        { code: 'GENERATED_DRIFT', path: `${target.localPath}/AGENTS.md` }
+      ]);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('keeps onboarding targets eligible for alignment before promotion', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const target = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, target] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+
+      const findings = checkGeneratedFiles(root, manifest, manifestPath);
+
+      assert.equal(findings.some(({ path: findingPath }) => findingPath === `${target.localPath}/AGENTS.md`), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects missing, malformed, or stale routing on an existing active target', () => {
+    for (const routing of ['missing', 'malformed', 'stale']) {
+      const root = makeFixtureRoot();
+      try {
+        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+        const target = {
+          id: 'syllik/life-ops-bot',
+          repository: 'syllik/life-ops-bot',
+          localPath: 'personal/life-ops-bot',
+          group: 'personal',
+          access: 'managed',
+          status: 'active',
+          integrationBranch: 'master',
+          contextPath: '.ai/context.md'
+        };
+        const manifest = fixtureManifest({ projects: [central, target] });
+        const { manifestPath } = initCentralManifestRepo(root, manifest);
+        const targetPath = path.join(root, target.localPath);
+        initFixtureRepo(targetPath, `https://${target.repository}.git`, target.integrationBranch);
+        mkdirSync(path.join(targetPath, '.ai'), { recursive: true });
+        writeFileSync(path.join(targetPath, target.contextPath), renderContextScaffold(target), 'utf8');
+        writeFileSync(path.join(targetPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+        if (routing === 'malformed') {
+          writeFileSync(path.join(targetPath, 'AGENTS.md'), '<!-- ai-workflow:agents-routing:start -->\n', 'utf8');
+        } else if (routing === 'stale') {
+          writeFileSync(path.join(targetPath, 'AGENTS.md'), renderManagedBlock('agents-routing', 'stale routing'), 'utf8');
+        }
+
+        const findings = checkGeneratedFiles(root, manifest, manifestPath);
+
+        assert.deepEqual(findings.filter(({ path: findingPath }) => findingPath === `${target.localPath}/AGENTS.md`), [
+          { code: 'GENERATED_DRIFT', path: `${target.localPath}/AGENTS.md` }
+        ], routing);
+      } finally {
+        removeFixtureRoot(root);
+      }
+    }
+  });
+
+  test('applies active target routing before central verification can converge', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const target = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const manifest = fixtureManifest({ projects: [central, target] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const source = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(source, `https://${target.repository}.git`, target.integrationBranch);
+
+      const before = checkGeneratedFiles(root, manifest, manifestPath);
+      assert.equal(before.some(({ path: findingPath }) => findingPath === `${target.localPath}/AGENTS.md`), true);
+
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: { [target.repository]: source },
+        expectedRemote: (repository) => repository === target.repository ? source : `https://github.com/${repository}.git`
+      });
+
+      assert.equal(status, 0);
+      assert.equal(readFileSync(path.join(root, target.localPath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.deepEqual(checkGeneratedFiles(root, manifest, manifestPath), []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
   test('stale central index between plan and apply blocks before cloning a project', () => {
     const root = makeFixtureRoot();
     try {

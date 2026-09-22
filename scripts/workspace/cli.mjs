@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { parse } from 'yaml';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { applyOperations, checkGeneratedFiles, planWorkspace } from './operations.mjs';
+import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, planWorkspace } from './operations.mjs';
 
-const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
+const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] [--activation-base <git-ref>] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
 
 function parseArgs(args) {
   const command = args[0];
@@ -12,6 +14,7 @@ function parseArgs(args) {
   let root;
   let manifestPath;
   let manifestOnly = false;
+  let activationBase;
   for (let index = 1; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--root') {
@@ -22,6 +25,8 @@ function parseArgs(args) {
       manifestPath = args[++index];
     } else if (arg === '--manifest-only' && command === 'check' && !manifestOnly) {
       manifestOnly = true;
+    } else if (arg === '--activation-base' && command === 'check' && activationBase === undefined && args[index + 1] && !args[index + 1].startsWith('--')) {
+      activationBase = args[++index];
     } else {
       throw new Error(USAGE);
     }
@@ -32,8 +37,16 @@ function parseArgs(args) {
     command,
     root: root === undefined ? process.cwd() : path.resolve(root),
     manifestPath: path.resolve(manifestPath ?? DEFAULT_MANIFEST_PATH),
-    manifestOnly
+    manifestOnly,
+    activationBase
   };
+}
+
+function loadManifestAtRef(root, manifestPath, ref) {
+  const relativeManifestPath = path.relative(path.resolve(root), path.resolve(manifestPath));
+  if (!relativeManifestPath || relativeManifestPath.startsWith('..') || path.isAbsolute(relativeManifestPath)) throw new Error('Manifest is outside the checkout root');
+  const source = execFileSync('git', ['-C', root, 'show', `${ref}:${relativeManifestPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  return parse(source);
 }
 
 function printFindings(findings) {
@@ -68,6 +81,21 @@ function run(args, dependencies = {}) {
     } catch (error) {
       printFindings([{ code: 'CHECK_FAILED', path: options.root, message: error.message }]);
       return 2;
+    }
+    if (options.activationBase !== undefined) {
+      let baseManifest;
+      try {
+        baseManifest = dependencies.baseManifest ?? loadManifestAtRef(options.root, options.manifestPath, options.activationBase);
+      } catch (error) {
+        printFindings([{ code: 'ACTIVATION_BASE_UNREADABLE', path: options.manifestPath, message: error.message }]);
+        return 1;
+      }
+      const baseValidation = validateManifest(baseManifest);
+      if (!baseValidation.valid) {
+        printFindings([{ code: 'ACTIVATION_BASE_INVALID', path: options.manifestPath }]);
+        return 1;
+      }
+      findings = [...findings, ...checkActivatedTargetRouting(manifest, baseManifest, dependencies)];
     }
     printFindings(findings);
     return findings.length > 0 ? 1 : 0;
