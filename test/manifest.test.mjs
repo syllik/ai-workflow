@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { loadManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
+import { loadManifest, validateActivationBaseManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
@@ -135,6 +135,56 @@ describe('manifest', () => {
     assert.deepEqual(result.findings.filter(({ code, path }) => code === 'INVALID_CENTRAL_INTEGRATION_BRANCH' && path === 'manifest.projects[6].integrationBranch'), [
       { code: 'INVALID_CENTRAL_INTEGRATION_BRANCH', path: 'manifest.projects[6].integrationBranch' }
     ]);
+  });
+
+  test('accepts historical activation base data without applying current-only policy', () => {
+    const base = fixtureManifest({
+      schemaVersion: 0,
+      canonicalRoot: '/historical/workspace',
+      budgets: { obsolete: 1 },
+      unexpected: true,
+      projects: fixtureManifest().projects.map((project, index) => index === 6
+        ? {
+          ...project,
+          repository: 'SYLLIK/AI-WORKFLOW',
+          integrationBranch: 'develop',
+          localPath: '../historical-central',
+          contextPath: '../historical-context.md',
+          contextDependencies: 'legacy'
+        }
+        : project)
+    });
+
+    const result = validateActivationBaseManifest(base);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects malformed activation base transition records', () => {
+    const missingProjects = validateActivationBaseManifest({ schemaVersion: 1 });
+    assert.equal(missingProjects.valid, false);
+    assert.equal(missingProjects.findings.some(({ code }) => code === 'INVALID_ACTIVATION_BASE_PROJECTS'), true);
+
+    const invalidProject = validateActivationBaseManifest({
+      projects: [{ repository: 'not-a-repository', access: 'managed', status: 'active', integrationBranch: '../main' }]
+    });
+    assert.equal(invalidProject.valid, false);
+    assert.deepEqual(invalidProject.findings.map(({ code }) => code).sort(), [
+      'INVALID_ACTIVATION_BASE_REPOSITORY',
+      'INVALID_ACTIVATION_BASE_BRANCH'
+    ].sort());
+  });
+
+  test('rejects duplicate normalized repository identities in an activation base', () => {
+    const project = { repository: 'syllik/life-ops', access: 'managed', status: 'active', integrationBranch: 'master' };
+    const result = validateActivationBaseManifest({ projects: [project, { ...project, repository: 'SYLLIK/LIFE-OPS' }] });
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings, [{
+      code: 'DUPLICATE_ACTIVATION_BASE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
   });
 
   test('keeps ordinary project integration branches configurable', () => {

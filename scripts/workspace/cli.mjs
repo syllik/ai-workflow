@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
+import { DEFAULT_MANIFEST_PATH, loadManifest, validateActivationBaseManifest, validateManifest } from './manifest.mjs';
 import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, planWorkspace } from './operations.mjs';
 
 const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] [--activation-base <git-ref>] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
@@ -90,7 +90,7 @@ function run(args, dependencies = {}) {
         printFindings([{ code: 'ACTIVATION_BASE_UNREADABLE', path: options.manifestPath, message: error.message }]);
         return 1;
       }
-      const baseValidation = validateManifest(baseManifest);
+      const baseValidation = validateActivationBaseManifest(baseManifest);
       if (!baseValidation.valid) {
         printFindings([{ code: 'ACTIVATION_BASE_INVALID', path: options.manifestPath }]);
         return 1;

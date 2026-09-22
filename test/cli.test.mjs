@@ -254,6 +254,71 @@ describe('workspace CLI', () => {
     }
   });
 
+  test('accepts a historical central branch when current activation repairs it to master', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const historicalCentral = {
+        ...fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow'),
+        integrationBranch: 'develop'
+      };
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const baseManifest = fixtureManifest({ projects: [historicalCentral, baseTarget] });
+      const currentCentral = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const currentManifest = fixtureManifest({ projects: [currentCentral, currentTarget] });
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+      writeFixtureManifest(centralPath, currentManifest);
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned repaired activation');
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.equal(status, 0);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('returns ACTIVATION_BASE_INVALID for malformed base transition data', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest();
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, manifest);
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        baseManifest: { projects: [{ repository: 'not-a-repository', access: 'managed', status: 'active', integrationBranch: '../main' }] }
+      });
+
+      assert.equal(status, 1);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('fails standalone CI when an active read-only target becomes managed without current routing', () => {
     for (const routing of ['missing', 'malformed', 'stale']) {
       const root = makeFixtureRoot();

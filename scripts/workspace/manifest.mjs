@@ -79,6 +79,47 @@ export function loadManifest(manifestPath) {
   return parse(readFileSync(manifestPath, 'utf8'));
 }
 
+export function validateActivationBaseManifest(value) {
+  const findings = [];
+  if (!isObject(value)) {
+    return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_MANIFEST', 'manifest')] };
+  }
+  if (!Array.isArray(value.projects)) {
+    return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_PROJECTS', 'manifest.projects')] };
+  }
+
+  const seenRepositories = new Set();
+  value.projects.forEach((project, index) => {
+    const projectPath = `manifest.projects[${index}]`;
+    if (!isObject(project)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_PROJECT', projectPath));
+      return;
+    }
+
+    if (typeof project.repository !== 'string' || !REPOSITORY_PATTERN.test(project.repository)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_REPOSITORY', `${projectPath}.repository`));
+    } else {
+      const normalized = normalizedRepository(project.repository);
+      if (seenRepositories.has(normalized)) {
+        findings.push(finding('DUPLICATE_ACTIVATION_BASE_REPOSITORY', `${projectPath}.repository`));
+      } else {
+        seenRepositories.add(normalized);
+      }
+    }
+    if (!['managed', 'read-only'].includes(project.access)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_ACCESS', `${projectPath}.access`));
+    }
+    if (!['onboarding', 'active'].includes(project.status)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_STATUS', `${projectPath}.status`));
+    }
+    if (!isSafeRelativePath(project.integrationBranch)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_BRANCH', `${projectPath}.integrationBranch`));
+    }
+  });
+
+  return { valid: findings.length === 0, findings };
+}
+
 export function validateManifest(value) {
   const findings = [];
   if (!isObject(value)) {
