@@ -3,6 +3,7 @@
 GitHub is project/task authority:
 `AI.md -> FLOW.md -> workspace record -> role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
 Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. `contextDependencies` are task-scoped read-only context; they do not override separate managed records. Missing required context blocks work.
+GitHub-only/web-agent bootstrap: target Issue/PR entry never bypasses this route; read current target `AGENTS.md` first.
 
 New repos need a license choice before first commit. For new tools, research analogues; prefer viable licensed reuse/forks.
 
@@ -10,8 +11,8 @@ A new `workspace.yaml` project requires synced `syllik/syllik` updates to `docs/
 
 Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint; stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. No self-review, subagents, commit, push, PR publication/update, or publication-state mutation.
 
-Trusted publication creates/updates PRs. Codex automatic review is disabled. For the current head, post `@codex review` only after its full repo CI gate is complete and green; never while CI is pending/failing or when a review is running. Any head change requires fresh green CI and a new comment. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
+Trusted publication creates/updates PRs. Codex automatic review is disabled; for current head, post `@codex review` only after green full CI. Never trigger while CI is pending/failing. Head changes require green CI and a new comment. Codex is reviewer-only; findings reach Luna only after human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
 
 Persist state for long/audit-significant work. Never store secrets or credentials.
 
-ChipIn authority: identity is `owner/repository#issue`; Issue = specification/dependencies; Organization Issue Fields = structured metadata; ChipIn Development Project #5 Status = workflow. Trello is historical/read-only only; no sync. Status never authorizes execution; explicit human approval provenance is required. Descriptions use `Problem -> Outcome -> Acceptance -> Dependencies -> References`; evidence in results/comments.
+ChipIn authority: identity is `owner/repository#issue`; Issue specifies work/dependencies; Organization Issue Fields carry metadata; Project #5 Status is workflow. Trello is read-only history. Status never authorizes execution; explicit human approval is required. Descriptions use `Problem -> Outcome -> Acceptance -> Dependencies -> References`; evidence in results/comments.

@@ -75,6 +75,7 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
     ]) assert.equal(output.includes(url), true, url);
     assert.match(output, /integrationBranch/);
+    assert.match(output, /GitHub Issue\/PR entry never bypasses this route/iu);
     assert.doesNotMatch(output, /contextDependencies/u);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
 

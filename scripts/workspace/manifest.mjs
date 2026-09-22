@@ -27,6 +27,7 @@ const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -78,6 +79,47 @@ export function loadManifest(manifestPath) {
   return parse(readFileSync(manifestPath, 'utf8'));
 }
 
+export function validateActivationBaseManifest(value) {
+  const findings = [];
+  if (!isObject(value)) {
+    return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_MANIFEST', 'manifest')] };
+  }
+  if (!Array.isArray(value.projects)) {
+    return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_PROJECTS', 'manifest.projects')] };
+  }
+
+  const seenRepositories = new Set();
+  value.projects.forEach((project, index) => {
+    const projectPath = `manifest.projects[${index}]`;
+    if (!isObject(project)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_PROJECT', projectPath));
+      return;
+    }
+
+    if (typeof project.repository !== 'string' || !REPOSITORY_PATTERN.test(project.repository)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_REPOSITORY', `${projectPath}.repository`));
+    } else {
+      const normalized = normalizedRepository(project.repository);
+      if (seenRepositories.has(normalized)) {
+        findings.push(finding('DUPLICATE_ACTIVATION_BASE_REPOSITORY', `${projectPath}.repository`));
+      } else {
+        seenRepositories.add(normalized);
+      }
+    }
+    if (!['managed', 'read-only'].includes(project.access)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_ACCESS', `${projectPath}.access`));
+    }
+    if (!['onboarding', 'active'].includes(project.status)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_STATUS', `${projectPath}.status`));
+    }
+    if (!isSafeRelativePath(project.integrationBranch)) {
+      findings.push(finding('INVALID_ACTIVATION_BASE_BRANCH', `${projectPath}.integrationBranch`));
+    }
+  });
+
+  return { valid: findings.length === 0, findings };
+}
+
 export function validateManifest(value) {
   const findings = [];
   if (!isObject(value)) {
@@ -112,6 +154,7 @@ export function validateManifest(value) {
       if (!isSafeRelativePath(project.localPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.localPath`));
       if (typeof project.group !== 'string' || !isSafeRelativePath(project.group)) findings.push(finding('INVALID_GROUP', `${projectPath}.group`));
       if (!isSafeRelativePath(project.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
+      else if (normalizedRepository(project.repository) === CENTRAL_REPOSITORY && project.integrationBranch !== 'master') findings.push(finding('INVALID_CENTRAL_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
       if (!['managed', 'read-only'].includes(project.access)) findings.push(finding('INVALID_ACCESS', `${projectPath}.access`));
       if (!['onboarding', 'active'].includes(project.status)) findings.push(finding('INVALID_STATUS', `${projectPath}.status`));
       if (project.contextPath !== undefined && !isSafeRelativePath(project.contextPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.contextPath`));

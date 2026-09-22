@@ -196,12 +196,22 @@ describe('workflow documentation', () => {
   test('routes active work through explicit integration branches and restricts onboarding', () => {
     const flow = readFileSync('FLOW.md', 'utf8');
     assert.match(flow, /integrationBranch/u);
+    assert.match(flow, /GitHub-only\/web-agent bootstrap[\s\S]*target Issue\/PR entry never bypasses this route/iu);
     assert.match(flow, /onboarding managed projects only onboarding\/alignment/iu);
     assert.match(flow, /Read-only projects are never write targets/iu);
     assert.match(flow, /contextDependencies/u);
     assert.match(flow, /task-scoped read-only context/iu);
     assert.match(flow, /do not override separate managed records/iu);
     assert.match(flow, /Missing required context blocks work/iu);
+  });
+
+  test('wires CI activation alignment into the normal verify path', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+    assert.match(packageJson.scripts.verify, /ci-activation\.mjs/u);
+    assert.match(workflow, /WORKSPACE_ACTIVATION_BASE_SHA/u);
+    assert.match(workflow, /fetch-depth:\s*0/u);
+    assert.match(workflow, /run:\s*npm run verify/u);
   });
 
   test('requires explicit aggregate-context provenance in every Luna implementation handoff', () => {

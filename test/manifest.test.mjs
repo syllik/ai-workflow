@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { loadManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
+import { loadManifest, validateActivationBaseManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
@@ -110,6 +110,92 @@ describe('manifest', () => {
       'manifest.projects[0].integrationBranch',
       'manifest.projects[1].integrationBranch'
     ]);
+  });
+
+  test('accepts master for the canonical central repository using normalized identity', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects a non-master integration branch for the canonical central repository', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+    central.integrationBranch = 'develop';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code, path }) => code === 'INVALID_CENTRAL_INTEGRATION_BRANCH' && path === 'manifest.projects[6].integrationBranch'), [
+      { code: 'INVALID_CENTRAL_INTEGRATION_BRANCH', path: 'manifest.projects[6].integrationBranch' }
+    ]);
+  });
+
+  test('accepts historical activation base data without applying current-only policy', () => {
+    const base = fixtureManifest({
+      schemaVersion: 0,
+      canonicalRoot: '/historical/workspace',
+      budgets: { obsolete: 1 },
+      unexpected: true,
+      projects: fixtureManifest().projects.map((project, index) => index === 6
+        ? {
+          ...project,
+          repository: 'SYLLIK/AI-WORKFLOW',
+          integrationBranch: 'develop',
+          localPath: '../historical-central',
+          contextPath: '../historical-context.md',
+          contextDependencies: 'legacy'
+        }
+        : project)
+    });
+
+    const result = validateActivationBaseManifest(base);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects malformed activation base transition records', () => {
+    const missingProjects = validateActivationBaseManifest({ schemaVersion: 1 });
+    assert.equal(missingProjects.valid, false);
+    assert.equal(missingProjects.findings.some(({ code }) => code === 'INVALID_ACTIVATION_BASE_PROJECTS'), true);
+
+    const invalidProject = validateActivationBaseManifest({
+      projects: [{ repository: 'not-a-repository', access: 'managed', status: 'active', integrationBranch: '../main' }]
+    });
+    assert.equal(invalidProject.valid, false);
+    assert.deepEqual(invalidProject.findings.map(({ code }) => code).sort(), [
+      'INVALID_ACTIVATION_BASE_REPOSITORY',
+      'INVALID_ACTIVATION_BASE_BRANCH'
+    ].sort());
+  });
+
+  test('rejects duplicate normalized repository identities in an activation base', () => {
+    const project = { repository: 'syllik/life-ops', access: 'managed', status: 'active', integrationBranch: 'master' };
+    const result = validateActivationBaseManifest({ projects: [project, { ...project, repository: 'SYLLIK/LIFE-OPS' }] });
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings, [{
+      code: 'DUPLICATE_ACTIVATION_BASE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
+  });
+
+  test('keeps ordinary project integration branches configurable', () => {
+    const manifest = fixtureManifest();
+    const project = manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+    project.integrationBranch = 'feature/routing-contract';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
   });
 
   test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
