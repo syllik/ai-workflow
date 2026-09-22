@@ -112,6 +112,42 @@ describe('manifest', () => {
     ]);
   });
 
+  test('accepts master for the canonical central repository using normalized identity', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects a non-master integration branch for the canonical central repository', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+    central.integrationBranch = 'develop';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code, path }) => code === 'INVALID_CENTRAL_INTEGRATION_BRANCH' && path === 'manifest.projects[6].integrationBranch'), [
+      { code: 'INVALID_CENTRAL_INTEGRATION_BRANCH', path: 'manifest.projects[6].integrationBranch' }
+    ]);
+  });
+
+  test('keeps ordinary project integration branches configurable', () => {
+    const manifest = fixtureManifest();
+    const project = manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+    project.integrationBranch = 'feature/routing-contract';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
   test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
     const valid = fixtureManifest();
     valid.projects[2].contextDependencies = [{

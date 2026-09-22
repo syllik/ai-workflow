@@ -27,6 +27,7 @@ const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -112,6 +113,7 @@ export function validateManifest(value) {
       if (!isSafeRelativePath(project.localPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.localPath`));
       if (typeof project.group !== 'string' || !isSafeRelativePath(project.group)) findings.push(finding('INVALID_GROUP', `${projectPath}.group`));
       if (!isSafeRelativePath(project.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
+      else if (normalizedRepository(project.repository) === CENTRAL_REPOSITORY && project.integrationBranch !== 'master') findings.push(finding('INVALID_CENTRAL_INTEGRATION_BRANCH', `${projectPath}.integrationBranch`));
       if (!['managed', 'read-only'].includes(project.access)) findings.push(finding('INVALID_ACCESS', `${projectPath}.access`));
       if (!['onboarding', 'active'].includes(project.status)) findings.push(finding('INVALID_STATUS', `${projectPath}.status`));
       if (project.contextPath !== undefined && !isSafeRelativePath(project.contextPath)) findings.push(finding('UNSAFE_PATH', `${projectPath}.contextPath`));
