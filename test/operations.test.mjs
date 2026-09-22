@@ -294,8 +294,9 @@ describe('workspace operations', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, '.ai/context.md'), 'default context only\n', 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing with wrong context');
 
       const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -330,8 +331,10 @@ describe('workspace operations', () => {
       const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', 'AGENTS.md');
+      git(remote, 'add', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing with unsafe context');
 
       const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -341,6 +344,172 @@ describe('workspace operations', () => {
 
       assert.deepEqual(findings, [{ code: 'UNSAFE_PATH', path: path.posix.join(currentTarget.localPath, currentTarget.contextPath) }]);
     } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects activation when the selected managed target lacks decisions', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing and context without decisions');
+
+      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.deepEqual(findings, [{ code: 'GENERATED_DRIFT', path: 'personal/life-ops-bot/.ai/decisions.md' }]);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('accepts activation when the selected managed target has valid decisions', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing, context, and decisions');
+
+      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.deepEqual(findings, []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects oversized decisions during activation with the canonical budget finding', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), 'x'.repeat(4097), 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'oversized decisions');
+
+      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.deepEqual(findings, [{
+        code: 'BUDGET_EXCEEDED',
+        path: 'personal/life-ops-bot/.ai/decisions.md',
+        actualBytes: 4097,
+        maxBytes: 4096,
+        actual: 4097,
+        maximum: 4096
+      }]);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects a symlinked decisions path during activation', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    const outsideRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      const outsideDecisions = path.join(outsideRoot, 'decisions.md');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(outsideDecisions, '# Decisions\n', 'utf8');
+      symlinkSync(outsideDecisions, path.join(remote, '.ai/decisions.md'));
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'unsafe decisions path');
+
+      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.deepEqual(findings, [{ code: 'UNSAFE_PATH', path: 'personal/life-ops-bot/.ai/decisions.md' }]);
+    } finally {
+      removeFixtureRoot(outsideRoot);
       removeFixtureRoot(remoteRoot);
       removeFixtureRoot(root);
     }
@@ -368,8 +537,9 @@ describe('workspace operations', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, currentTarget.contextPath), 'x'.repeat(8193), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'oversized activation context');
 
       const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -413,8 +583,9 @@ describe('workspace operations', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, currentTarget.contextPath), 'x'.repeat(8192), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'at-limit activation context');
 
       const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -446,9 +617,10 @@ describe('workspace operations', () => {
         initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
         mkdirSync(path.join(remote, '.ai'), { recursive: true });
         writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+        writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
         writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
         if (bootstrap === 'stale') writeFileSync(path.join(remote, 'AI.md'), renderManagedBlock('profile-navigation', 'stale profile bootstrap'), 'utf8');
-        git(remote, 'add', '.ai/context.md', 'AGENTS.md', ...(bootstrap === 'stale' ? ['AI.md'] : []));
+        git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', ...(bootstrap === 'stale' ? ['AI.md'] : []));
         git(remote, 'commit', '--quiet', `--message=${bootstrap} profile bootstrap`);
 
         const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -485,10 +657,11 @@ describe('workspace operations', () => {
           if (transition === 'branch') git(remote, 'switch', '--create', currentTarget.integrationBranch);
           mkdirSync(path.join(remote, '.ai'), { recursive: true });
           writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+          writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
           writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
           if (bootstrap === 'stale') writeFileSync(path.join(remote, 'AI.md'), renderManagedBlock('profile-navigation', 'stale profile bootstrap'), 'utf8');
           if (bootstrap === 'current') writeFileSync(path.join(remote, 'AI.md'), renderProfileNavigation(currentManifest), 'utf8');
-          git(remote, 'add', '.ai/context.md', 'AGENTS.md', ...(bootstrap === 'missing' ? [] : ['AI.md']));
+          git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', ...(bootstrap === 'missing' ? [] : ['AI.md']));
           git(remote, 'commit', '--quiet', `--message=${transition}-${bootstrap}-profile-bootstrap`);
 
           const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
@@ -1434,7 +1607,7 @@ describe('workspace operations', () => {
       writeFileSync(path.join(managedPath, managed.contextPath), 'x'.repeat(8193), 'utf8');
       writeFileSync(path.join(managedPath, '.ai/tasks/target-task/prompt.md'), 'x'.repeat(8193), 'utf8');
       writeFileSync(path.join(managedPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
-      writeFileSync(path.join(managedPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(managedPath, '.ai/decisions.md'), 'x'.repeat(4097), 'utf8');
 
       const readOnlyPath = path.join(root, readOnly.localPath);
       initFixtureRepo(readOnlyPath, `https://github.com/${readOnly.repository}.git`, readOnly.integrationBranch);
@@ -1448,6 +1621,7 @@ describe('workspace operations', () => {
       assert.equal(budgetPaths.includes('global/architect.md'), true);
       assert.equal(budgetPaths.includes('.ai/tasks/central-task/plan.md'), true);
       assert.equal(budgetPaths.includes(`${managed.localPath}/${managed.contextPath}`), true);
+      assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/decisions.md`), true);
       assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/tasks/target-task/prompt.md`), true);
       assert.equal(budgetPaths.some((findingPath) => findingPath.includes(readOnly.localPath)), false);
       assert.equal(budgetPaths.includes('unrelated/build-output/unrelated.bin'), false);

@@ -659,9 +659,22 @@ function validateManagedAgents(repositoryRoot, findingPath, manifest, findings, 
   }
 }
 
+function validateManagedDecisions(repositoryRoot, findingPath, findings) {
+  const decisionsFindingPath = path.posix.join(findingPath, '.ai/decisions.md');
+  const decisionsPath = resolveInside(repositoryRoot, '.ai/decisions.md');
+  if (!decisionsPath) {
+    addUniqueFinding(findings, 'UNSAFE_PATH', decisionsFindingPath);
+  } else if (!isRegularFile(decisionsPath)) {
+    findings.push(finding('GENERATED_DRIFT', decisionsFindingPath));
+  } else {
+    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS));
+  }
+}
+
 export function validateManagedTarget(repositoryRoot, project, manifest, findings = [], options = {}) {
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
+  validateManagedDecisions(repositoryRoot, project.localPath, findings);
 
   if (isProfileRepository(project.repository)) {
     const aiPath = resolveInside(repositoryRoot, 'AI.md');
@@ -779,10 +792,6 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
       continue;
     }
     if (!isDirectory(repository)) continue;
-    for (const relativePath of ['.ai/decisions.md']) {
-      const artifact = readKnownArtifact(repository, relativePath, findings);
-      if (artifact) entries.push({ path: path.posix.join(project.localPath, artifact.path), text: artifact.text });
-    }
     entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks'), findings));
   }
   return entries;
@@ -878,11 +887,6 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
       continue;
     }
     validateManagedTarget(repository, project, manifest, findings, { checkedAgents });
-    const decisionsPath = resolveInside(repository, '.ai/decisions.md');
-    if (!decisionsPath || !isRegularFile(decisionsPath)) {
-      if (!decisionsPath) addUniqueFinding(findings, 'UNSAFE_PATH', path.posix.join(project.localPath, '.ai/decisions.md'));
-      else findings.push(finding('GENERATED_DRIFT', path.posix.join(project.localPath, '.ai/decisions.md')));
-    }
   }
   const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings);
   findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));

@@ -237,8 +237,9 @@ describe('workspace CLI', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing and context');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
@@ -371,8 +372,9 @@ describe('workspace CLI', () => {
       git(remote, 'switch', '--create', currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing and context on changed branch');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
