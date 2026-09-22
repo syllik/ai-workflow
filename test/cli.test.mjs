@@ -411,6 +411,58 @@ describe('workspace CLI', () => {
     }
   });
 
+  test('revalidates unchanged active managed targets when the base canonical routing block differs', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = {
+        ...baseTarget,
+        contextDependencies: [{ repository: 'syllik/life-ops', integrationBranch: 'master', access: 'read-only' }]
+      };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+      writeFixtureManifest(centralPath, currentManifest);
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', '.ai/context.md', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'current routing after canonical change');
+      let cloneCount = 0;
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        cloneSource: () => {
+          cloneCount += 1;
+          return remote;
+        },
+        expectedRemote: () => remote
+      });
+
+      assert.equal(status, 0);
+      assert.equal(cloneCount, 1);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
   test('does not duplicate central AGENTS drift when it is the canonical target repository', () => {
     const root = makeFixtureRoot();
     try {

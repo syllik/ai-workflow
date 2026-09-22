@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, planWorkspace } from './operations.mjs';
+import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, loadCanonicalAgentsBlockAtRef, planWorkspace } from './operations.mjs';
 
 const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] [--activation-base <git-ref>] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
 
@@ -95,7 +95,14 @@ function run(args, dependencies = {}) {
         printFindings([{ code: 'ACTIVATION_BASE_INVALID', path: options.manifestPath }]);
         return 1;
       }
-      findings = [...findings, ...checkActivatedTargetRouting(manifest, baseManifest, dependencies)];
+      let baseAgentsBlock;
+      try {
+        baseAgentsBlock = dependencies.baseAgentsBlock ?? loadCanonicalAgentsBlockAtRef(options.root, options.manifestPath, options.activationBase);
+      } catch (error) {
+        printFindings([{ code: 'ACTIVATION_BASE_UNREADABLE', path: options.manifestPath, message: error.message }]);
+        return 1;
+      }
+      findings = [...findings, ...checkActivatedTargetRouting(manifest, baseManifest, { ...dependencies, baseAgentsBlock })];
     }
     printFindings(findings);
     return findings.length > 0 ? 1 : 0;
