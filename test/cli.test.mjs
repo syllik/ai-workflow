@@ -210,6 +210,138 @@ describe('workspace CLI', () => {
     }
   });
 
+  test('fails standalone CI when an active read-only target becomes managed without current routing', () => {
+    for (const routing of ['missing', 'malformed', 'stale']) {
+      const root = makeFixtureRoot();
+      const remoteRoot = makeFixtureRoot();
+      try {
+        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+        const baseTarget = {
+          id: 'syllik/life-ops-bot',
+          repository: 'syllik/life-ops-bot',
+          localPath: 'personal/life-ops-bot',
+          group: 'personal',
+          access: 'read-only',
+          status: 'active',
+          integrationBranch: 'master'
+        };
+        const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+        const currentTarget = { ...baseTarget, access: 'managed', contextPath: '.ai/context.md' };
+        const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+        const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+        writeFixtureManifest(centralPath, currentManifest);
+        mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+        writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+        writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+        const remote = path.join(remoteRoot, 'life-ops-bot');
+        initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+        if (routing === 'malformed') {
+          writeFileSync(path.join(remote, 'AGENTS.md'), '<!-- ai-workflow:agents-routing:start -->\n', 'utf8');
+          git(remote, 'add', 'AGENTS.md');
+          git(remote, 'commit', '--quiet', '-m', 'malformed routing');
+        } else if (routing === 'stale') {
+          writeFileSync(path.join(remote, 'AGENTS.md'), renderManagedBlock('agents-routing', 'stale routing'), 'utf8');
+          git(remote, 'add', 'AGENTS.md');
+          git(remote, 'commit', '--quiet', '-m', 'stale routing');
+        }
+
+        const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+          cloneSource: () => remote,
+          expectedRemote: () => remote
+        });
+
+        assert.equal(status, 1, routing);
+      } finally {
+        removeFixtureRoot(remoteRoot);
+        removeFixtureRoot(root);
+      }
+    }
+  });
+
+  test('fails standalone CI when an active managed target changes to a branch without current routing', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentTarget = { ...baseTarget, integrationBranch: 'develop' };
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+      writeFixtureManifest(centralPath, currentManifest);
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, baseTarget.integrationBranch);
+      git(remote, 'switch', '--create', currentTarget.integrationBranch);
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.equal(status, 1);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
+  test('accepts standalone CI when a changed managed branch has current routing', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentTarget = { ...baseTarget, integrationBranch: 'develop' };
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const { centralPath, manifestPath } = initCentralManifestRepo(root, baseManifest);
+      writeFixtureManifest(centralPath, currentManifest);
+      mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
+      writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, baseTarget.integrationBranch);
+      git(remote, 'switch', '--create', currentTarget.integrationBranch);
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      git(remote, 'add', 'AGENTS.md');
+      git(remote, 'commit', '--quiet', '-m', 'aligned routing on changed branch');
+
+      const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+
+      assert.equal(status, 0);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
   test('does not require absent targets for an unchanged standalone checkout', () => {
     const root = makeFixtureRoot();
     try {

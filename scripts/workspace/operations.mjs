@@ -740,7 +740,12 @@ function activatedManagedProjects(manifest, baseManifest) {
   const baseProjects = new Map((baseManifest?.projects ?? []).map((project) => [normalizedRepository(project.repository), project]));
   return manifest.projects.filter((project) => {
     if (project.access !== 'managed' || project.status !== 'active') return false;
-    return baseProjects.get(normalizedRepository(project.repository))?.status !== 'active';
+    const previous = baseProjects.get(normalizedRepository(project.repository));
+    const previousRecordIsAligned = previous
+      && previous.access === 'managed'
+      && previous.status === 'active'
+      && previous.integrationBranch === project.integrationBranch;
+    return !previousRecordIsAligned;
   });
 }
 
