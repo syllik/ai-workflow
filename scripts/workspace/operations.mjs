@@ -788,29 +788,11 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
   return entries;
 }
 
-export function loadCanonicalAgentsBlockAtRef(root, manifestPath, ref) {
-  const workspaceRoot = path.resolve(root);
-  const manifestRoot = path.dirname(path.resolve(manifestPath));
-  const relativeManifestRoot = path.relative(workspaceRoot, manifestRoot);
-  if (relativeManifestRoot.startsWith('..') || path.isAbsolute(relativeManifestRoot)) throw new Error('Manifest is outside the checkout root');
-  const relativeAgentsPath = path.posix.join(...(relativeManifestRoot ? relativeManifestRoot.split(path.sep) : []), 'AGENTS.md');
-  let source;
-  try {
-    source = execFileSync('git', ['-C', workspaceRoot, 'show', `${ref}:${relativeAgentsPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch (error) {
-    throw new Error(`Base canonical AGENTS.md is unreadable: ${error.message}`);
-  }
-  const state = markerState(source, 'agents-routing');
-  if (state.kind !== 'valid') throw new Error('Base canonical AGENTS.md has no valid agents-routing block');
-  return normalizeText(source.slice(state.startIndex, state.endIndex + state.end.length));
-}
-
-function activatedManagedProjects(manifest, baseManifest, routingChanged) {
+function activatedManagedProjects(manifest, baseManifest) {
   const baseProjects = new Map((baseManifest?.projects ?? []).map((project) => [normalizedRepository(project.repository), project]));
   return manifest.projects.filter((project) => {
     if (project.access !== 'managed' || project.status !== 'active') return false;
     if (normalizedRepository(project.repository) === CENTRAL_REPOSITORY) return false;
-    if (routingChanged) return true;
     const previous = baseProjects.get(normalizedRepository(project.repository));
     const previousRecordIsAligned = previous
       && previous.access === 'managed'
@@ -821,10 +803,7 @@ function activatedManagedProjects(manifest, baseManifest, routingChanged) {
 }
 
 export function checkActivatedTargetRouting(manifest, baseManifest, options = {}) {
-  const currentAgentsBlock = renderAgentsBlock(manifest);
-  const routingChanged = options.baseAgentsBlock !== undefined
-    && normalizeText(options.baseAgentsBlock) !== normalizeText(currentAgentsBlock);
-  const projects = activatedManagedProjects(manifest, baseManifest, routingChanged);
+  const projects = activatedManagedProjects(manifest, baseManifest);
   if (projects.length === 0) return [];
 
   const findings = [];

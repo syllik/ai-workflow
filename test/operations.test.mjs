@@ -505,48 +505,37 @@ describe('workspace operations', () => {
     }
   });
 
-  test('revalidates every declared active managed target when canonical routing changes', () => {
-    for (const routing of ['stale', 'current']) {
-      const root = makeFixtureRoot();
-      const remoteRoot = makeFixtureRoot();
-      try {
-        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
-        const target = {
-          id: 'syllik/life-ops-bot',
-          repository: 'syllik/life-ops-bot',
-          localPath: 'personal/life-ops-bot',
-          group: 'personal',
-          access: 'managed',
-          status: 'active',
-          integrationBranch: 'master',
-          contextPath: '.ai/context.md'
-        };
-        const baseManifest = fixtureManifest({ projects: [central, target] });
-        const currentManifest = fixtureManifest({ projects: [central, target] });
-        const remote = path.join(remoteRoot, 'life-ops-bot');
-        initFixtureRepo(remote, `https://${target.repository}.git`, target.integrationBranch);
-        mkdirSync(path.join(remote, '.ai'), { recursive: true });
-        writeFileSync(path.join(remote, target.contextPath), renderContextScaffold(target), 'utf8');
-        writeFileSync(path.join(remote, 'AGENTS.md'), routing === 'current' ? renderAgentsBlock(currentManifest) : renderManagedBlock('agents-routing', 'stale routing'), 'utf8');
-        git(remote, 'add', '.ai/context.md', 'AGENTS.md');
-        git(remote, 'commit', '--quiet', `--message=${routing} routing`);
-        let cloneCount = 0;
+  test('does not revalidate unchanged active managed targets when canonical routing changes', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const target = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'active',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const baseManifest = fixtureManifest({ projects: [central, target] });
+      const currentManifest = fixtureManifest({
+        projects: [central, { ...target, contextDependencies: [{ repository: 'syllik/life-ops', integrationBranch: 'master', access: 'read-only' }] }]
+      });
+      let cloneCount = 0;
 
-        const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
-          baseAgentsBlock: renderManagedBlock('agents-routing', 'base routing'),
-          cloneSource: () => {
-            cloneCount += 1;
-            return remote;
-          },
-          expectedRemote: () => remote
-        });
+      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+        cloneSource: () => {
+          cloneCount += 1;
+          throw new Error('unchanged active managed target must not be cloned');
+        }
+      });
 
-        assert.equal(cloneCount, 1, routing);
-        assert.deepEqual(findings, routing === 'current' ? [] : [{ code: 'GENERATED_DRIFT', path: 'personal/life-ops-bot/AGENTS.md' }], routing);
-      } finally {
-        removeFixtureRoot(remoteRoot);
-        removeFixtureRoot(root);
-      }
+      assert.deepEqual(findings, []);
+      assert.equal(cloneCount, 0);
+    } finally {
+      removeFixtureRoot(root);
     }
   });
 
@@ -568,7 +557,6 @@ describe('workspace operations', () => {
       let cloneCount = 0;
 
       const findings = checkActivatedTargetRouting(manifest, manifest, {
-        baseAgentsBlock: renderAgentsBlock(manifest),
         cloneSource: () => {
           cloneCount += 1;
           return root;
