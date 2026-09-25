@@ -8,6 +8,47 @@ import { renderAgentsBlock, renderContextScaffold, renderLegacyProfileNavigation
 import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 describe('workspace operations', () => {
+  function activationTaskArtifactFindings(configureTasks) {
+    const remoteRoot = makeFixtureRoot();
+    const outsideRoot = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const baseTarget = {
+        id: 'syllik/life-ops-bot',
+        repository: 'syllik/life-ops-bot',
+        localPath: 'personal/life-ops-bot',
+        group: 'personal',
+        access: 'managed',
+        status: 'onboarding',
+        integrationBranch: 'master',
+        contextPath: '.ai/context.md'
+      };
+      const currentTarget = { ...baseTarget, status: 'active' };
+      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+      const remote = path.join(remoteRoot, 'life-ops-bot');
+      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+      mkdirSync(path.join(remote, '.ai'), { recursive: true });
+      writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      configureTasks({ remote, outsideRoot });
+      git(remote, 'add', '.');
+      git(remote, 'commit', '--quiet', '-m', 'activation task artifacts');
+
+      return {
+        findings: checkActivatedTargetRouting(currentManifest, baseManifest, {
+          cloneSource: () => remote,
+          expectedRemote: () => remote
+        }),
+        target: currentTarget
+      };
+    } finally {
+      removeFixtureRoot(outsideRoot);
+      removeFixtureRoot(remoteRoot);
+    }
+  }
+
   test('defaults direct workspace options to the checkout manifest, not the target root', () => {
     const root = makeFixtureRoot();
     try {
@@ -423,6 +464,69 @@ describe('workspace operations', () => {
     } finally {
       removeFixtureRoot(remoteRoot);
       removeFixtureRoot(root);
+    }
+  });
+
+  test('rejects each oversized persisted task artifact during activation with the canonical budget finding', () => {
+    for (const [artifactName, maxBytes] of [
+      ['prompt.md', 8192],
+      ['state.md', 2048],
+      ['result.md', 4096],
+      ['plan.md', 16384]
+    ]) {
+      const { findings, target } = activationTaskArtifactFindings(({ remote }) => {
+        const taskRoot = path.join(remote, '.ai/tasks/activation-task');
+        mkdirSync(taskRoot, { recursive: true });
+        writeFileSync(path.join(taskRoot, artifactName), 'x'.repeat(maxBytes + 1), 'utf8');
+      });
+      const findingPath = path.posix.join(target.localPath, '.ai/tasks/activation-task', artifactName);
+
+      assert.deepEqual(findings, [{
+        code: 'BUDGET_EXCEEDED',
+        path: findingPath,
+        actualBytes: maxBytes + 1,
+        maxBytes,
+        actual: maxBytes + 1,
+        maximum: maxBytes
+      }], artifactName);
+    }
+  });
+
+  test('accepts persisted task artifacts at the canonical activation budgets', () => {
+    const { findings } = activationTaskArtifactFindings(({ remote }) => {
+      const taskRoot = path.join(remote, '.ai/tasks/activation-task');
+      mkdirSync(taskRoot, { recursive: true });
+      writeFileSync(path.join(taskRoot, 'prompt.md'), 'x'.repeat(8192), 'utf8');
+      writeFileSync(path.join(taskRoot, 'state.md'), 'x'.repeat(2048), 'utf8');
+      writeFileSync(path.join(taskRoot, 'result.md'), 'x'.repeat(4096), 'utf8');
+      writeFileSync(path.join(taskRoot, 'plan.md'), 'x'.repeat(16384), 'utf8');
+    });
+
+    assert.deepEqual(findings, []);
+  });
+
+  test('rejects unsafe persisted task artifact paths during activation', () => {
+    for (const unsafePath of ['task-root', 'artifact']) {
+      const { findings, target } = activationTaskArtifactFindings(({ remote, outsideRoot }) => {
+        if (unsafePath === 'task-root') {
+          const outsideTasks = path.join(outsideRoot, 'tasks');
+          mkdirSync(outsideTasks, { recursive: true });
+          writeFileSync(path.join(outsideTasks, 'prompt.md'), 'safe\n', 'utf8');
+          symlinkSync(outsideTasks, path.join(remote, '.ai/tasks'));
+          return;
+        }
+
+        const taskRoot = path.join(remote, '.ai/tasks/activation-task');
+        const outsidePrompt = path.join(outsideRoot, 'prompt.md');
+        mkdirSync(taskRoot, { recursive: true });
+        writeFileSync(outsidePrompt, 'safe\n', 'utf8');
+        symlinkSync(outsidePrompt, path.join(taskRoot, 'prompt.md'));
+      });
+      const findingPath = unsafePath === 'task-root'
+        ? path.posix.join(target.localPath, '.ai/tasks')
+        : path.posix.join(target.localPath, '.ai/tasks/activation-task/prompt.md');
+
+      assert.deepEqual(findings, [{ code: 'UNSAFE_PATH', path: findingPath }], unsafePath);
     }
   });
 
