@@ -676,6 +676,17 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
   validateManagedDecisions(repositoryRoot, project.localPath, findings);
 
+  const taskArtifactFindings = [];
+  const taskArtifacts = collectTaskArtifacts(repositoryRoot, '.ai/tasks', taskArtifactFindings);
+  findings.push(...taskArtifactFindings.map((entry) => ({
+    ...entry,
+    path: path.posix.join(project.localPath, entry.path)
+  })));
+  for (const artifact of taskArtifacts) {
+    const artifactPath = path.posix.join(project.localPath, artifact.path);
+    findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
+  }
+
   if (isProfileRepository(project.repository)) {
     const aiPath = resolveInside(repositoryRoot, 'AI.md');
     const findingPath = path.posix.join(project.localPath, 'AI.md');
