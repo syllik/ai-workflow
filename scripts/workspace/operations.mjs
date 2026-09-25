@@ -676,15 +676,17 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
   validateManagedDecisions(repositoryRoot, project.localPath, findings);
 
-  const taskArtifactFindings = [];
-  const taskArtifacts = collectTaskArtifacts(repositoryRoot, '.ai/tasks', taskArtifactFindings);
-  findings.push(...taskArtifactFindings.map((entry) => ({
-    ...entry,
-    path: path.posix.join(project.localPath, entry.path)
-  })));
-  for (const artifact of taskArtifacts) {
-    const artifactPath = path.posix.join(project.localPath, artifact.path);
-    findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
+  if (options.validateTaskArtifacts === true) {
+    const taskArtifactFindings = [];
+    const taskArtifacts = collectTaskArtifacts(repositoryRoot, '.ai/tasks', taskArtifactFindings);
+    findings.push(...taskArtifactFindings.map((entry) => ({
+      ...entry,
+      path: path.posix.join(project.localPath, entry.path)
+    })));
+    for (const artifact of taskArtifacts) {
+      const artifactPath = path.posix.join(project.localPath, artifact.path);
+      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
+    }
   }
 
   if (isProfileRepository(project.repository)) {
@@ -862,7 +864,7 @@ export function checkActivatedTargetRouting(manifest, baseManifest, options = {}
         project.integrationBranch
       )) continue;
 
-      validateManagedTarget(destination, project, manifest, findings);
+      validateManagedTarget(destination, project, manifest, findings, { validateTaskArtifacts: true });
     }
   } finally {
     if (ownsTargetRoot) rmSync(targetRoot, { recursive: true, force: true });
