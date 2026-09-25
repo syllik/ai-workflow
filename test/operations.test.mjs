@@ -1727,6 +1727,7 @@ describe('workspace operations', () => {
       assert.equal(budgetPaths.includes(`${managed.localPath}/${managed.contextPath}`), true);
       assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/decisions.md`), true);
       assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/tasks/target-task/prompt.md`), true);
+      assert.equal(budgetPaths.filter((findingPath) => findingPath === `${managed.localPath}/.ai/tasks/target-task/prompt.md`).length, 1);
       assert.equal(budgetPaths.some((findingPath) => findingPath.includes(readOnly.localPath)), false);
       assert.equal(budgetPaths.includes('unrelated/build-output/unrelated.bin'), false);
     } finally {
