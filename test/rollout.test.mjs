@@ -29,7 +29,7 @@ function materializeManagedTarget(root, project, manifest, { staleAgents = false
   const repositoryRoot = path.join(root, project.localPath);
   initFixtureRepo(repositoryRoot, `https://github.com/${project.repository}.git`, project.integrationBranch);
   mkdirSync(path.join(repositoryRoot, '.ai'), { recursive: true });
-  const localPrefix = '# Local instructions\n\nKeep this text unchanged.\n\n';
+  const localPrefix = '# Local instructions\n\nKeep this text unchanged.\n';
   const agentsManifest = staleAgents ? { ...manifest, canonicalRoot: '~/OLD-WORK' } : manifest;
   writeFileSync(path.join(repositoryRoot, 'AGENTS.md'), localPrefix + renderAgentsBlock(agentsManifest), 'utf8');
   writeFileSync(path.join(repositoryRoot, project.contextPath), '# Project context\n', 'utf8');
