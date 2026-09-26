@@ -1,0 +1,62 @@
+name: Routing Rollout
+
+on:
+  workflow_run:
+    workflows:
+      - Canonical Workflow CI
+    types:
+      - completed
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rollout:
+    if: >-
+      vars.WORKSPACE_ROLLOUT_ENABLED == 'true' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/master') &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    env:
+      WORKSPACE_POLICY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Checkout exact validated policy revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.WORKSPACE_POLICY_SHA }}
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Recheck source rollout policy
+        run: node scripts/workspace/rollout-ci.mjs source
+      - name: Mint read token for syllik/syllik
+        id: syllik-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
+          owner: syllik
+          repositories: syllik
+          permission-contents: read
+      - name: Mint read token for ChipIn-one/.github
+        id: chipin-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
+          owner: ChipIn-one
+          repositories: .github
+          permission-contents: read
+      - name: Verify pilot rollout at exact target revisions
+        env:
+          WORKSPACE_READ_TOKEN_SYLLIK: ${{ steps.syllik-token.outputs.token }}
+          WORKSPACE_READ_TOKEN_CHIPIN: ${{ steps.chipin-token.outputs.token }}
+        run: node scripts/workspace/rollout-ci.mjs targets

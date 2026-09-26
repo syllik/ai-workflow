@@ -1,0 +1,9 @@
+schemaVersion: 1
+mode: read-only-verify
+targets:
+  - syllik/syllik
+  - ChipIn-one/.github
+authentication:
+  type: github-app-installation
+  permissions:
+    contents: read
