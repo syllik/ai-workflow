@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "verify": "npm test && node scripts/workspace/cli.mjs check --manifest-only && node scripts/workspace/cli.mjs check && node scripts/workspace/ci-activation.mjs && git diff --check"
+    "verify": "npm test && node scripts/workspace/cli.mjs check --manifest-only && node scripts/workspace/cli.mjs check && node scripts/workspace/rollout-ci.mjs source && node scripts/workspace/ci-activation.mjs && git diff --check"
   },
   "dependencies": {
     "yaml": "2.9.0"
