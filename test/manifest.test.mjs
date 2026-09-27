@@ -323,6 +323,23 @@ describe('manifest', () => {
     ]);
   });
 
+  test('rejects repository identities that differ only by case', () => {
+    const base = fixtureManifest();
+    const archive = base.projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const youtube = base.projects.find(({ repository }) => repository === 'syllik/youtube-metadata-translator');
+    const manifest = fixtureManifest({
+      projects: [archive, { ...youtube, repository: archive.repository.toUpperCase() }]
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'DUPLICATE_REPOSITORY'), [{
+      code: 'DUPLICATE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
+  });
+
   test('rejects unsafe and non-POSIX paths', () => {
     const manifest = fixtureManifest();
     manifest.projects[0].localPath = '../outside';
