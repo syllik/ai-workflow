@@ -42,6 +42,15 @@ export function renderProjectIndex(manifest) {
         .join('<br>') || '—';
       return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} | ${dependencies} |`;
     });
+  const lifecycleRows = [...(manifest.gitLifecycle?.repositories ?? [])]
+    .sort((left, right) => left.repository.localeCompare(right.repository))
+    .map((entry) => {
+      const exception = entry.exception
+        ? `${entry.exception.reason} Follow-up: ${entry.exception.followUp}`
+        : '—';
+      return `| ${entry.repository} | ${entry.deploymentProfile} | ${entry.branchState} | ${entry.defaultBranch} | ${entry.integrationBranch} | ${entry.promotionBranch ?? '—'} | ${exception} |`;
+    });
+
   return finalNewline([
     '# Workspace project index',
     '',
@@ -49,7 +58,17 @@ export function renderProjectIndex(manifest) {
     '',
     '| Repository | Group | Access | Status | Integration branch | GitHub source | Context dependencies |',
     '| --- | --- | --- | --- | --- | --- | --- |',
-    ...rows
+    ...rows,
+    '',
+    '## Audited Git lifecycle',
+    '',
+    `Canonical source branch: \`${manifest.gitLifecycle.canonicalBranch}\`. Normal PR merge: \`${manifest.gitLifecycle.normalMergeMethod}\`. Production promotion: \`${manifest.gitLifecycle.productionPromotion}\`.`,
+    '',
+    'Only repositories listed below were audited for this policy task. Other workspace records remain unverified for Git lifecycle state.',
+    '',
+    '| Repository | Deployment profile | Branch state | Default branch | Integration branch | Promotion branch | Exception / follow-up |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...lifecycleRows
   ].join('\n'));
 }
 
