@@ -29,6 +29,19 @@ describe('renderers', () => {
     assert.equal(first.includes('| syllik/codex-local-runner | none |'), false);
   });
 
+  test('render lifecycle exceptions safely inside Markdown table cells', () => {
+    const manifest = fixtureManifest();
+    const frontend = manifest.gitLifecycle.repositories.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+    frontend.exception.reason = 'Keep dev | main\nancestry';
+    frontend.exception.followUp = 'Promote exact \\ SHA | tag\r\nthen migrate';
+
+    const output = renderProjectIndex(manifest);
+
+    assert.equal(output.includes('Keep dev \\| main<br>ancestry Follow-up: Promote exact \\\\ SHA \\| tag<br>then migrate'), true);
+    assert.equal(output.includes('Keep dev | main'), false);
+    assert.equal(output.includes('tag\nthen migrate'), false);
+  });
+
   test('render navigation contains the canonical reading route', () => {
     const output = renderProfileNavigation(fixtureManifest());
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/FLOW\.md/u);
