@@ -142,8 +142,14 @@ function validateGitLifecycle(value, projects, findings) {
     findings.push(finding('INVALID_TEMPORARY_BRANCH_PATTERN', `${lifecyclePath}.temporaryIssueBranchPattern`));
   }
 
-  if (!Array.isArray(value.repositories) || value.repositories.length === 0) {
+  if (!Array.isArray(value.repositories)) {
     findings.push(finding('INVALID_GIT_LIFECYCLE_REPOSITORIES', `${lifecyclePath}.repositories`));
+    return;
+  }
+  if (value.repositories.length === 0) {
+    if (Array.isArray(projects) && projects.length > 0) {
+      findings.push(finding('INVALID_GIT_LIFECYCLE_REPOSITORIES', `${lifecyclePath}.repositories`));
+    }
     return;
   }
 
