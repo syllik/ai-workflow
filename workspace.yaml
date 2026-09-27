@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 2
 canonicalRoot: ~/Desktop/WORK
 budgets:
   AI.md: 1024
@@ -12,6 +12,46 @@ budgets:
   assembled execution context: 32768
   result.md: 4096
   human plan.md: 16384
+gitLifecycle:
+  canonicalBranch: master
+  normalMergeMethod: squash
+  productionPromotion: exact-commit
+  temporaryIssueBranchPattern: <type>/issue-<number>-<slug>
+  repositories:
+    - repository: syllik/syllik
+      deploymentProfile: none
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
+    - repository: syllik/ai-workflow
+      deploymentProfile: none
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
+    - repository: ChipIn-one/.github
+      deploymentProfile: none
+      branchState: migration
+      defaultBranch: main
+      integrationBranch: main
+    - repository: ChipIn-one/chipin-knowledge-base
+      deploymentProfile: none
+      branchState: migration
+      defaultBranch: main
+      integrationBranch: main
+    - repository: ChipIn-one/chipin-frontend
+      deploymentProfile: production
+      branchState: temporary-exception
+      defaultBranch: main
+      integrationBranch: dev
+      promotionBranch: main
+      exception:
+        reason: Preserve the enforced dev-to-main ancestry promotion until exact-commit promotion replaces it.
+        followUp: Replace dev-to-main promotion, then migrate the canonical long-lived source to master.
+    - repository: ChipIn-one/chipin-backend
+      deploymentProfile: production
+      branchState: migration
+      defaultBranch: develop
+      integrationBranch: develop
 projects:
   - id: syllik/syllik
     repository: syllik/syllik
