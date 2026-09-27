@@ -67,7 +67,7 @@ export function renderProjectIndex(manifest) {
     'Only repositories listed below were audited for this policy task. Other workspace records remain unverified for Git lifecycle state.',
     '',
     '| Repository | Deployment profile | Branch state | Default branch | Integration branch | Promotion branch | Exception / follow-up |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
     ...lifecycleRows
   ].join('\n'));
 }
