@@ -63,6 +63,7 @@ test('rollout workflow mints private-repository tokens only for trusted master r
   assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/master'/u);
   assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
+  assert.match(workflow, /persist-credentials:\s*false/u);
 });
 
 test('GitHub App installation tokens use x-access-token HTTP Basic auth for Git', () => {
