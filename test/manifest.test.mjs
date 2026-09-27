@@ -4,7 +4,7 @@ import { loadManifest, validateActivationBaseManifest, validateManifest } from '
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
-  const base = baseFixtureManifest();
+  const base = baseFixtureManifest(overrides);
   return {
     ...base,
     ...overrides,
