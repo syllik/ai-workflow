@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { githubAppGitAuthorization } from './github-auth.mjs';
 import { loadManifest } from './manifest.mjs';
 import { evaluatePilotRollout, immutableSha, loadRolloutPolicy, resolveRolloutProjects, routingBlockSha256, validateRolloutPolicy } from './rollout.mjs';
 
@@ -49,7 +50,7 @@ function authEnvironment(token) {
     ...process.env,
     GIT_CONFIG_COUNT: '1',
     GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-    GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`
+    GIT_CONFIG_VALUE_0: githubAppGitAuthorization(token)
   };
 }
 
