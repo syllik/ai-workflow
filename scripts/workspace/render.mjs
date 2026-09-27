@@ -14,6 +14,13 @@ function finalNewline(text) {
   return `${lf(text).replace(/\n+$/u, '')}\n`;
 }
 
+function markdownTableCell(value) {
+  return lf(value)
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replaceAll('\n', '<br>');
+}
+
 export function renderManagedBlock(name, body) {
   const start = `<!-- ai-workflow:${name}:start -->`;
   const end = `<!-- ai-workflow:${name}:end -->`;
@@ -46,7 +53,7 @@ export function renderProjectIndex(manifest) {
     .sort((left, right) => left.repository.localeCompare(right.repository))
     .map((entry) => {
       const exception = entry.exception
-        ? `${entry.exception.reason} Follow-up: ${entry.exception.followUp}`
+        ? markdownTableCell(`${entry.exception.reason} Follow-up: ${entry.exception.followUp}`)
         : '—';
       return `| ${entry.repository} | ${entry.deploymentProfile} | ${entry.branchState} | ${entry.defaultBranch} | ${entry.integrationBranch} | ${entry.promotionBranch ?? '—'} | ${exception} |`;
     });
