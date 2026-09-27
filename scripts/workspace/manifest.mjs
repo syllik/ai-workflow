@@ -76,8 +76,9 @@ function checkDuplicates(projects, findings) {
     projects.forEach((project, index) => {
       const value = project?.[field];
       if (typeof value !== 'string') return;
-      if (seen.has(value)) findings.push(finding(`DUPLICATE_${field === 'localPath' ? 'LOCAL_PATH' : field.toUpperCase()}`, `manifest.projects[${index}].${field}`));
-      else seen.set(value, index);
+      const identity = field === 'repository' ? normalizedRepository(value) : value;
+      if (seen.has(identity)) findings.push(finding(`DUPLICATE_${field === 'localPath' ? 'LOCAL_PATH' : field.toUpperCase()}`, `manifest.projects[${index}].${field}`));
+      else seen.set(identity, index);
     });
   }
 }
