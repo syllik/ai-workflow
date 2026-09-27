@@ -16,6 +16,10 @@ onboarding projects are limited to onboarding/alignment until that context
 exists. Optional `contextDependencies` are explicit read-only context sources,
 loaded only when required. Legacy central project contexts remain migration-only.
 
+The audited Git lifecycle is defined in `workspace.yaml.gitLifecycle` and documented in
+[`docs/git-workflow.md`](docs/git-workflow.md). Only listed repositories are lifecycle-audited;
+all other workspace records remain unverified for branch/merge migration state.
+
 The workspace validator is intentionally bounded:
 
 ```text
@@ -87,7 +91,7 @@ session без зависимости от conversation history.
 1. Если это новая tool/repository, до проектирования проведите актуальный research существующих аналогов, библиотек, сервисов и forkable projects. Проверьте функциональное соответствие, поддержку и license compatibility. Если подходящий проект можно законно и технически корректно форкнуть и дописать, предпочитайте fork + минимальный delta вместо greenfield implementation.
 2. До первого commit попросите человека выбрать licensing model и кратко объясните подходящие варианты: permissive (например MIT/Apache-2.0), copyleft, proprietary/rights-reserved или сознательный no-license. Private repository не отменяет этот шаг.
 3. Для greenfield repository создайте выбранный `LICENSE` или rights notice одновременно с project bootstrap/template до первого commit. Для fork/derivative сохраните upstream license, copyright, attribution и другие обязательные notices; не перелицензируйте несовместимый upstream code.
-4. Добавьте или проверьте запись в `workspace.yaml`.
+4. Добавьте или проверьте запись в `workspace.yaml`. Если repository входит в lifecycle-audit scope, добавьте/обновите его `gitLifecycle` record с deployment profile и фактическим branch state; не помечайте legacy branch canonical и не переименовывайте branch в рамках onboarding-policy change.
 5. Создайте или обновите связанный change в `syllik/syllik`: `docs/workspace.md` и `docs/repositories.md`. PR с изменением `workspace.yaml` не считается готовым к human merge, пока синхронизирующий workspace-documentation change не существует и не соответствует ему. Profile `README.md` содержит стабильную ссылку на `docs/workspace.md` и не дублирует список проектов; исключение из workspace documentation требует явного решения человека.
 6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
 7. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
