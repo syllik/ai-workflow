@@ -23,6 +23,23 @@ describe('renderers', () => {
     assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
     assert.equal(first.includes('/blob/HEAD/.ai/context.md'), false);
     assert.equal(first.includes('../../../'), false);
+    assert.match(first, /## Audited Git lifecycle/u);
+    assert.match(first, /Canonical source branch: `master`\. Normal PR merge: `squash`\. Production promotion: `exact-commit`\./u);
+    assert.equal(first.includes('| ChipIn-one/chipin-frontend | production | temporary-exception | main | dev | main | Preserve dev-to-main ancestry promotion until exact-commit promotion replaces it. Follow-up: Replace promotion, then migrate to master. |'), true);
+    assert.equal(first.includes('| syllik/codex-local-runner | none |'), false);
+  });
+
+  test('render lifecycle exceptions safely inside Markdown table cells', () => {
+    const manifest = fixtureManifest();
+    const frontend = manifest.gitLifecycle.repositories.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+    frontend.exception.reason = 'Keep dev | main\nancestry';
+    frontend.exception.followUp = 'Promote exact \\ SHA | tag\r\nthen migrate';
+
+    const output = renderProjectIndex(manifest);
+
+    assert.equal(output.includes('Keep dev \\| main<br>ancestry Follow-up: Promote exact \\\\ SHA \\| tag<br>then migrate'), true);
+    assert.equal(output.includes('Keep dev | main'), false);
+    assert.equal(output.includes('tag\nthen migrate'), false);
   });
 
   test('render navigation contains the canonical reading route', () => {
@@ -50,6 +67,9 @@ describe('renderers', () => {
     const output = renderContextScaffold(fixtureManifest().projects[0]);
     assert.match(output, /^# Project\n/u);
     assert.match(output, /## Repository\nsyllik\/syllik\n/u);
+    assert.match(output, /## Git lifecycle\n\n- Deployment profile: none \| staging \| production \| unverified\n/u);
+    assert.match(output, /- Canonical long-lived branch target: master\n/u);
+    assert.match(output, /- Temporary exception: none, or reason \+ bounded follow-up recorded in `workspace\.yaml`\n/u);
     assert.match(output, /## Current priorities\n/u);
     assert.doesNotMatch(output, /ai-workflow:context/u);
   });

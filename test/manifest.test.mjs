@@ -4,7 +4,7 @@ import { loadManifest, validateActivationBaseManifest, validateManifest } from '
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
-  const base = baseFixtureManifest();
+  const base = baseFixtureManifest(overrides);
   return {
     ...base,
     ...overrides,
@@ -77,6 +77,36 @@ describe('manifest', () => {
     } finally {
       removeFixtureRoot(root);
     }
+  });
+
+  test('requires valid deployment profiles and recorded lifecycle exceptions', () => {
+    const manifest = fixtureManifest();
+    delete manifest.gitLifecycle.repositories[0].deploymentProfile;
+    manifest.gitLifecycle.repositories[2].deploymentProfile = 'preview';
+    delete manifest.gitLifecycle.repositories[1].exception;
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_DEPLOYMENT_PROFILE').map(({ path }) => path), [
+      'manifest.gitLifecycle.repositories[0].deploymentProfile',
+      'manifest.gitLifecycle.repositories[2].deploymentProfile'
+    ]);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'UNRECORDED_LIFECYCLE_EXCEPTION').map(({ path }) => path), [
+      'manifest.gitLifecycle.repositories[1].exception'
+    ]);
+  });
+
+  test('rejects lifecycle branch-state drift from the workspace record', () => {
+    const manifest = fixtureManifest();
+    manifest.gitLifecycle.repositories[1].integrationBranch = 'feature/temporary';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.findings.some(({ code, path }) => (
+      code === 'LIFECYCLE_INTEGRATION_BRANCH_MISMATCH'
+      && path === 'manifest.gitLifecycle.repositories[1].integrationBranch'
+    )), true);
   });
 
   test('accepts a new valid approved repository entry without source enumeration', () => {
@@ -187,9 +217,9 @@ describe('manifest', () => {
     }]);
   });
 
-  test('keeps ordinary project integration branches configurable', () => {
+  test('keeps out-of-audit project integration branches configurable', () => {
     const manifest = fixtureManifest();
-    const project = manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
+    const project = manifest.projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
     project.integrationBranch = 'feature/routing-contract';
 
     const result = validateManifest(manifest);
@@ -293,6 +323,23 @@ describe('manifest', () => {
     ]);
   });
 
+  test('rejects repository identities that differ only by case', () => {
+    const base = fixtureManifest();
+    const archive = base.projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const youtube = base.projects.find(({ repository }) => repository === 'syllik/youtube-metadata-translator');
+    const manifest = fixtureManifest({
+      projects: [archive, { ...youtube, repository: archive.repository.toUpperCase() }]
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'DUPLICATE_REPOSITORY'), [{
+      code: 'DUPLICATE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
+  });
+
   test('rejects unsafe and non-POSIX paths', () => {
     const manifest = fixtureManifest();
     manifest.projects[0].localPath = '../outside';
@@ -330,7 +377,19 @@ describe('manifest', () => {
     ]);
 
     const accepted = validateManifest(fixtureManifest({ projects: [fixtureManifest().projects[0]] }));
-    assert.equal(accepted.valid, true);
+    assert.deepEqual(accepted.findings, []);
+  });
+
+  test('accepts an empty lifecycle audit for unverified project sets', () => {
+    const cleanupProject = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const manifest = fixtureManifest({ projects: [cleanupProject] });
+
+    assert.deepEqual(manifest.gitLifecycle.repositories, []);
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
   });
 
   test('rejects excluded repositories', () => {

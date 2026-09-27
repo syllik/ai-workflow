@@ -193,6 +193,13 @@ describe('workflow documentation', () => {
     assert.match(reviewTemplate, /automatic PR review is disabled/iu);
   });
 
+  test('preserves the canonical ChipIn issue-description contract', () => {
+    const flow = readFileSync('FLOW.md', 'utf8');
+
+    assert.match(flow, /Descriptions use `Problem -> Outcome -> Acceptance -> Dependencies -> References`/u);
+    assert.match(flow, /evidence in results\/comments/iu);
+  });
+
   test('routes active work through explicit integration branches and restricts onboarding', () => {
     const flow = readFileSync('FLOW.md', 'utf8');
     assert.match(flow, /integrationBranch/u);

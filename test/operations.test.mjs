@@ -1355,8 +1355,10 @@ describe('workspace operations', () => {
       const applied = applyOperations({ root, plan });
       assert.equal(applied.blocked, false);
       assert.equal(readFileSync(path.join(frontendPath, 'AGENTS.md'), 'utf8'), `Repository rules\n${renderAgentsBlock(manifest)}`);
+      assert.equal(readFileSync(path.join(frontendPath, manifest.projects[0].contextPath), 'utf8'), renderContextScaffold(manifest.projects[0]));
       assert.equal(readFileSync(path.join(frontendPath, '.ai/decisions.md'), 'utf8'), 'Existing decisions\n');
       assert.equal(readFileSync(path.join(archivePath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.equal(readFileSync(path.join(archivePath, manifest.projects[1].contextPath), 'utf8'), renderContextScaffold(manifest.projects[1]));
       assert.equal(readFileSync(path.join(archivePath, '.ai/decisions.md'), 'utf8'), '# Decisions\n\nRecord durable decisions for this repository here.\n');
     } finally {
       removeFixtureRoot(root);

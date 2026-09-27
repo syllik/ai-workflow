@@ -15,6 +15,30 @@ export const expectedProjects = [
   { id: 'syllik/gpg-signed-commits', repository: 'syllik/gpg-signed-commits', localPath: 'guides/git/gpg-signed-commits', group: 'guides/git', access: 'managed', status: 'active', integrationBranch: 'main', contextPath: '.ai/context.md' }
 ];
 
+export const fixtureGitLifecycle = {
+  canonicalBranch: 'master',
+  normalMergeMethod: 'squash',
+  productionPromotion: 'exact-commit',
+  temporaryIssueBranchPattern: '<type>/issue-<number>-<slug>',
+  repositories: [
+    { repository: 'syllik/syllik', deploymentProfile: 'none', branchState: 'canonical', defaultBranch: 'master', integrationBranch: 'master' },
+    {
+      repository: 'ChipIn-one/chipin-frontend',
+      deploymentProfile: 'production',
+      branchState: 'temporary-exception',
+      defaultBranch: 'main',
+      integrationBranch: 'dev',
+      promotionBranch: 'main',
+      exception: {
+        reason: 'Preserve dev-to-main ancestry promotion until exact-commit promotion replaces it.',
+        followUp: 'Replace promotion, then migrate to master.'
+      }
+    },
+    { repository: 'ChipIn-one/chipin-backend', deploymentProfile: 'production', branchState: 'migration', defaultBranch: 'develop', integrationBranch: 'develop' },
+    { repository: 'syllik/ai-workflow', deploymentProfile: 'none', branchState: 'canonical', defaultBranch: 'master', integrationBranch: 'master' }
+  ]
+};
+
 export const fixtureBudgets = {
   'AI.md': 1024,
   'FLOW.md': 2048,
@@ -30,11 +54,22 @@ export const fixtureBudgets = {
 };
 
 export function fixtureManifest(overrides = {}) {
+  const projects = overrides.projects ?? expectedProjects.map((project) => ({ ...project }));
+  const lifecycleRepositories = fixtureGitLifecycle.repositories
+    .filter((entry) => projects.some((project) => project.repository.toLowerCase() === entry.repository.toLowerCase()))
+    .map((entry) => ({
+      ...entry,
+      ...(entry.exception ? { exception: { ...entry.exception } } : {})
+    }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     canonicalRoot: '~/Desktop/WORK',
     budgets: { ...fixtureBudgets },
-    projects: expectedProjects.map((project) => ({ ...project })),
+    gitLifecycle: overrides.gitLifecycle ?? {
+      ...fixtureGitLifecycle,
+      repositories: lifecycleRepositories
+    },
+    projects,
     ...overrides
   };
 }
