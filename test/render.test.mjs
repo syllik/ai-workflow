@@ -67,6 +67,9 @@ describe('renderers', () => {
     const output = renderContextScaffold(fixtureManifest().projects[0]);
     assert.match(output, /^# Project\n/u);
     assert.match(output, /## Repository\nsyllik\/syllik\n/u);
+    assert.match(output, /## Git lifecycle\n\n- Deployment profile: none \| staging \| production \| unverified\n/u);
+    assert.match(output, /- Canonical long-lived branch target: master\n/u);
+    assert.match(output, /- Temporary exception: none, or reason \+ bounded follow-up recorded in `workspace\.yaml`\n/u);
     assert.match(output, /## Current priorities\n/u);
     assert.doesNotMatch(output, /ai-workflow:context/u);
   });
