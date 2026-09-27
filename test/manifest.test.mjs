@@ -360,7 +360,7 @@ describe('manifest', () => {
     ]);
 
     const accepted = validateManifest(fixtureManifest({ projects: [fixtureManifest().projects[0]] }));
-    assert.equal(accepted.valid, true);
+    assert.deepEqual(accepted.findings, []);
   });
 
   test('rejects excluded repositories', () => {
