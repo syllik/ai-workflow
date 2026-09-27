@@ -26,8 +26,7 @@ project, prompt, task, or history file without a concrete reason.
 * GPT-5.6 Sol is the planner, architect, and research agent; it issues one self-contained execution prompt for implementation. Managed Codex GitHub Code Review is the default independent PR reviewer, while Sol 5.6 High is reserved for escalation, architecture/high-risk review, ambiguous findings, reviewer unavailability, or explicit human request.
 * Luna xhigh is the executor and coder only; it reads target repository instructions, implements the authorized scope, and runs authorized validation.
 * Resolve target repository instructions through the selected `workspace.yaml` record's `integrationBranch`. Normal implementation requires `status: active`; `status: onboarding` permits onboarding/alignment only.
-* Treat `lifecycle`, `branchState`, `integrationBranch`, and optional `releaseBranch` as explicit Git lifecycle metadata. Do not infer deployment or long-lived branch semantics from names; follow `docs/git-workflow.md`.
-* `contextDependencies` are approved read-only context only. Read the minimum required dependency context; never mutate it or discover additional repositories from it.
+* `contextDependencies` are approved read-only context only for the dependent task. Read the minimum required dependency context; never mutate a repository through that dependency relationship or discover additional repositories from it. A separate managed workspace record for the same repository retains its own management authority.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
 * The default persisted structure is a human-only planning record, `prompt.md`, `state.md`, and `result.md`.
@@ -39,8 +38,8 @@ project, prompt, task, or history file without a concrete reason.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
 * Do not use subagents, repeat broad research, or expand scope.
 * Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub Issue metadata, Project #5 fields, labels/comments, PR publication, merge state, or Trello state.
-* Routine Codex review is automatic on every push to an open PR by default. Use `@codex review` only as a manual fallback/retrigger when automatic review does not start or an explicit retry is needed; do not duplicate an automatic review already running.
-* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head invalidates the previous review and requires a new Codex review before human merge.
+* Codex automatic PR review is disabled. Trigger routine Codex review only by posting `@codex review` after the repository-defined full CI gate for the current PR head is complete and green. Do not trigger while CI is pending/failing or when a review for that head is already running/current.
+* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any head change invalidates prior CI/review and requires fresh green CI followed by a new `@codex review` comment before human merge.
 * Codex review is review-only. Do not use `@codex fix`, `@codex address that feedback`, or any other command that asks Codex to mutate the branch.
 * Do not create unnecessary documentation or perform unrelated refactoring.
 * Update canonical project context only when durable knowledge appears.
@@ -62,6 +61,6 @@ Canonical AI routing:
 4. On that record's `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.
 5. Read relevant `.ai/decisions.md`, task files, and required declared `contextDependencies`; block if required dependency context is unavailable.
 
-Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.
+GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.
 Canonical root: ~/Desktop/WORK
 <!-- ai-workflow:agents-routing:end -->

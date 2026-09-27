@@ -29,10 +29,6 @@ node scripts/workspace/cli.mjs apply --root <path>
 Phase 1A includes isolated fixture apply tests. The product supports canonical
 apply after normal safety checks; canonical apply was not executed in Phase 1A.
 
-## Git lifecycle
-
-`workspace.yaml` declares each repository's `lifecycle`, `branchState`, `integrationBranch`, and optional `releaseBranch`. The canonical managed model is `feature/* -> PR -> squash -> master`; deployment uses GitHub Environments rather than mandatory `staging`/`production` branches. Transitional repositories remain explicitly marked `branchState: migration` until their real repository settings and branches are migrated safely. See [`docs/git-workflow.md`](docs/git-workflow.md).
-
 ## Что читает Sol
 
 Sol читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
@@ -58,13 +54,14 @@ session без зависимости от conversation history.
 ## Как проходит code review
 
 1. После local validation trusted publication создаёт или обновляет PR.
-2. Managed Codex review автоматически запускается на каждом push в открытый PR.
-3. Review актуален только для текущего PR head SHA; новый head делает предыдущий review stale и требует нового.
-4. `@codex review` используется только как fallback/retrigger, если automatic review не стартовал или нужен явный retry; не запускайте duplicate review поверх уже идущего automatic run.
-5. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие branch-mutation команды.
-6. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
-7. Sol 5.6 High используется только для architecture/high-risk review, спорных findings, недоступности Codex или явного запроса человека.
-8. Merge выполняет только человек.
+2. Automatic Codex PR review отключён; открытие PR, Ready и push сами по себе review не запускают.
+3. Для текущего PR head сначала должен полностью завершиться зелёным repository-defined CI gate.
+4. После зелёного CI routine review запускается только явным PR-комментарием `@codex review`; при pending/failing CI или уже текущем/идущем review комментарий не отправляется.
+5. Review актуален только для текущего PR head SHA; новый head инвалидирует прежние CI/review evidence и требует нового green CI + нового `@codex review`.
+6. Codex остаётся только reviewer: не используйте `@codex fix`, `@codex address that feedback` или другие branch-mutation команды.
+7. Findings сначала оценивает человек. Luna получает один consolidated correction package только после явного human authorization.
+8. Sol 5.6 High используется только для architecture/high-risk review, спорных findings, недоступности Codex или явного запроса человека.
+9. Merge выполняет только человек.
 
 ## Структура
 
@@ -90,7 +87,7 @@ session без зависимости от conversation history.
 1. Если это новая tool/repository, до проектирования проведите актуальный research существующих аналогов, библиотек, сервисов и forkable projects. Проверьте функциональное соответствие, поддержку и license compatibility. Если подходящий проект можно законно и технически корректно форкнуть и дописать, предпочитайте fork + минимальный delta вместо greenfield implementation.
 2. До первого commit попросите человека выбрать licensing model и кратко объясните подходящие варианты: permissive (например MIT/Apache-2.0), copyleft, proprietary/rights-reserved или сознательный no-license. Private repository не отменяет этот шаг.
 3. Для greenfield repository создайте выбранный `LICENSE` или rights notice одновременно с project bootstrap/template до первого commit. Для fork/derivative сохраните upstream license, copyright, attribution и другие обязательные notices; не перелицензируйте несовместимый upstream code.
-4. Добавьте или проверьте запись в `workspace.yaml`, включая явные `lifecycle`, `branchState`, `integrationBranch` и при необходимости `releaseBranch`; правила см. в [`docs/git-workflow.md`](docs/git-workflow.md).
+4. Добавьте или проверьте запись в `workspace.yaml`.
 5. Создайте или обновите связанный change в `syllik/syllik`: `docs/workspace.md` и `docs/repositories.md`. PR с изменением `workspace.yaml` не считается готовым к human merge, пока синхронизирующий workspace-documentation change не существует и не соответствует ему. Profile `README.md` содержит стабильную ссылку на `docs/workspace.md` и не дублирует список проектов; исключение из workspace documentation требует явного решения человека.
 6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
 7. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.

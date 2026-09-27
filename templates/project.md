@@ -19,14 +19,6 @@
 
 ## Current state
 
-## Git lifecycle
-
-- Lifecycle:
-- Branch state:
-- Integration branch:
-- Release branch:
-- Deployment environments:
-
 ## Stack
 
 ## Architecture

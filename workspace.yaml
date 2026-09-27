@@ -1,4 +1,4 @@
-schemaVersion: 2
+schemaVersion: 1
 canonicalRoot: ~/Desktop/WORK
 budgets:
   AI.md: 1024
@@ -19,20 +19,35 @@ projects:
     group: profile
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: canonical
     integrationBranch: master
     contextPath: .ai/context.md
+  - id: syllik/life-ops
+    repository: syllik/life-ops
+    localPath: personal/life-ops
+    group: personal
+    access: managed
+    status: active
+    integrationBranch: master
+    contextPath: .ai/context.md
+  - id: syllik/life-ops-bot
+    repository: syllik/life-ops-bot
+    localPath: personal/life-ops-bot
+    group: personal
+    access: managed
+    status: active
+    integrationBranch: master
+    contextPath: .ai/context.md
+    contextDependencies:
+      - repository: syllik/life-ops
+        integrationBranch: master
+        access: read-only
   - id: ChipIn-one/chipin-frontend
     repository: ChipIn-one/chipin-frontend
     localPath: products/chipin/chipin-frontend
     group: products/chipin
     access: managed
     status: active
-    lifecycle: production
-    branchState: migration
     integrationBranch: dev
-    releaseBranch: main
     contextPath: .ai/context.md
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
@@ -44,8 +59,6 @@ projects:
     group: products/chipin
     access: read-only
     status: active
-    lifecycle: production
-    branchState: external
     integrationBranch: develop
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
@@ -57,8 +70,6 @@ projects:
     group: products/chipin
     access: read-only
     status: active
-    lifecycle: code-only
-    branchState: external
     integrationBranch: main
   - id: ChipIn-one/.github
     repository: ChipIn-one/.github
@@ -66,8 +77,6 @@ projects:
     group: products/chipin
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: migration
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/chatgpt-archive-cleanup
@@ -76,8 +85,6 @@ projects:
     group: tools/ai
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: migration
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/codex-local-runner
@@ -86,8 +93,6 @@ projects:
     group: tools/ai
     access: managed
     status: onboarding
-    lifecycle: code-only
-    branchState: canonical
     integrationBranch: master
     contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
@@ -96,8 +101,6 @@ projects:
     group: tools/content
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: migration
     integrationBranch: main
     contextPath: .ai/context.md
   - id: syllik/ai-workflow
@@ -106,8 +109,6 @@ projects:
     group: workflows/ai
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: canonical
     integrationBranch: master
     contextPath: .ai/context.md
   - id: syllik/gpg-signed-commits
@@ -116,7 +117,5 @@ projects:
     group: guides/git
     access: managed
     status: active
-    lifecycle: code-only
-    branchState: migration
     integrationBranch: main
     contextPath: .ai/context.md

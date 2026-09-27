@@ -3,11 +3,11 @@
 Managed Codex GitHub Code Review is the default independent reviewer for
 published pull requests.
 
-- Automatic Codex review on every push to an open PR is the default routine
-  trigger after trusted publication.
-- Use `@codex review` only as a manual fallback/retrigger when automatic review
-  does not start or an explicit retry is needed; do not duplicate an automatic
-  review already running.
+- Codex automatic PR review must be disabled for managed repositories.
+- The only routine trigger is an explicit `@codex review` PR comment after the
+  repository-defined full CI gate for the current head is complete and green.
+- Never trigger review while CI is pending or failing, and never duplicate a
+  review already running or current for the same head.
 - Accept a Codex review as current only when its reviewed commit SHA matches the
   current PR head.
 - Treat Codex as reviewer-only. Do not use `@codex fix`,
@@ -18,9 +18,8 @@ published pull requests.
   explicitly authorizes it.
 - After authorization, hand Luna one consolidated findings package as bounded
   correction input.
-- After any correction changes the PR head, the previous review is stale and
-  the new head must receive a new Codex review automatically or, if needed,
-  through the manual `@codex review` fallback.
+- After any correction changes the PR head, prior CI/review evidence is stale.
+  Wait for fresh full green CI, then post a new `@codex review` comment.
 - Use Sol 5.6 High only for escalation or fallback: architecture/high-risk
   review, ambiguous or disputed findings, Codex unavailability, or explicit
   human request.
