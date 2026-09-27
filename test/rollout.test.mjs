@@ -53,6 +53,17 @@ test('rollout policy is an exact two-repository pilot with read-only GitHub App 
   assert.deepEqual(policy.authentication.permissions, { contents: 'read' });
 });
 
+test('rollout workflow mints private-repository tokens only for trusted master runs', () => {
+  const workflow = readFileSync('.github/workflows/routing-rollout.yml', 'utf8');
+
+  assert.match(workflow, /github\.event_name == 'workflow_run'[\s\S]*github\.event\.workflow_run\.event == 'push'/u);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/u);
+  assert.match(workflow, /github\.event\.workflow_run\.head_branch == 'master'/u);
+  assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/u);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/master'/u);
+  assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
+});
+
 test('rollout policy fails closed on allowlist expansion', () => {
   const manifest = pilotManifest();
   const policy = loadRolloutPolicy();
