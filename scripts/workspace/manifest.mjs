@@ -91,8 +91,6 @@ export function validateActivationBaseManifest(value) {
   if (!isObject(value)) {
     return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_MANIFEST', 'manifest')] };
   }
-  validateGitLifecycle(value.gitLifecycle, value.projects, findings);
-
   if (!Array.isArray(value.projects)) {
     return { valid: false, findings: [finding('INVALID_ACTIVATION_BASE_PROJECTS', 'manifest.projects')] };
   }
@@ -236,6 +234,8 @@ export function validateManifest(value) {
       if (value.budgets[key] !== maximum) findings.push(finding('INVALID_BUDGET', `manifest.budgets.${key}`));
     }
   }
+
+  validateGitLifecycle(value.gitLifecycle, value.projects, findings);
 
   if (!Array.isArray(value.projects)) {
     findings.push(finding('INVALID_PROJECTS', 'manifest.projects'));
