@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { githubAppGitAuthorization } from '../scripts/workspace/github-auth.mjs';
 import { renderAgentsBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
 import { evaluatePilotRollout, inspectMaterializedTarget, loadRolloutPolicy, validateRolloutPolicy } from '../scripts/workspace/rollout.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot } from './helpers.mjs';
@@ -62,6 +63,18 @@ test('rollout workflow mints private-repository tokens only for trusted master r
   assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/master'/u);
   assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
+});
+
+test('GitHub App installation tokens use x-access-token HTTP Basic auth for Git', () => {
+  const token = 'test-installation-token';
+  const header = githubAppGitAuthorization(token);
+  const encoded = header.replace(/^Authorization: Basic /u, '');
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+
+  assert.match(header, /^Authorization: Basic [A-Za-z0-9+/=]+$/u);
+  assert.equal(decoded, `x-access-token:${token}`);
+  assert.equal(header.includes(token), false);
+  assert.throws(() => githubAppGitAuthorization(''), /installation token is required/u);
 });
 
 test('rollout policy fails closed on allowlist expansion', () => {
