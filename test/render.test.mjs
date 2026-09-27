@@ -23,6 +23,10 @@ describe('renderers', () => {
     assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
     assert.equal(first.includes('/blob/HEAD/.ai/context.md'), false);
     assert.equal(first.includes('../../../'), false);
+    assert.match(first, /## Audited Git lifecycle/u);
+    assert.match(first, /Canonical source branch: `master`\. Normal PR merge: `squash`\. Production promotion: `exact-commit`\./u);
+    assert.equal(first.includes('| ChipIn-one/chipin-frontend | production | temporary-exception | main | dev | main | Preserve dev-to-main ancestry promotion until exact-commit promotion replaces it. Follow-up: Replace promotion, then migrate to master. |'), true);
+    assert.equal(first.includes('| syllik/codex-local-runner | none |'), false);
   });
 
   test('render navigation contains the canonical reading route', () => {
