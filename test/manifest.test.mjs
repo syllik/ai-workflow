@@ -363,6 +363,18 @@ describe('manifest', () => {
     assert.deepEqual(accepted.findings, []);
   });
 
+  test('accepts an empty lifecycle audit for unverified project sets', () => {
+    const cleanupProject = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const manifest = fixtureManifest({ projects: [cleanupProject] });
+
+    assert.deepEqual(manifest.gitLifecycle.repositories, []);
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
   test('rejects excluded repositories', () => {
     const manifest = fixtureManifest();
     manifest.projects[0].repository = 'tangem/example';
