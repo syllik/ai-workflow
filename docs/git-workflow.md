@@ -56,7 +56,7 @@ Current ruleset evidence:
 - `syllik/syllik`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `profile-ci`, but currently allows merge/squash/rebase.
 - `syllik/ai-workflow`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `verify`, but currently allows merge/squash/rebase.
 - `ChipIn-one/.github`: active `canonical branches protect` targets both `main` and `master`, blocks deletion/non-fast-forward, requires resolved review threads, green strict `evaluate-fixtures`, linear history, and allows only squash merges; no bypass actors are configured.
-- `ChipIn-one/chipin-frontend`: `Code review copilot` applies review-on-push to all refs; `dev` is protected with required `frontend-ci`.
+- `ChipIn-one/chipin-frontend`: no Copilot review ruleset is present. The active repository ruleset `main` targets only `main` and currently permits merge commits there; `dev` is separately protected with required `frontend-ci`.
 - `ChipIn-one/chipin-knowledge-base`: `master` is the live default branch, but GitHub reports it unprotected. On the current plan, rulesets for this private organization repository are not enforced; the owner does not currently plan a GitHub Team upgrade. This is an explicit platform limitation recorded on #23, not evidence of protection.
 - Backend had no repository ruleset in the refreshed read.
 
