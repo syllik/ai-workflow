@@ -54,16 +54,19 @@ jobs:
           owner: syllik
           repositories: syllik
           permission-contents: read
-      - name: Mint read token for ChipIn-one/.github
+      - name: Mint read token for ChipIn routing coverage
         id: chipin-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
           private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
           owner: ChipIn-one
-          repositories: .github
+          repositories: |
+            .github
+            chipin-frontend
+            chipin-knowledge-base
           permission-contents: read
-      - name: Verify pilot rollout at exact target revisions
+      - name: Verify routing coverage at exact target revisions
         env:
           WORKSPACE_READ_TOKEN_SYLLIK: ${{ steps.syllik-token.outputs.token }}
           WORKSPACE_READ_TOKEN_CHIPIN: ${{ steps.chipin-token.outputs.token }}
