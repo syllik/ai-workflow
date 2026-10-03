@@ -7,7 +7,15 @@ import { validateManagedTarget } from './operations.mjs';
 import { renderAgentsBlock } from './render.mjs';
 
 export const ROLLOUT_POLICY_PATH = 'rollout.yaml';
-export const ROLLOUT_PILOT = Object.freeze(['syllik/syllik', 'ChipIn-one/.github']);
+export const ROLLOUT_PILOT = Object.freeze([
+  'syllik/syllik',
+  'ChipIn-one/.github',
+  'ChipIn-one/chipin-frontend',
+  'ChipIn-one/chipin-knowledge-base'
+]);
+const REQUIRED_READ_ONLY_DEPENDENCIES = Object.freeze({
+  'ChipIn-one/chipin-knowledge-base': 'ChipIn-one/chipin-frontend'
+});
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const EXPECTED_MODE = 'read-only-verify';
@@ -91,12 +99,29 @@ export function validateRolloutPolicy(policy, manifest) {
       findings.push(finding('ROLLOUT_TARGET_NOT_REGISTERED', `rollout.targets.${repository}`));
       continue;
     }
-    if (project.id !== project.repository || project.repository !== repository || project.access !== 'managed' || project.status !== 'active') {
-      findings.push(finding('ROLLOUT_TARGET_NOT_ACTIVE_MANAGED', `rollout.targets.${repository}`));
-    }
-    if (typeof project.integrationBranch !== 'string' || project.integrationBranch.length === 0 || typeof project.contextPath !== 'string') {
+    if (project.id !== project.repository || project.repository !== repository || project.status !== 'active') {
       findings.push(finding('ROLLOUT_TARGET_RECORD_INVALID', `rollout.targets.${repository}`));
+      continue;
     }
+    if (project.access === 'managed') {
+      if (typeof project.integrationBranch !== 'string' || project.integrationBranch.length === 0 || typeof project.contextPath !== 'string') {
+        findings.push(finding('ROLLOUT_TARGET_RECORD_INVALID', `rollout.targets.${repository}`));
+      }
+      continue;
+    }
+    if (project.access === 'read-only') {
+      const requiredBy = REQUIRED_READ_ONLY_DEPENDENCIES[repository];
+      const consumer = requiredBy ? projects.get(normalizedRepository(requiredBy)) : null;
+      const dependency = consumer?.contextDependencies?.find((entry) => normalizedRepository(entry.repository) === normalizedRepository(repository));
+      if (!requiredBy || !targets.includes(requiredBy) || dependency?.access !== 'read-only' || dependency.integrationBranch !== project.integrationBranch) {
+        findings.push(finding('ROLLOUT_REQUIRED_CONTEXT_MISMATCH', `rollout.targets.${repository}`, { requiredBy: requiredBy ?? null }));
+      }
+      if (typeof project.integrationBranch !== 'string' || project.integrationBranch.length === 0) {
+        findings.push(finding('ROLLOUT_TARGET_RECORD_INVALID', `rollout.targets.${repository}`));
+      }
+      continue;
+    }
+    findings.push(finding('ROLLOUT_TARGET_ACCESS_INVALID', `rollout.targets.${repository}`, { actual: project.access ?? null }));
   }
   return findings;
 }
@@ -114,6 +139,7 @@ function incompleteReceipt(project, policySha, blockSha256, reason, targetSha = 
   const receipt = {
     repository: project.repository,
     integrationBranch: project.integrationBranch,
+    access: project.access,
     policySha,
     policyBlockSha256: blockSha256,
     targetSha: immutableSha(targetSha),
@@ -198,7 +224,12 @@ export function evaluatePilotRollout({ manifest, policy, policySha, materializeT
     try {
       materialized = materializeTarget(project);
     } catch {
-      return incompleteReceipt(project, exactPolicySha, blockSha256, 'TARGET_PRIVATE_UNAVAILABLE');
+      return incompleteReceipt(
+        project,
+        exactPolicySha,
+        blockSha256,
+        project.access === 'read-only' ? 'REQUIRED_CONTEXT_UNAVAILABLE' : 'TARGET_PRIVATE_UNAVAILABLE'
+      );
     }
     if (!materialized?.repositoryRoot) {
       return incompleteReceipt(
