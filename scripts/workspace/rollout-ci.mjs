@@ -8,7 +8,9 @@ import { evaluatePilotRollout, immutableSha, loadRolloutPolicy, resolveRolloutPr
 
 const TOKEN_ENV_BY_REPOSITORY = Object.freeze({
   'syllik/syllik': 'WORKSPACE_READ_TOKEN_SYLLIK',
-  'ChipIn-one/.github': 'WORKSPACE_READ_TOKEN_CHIPIN'
+  'ChipIn-one/.github': 'WORKSPACE_READ_TOKEN_CHIPIN',
+  'ChipIn-one/chipin-frontend': 'WORKSPACE_READ_TOKEN_CHIPIN',
+  'ChipIn-one/chipin-knowledge-base': 'WORKSPACE_READ_TOKEN_CHIPIN'
 });
 
 function git(args, options = {}) {
@@ -58,7 +60,8 @@ function materializeTargetFactory(root) {
   return (project) => {
     const tokenEnv = TOKEN_ENV_BY_REPOSITORY[project.repository];
     const token = tokenEnv ? process.env[tokenEnv] : null;
-    if (!token) return { repositoryRoot: null, targetSha: null, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+    const unavailableReason = project.access === 'read-only' ? 'REQUIRED_CONTEXT_UNAVAILABLE' : 'TARGET_PRIVATE_UNAVAILABLE';
+    if (!token) return { repositoryRoot: null, targetSha: null, reason: unavailableReason };
 
     const remote = `https://github.com/${project.repository}.git`;
     const branchRef = `refs/heads/${project.integrationBranch}`;
@@ -68,7 +71,7 @@ function materializeTargetFactory(root) {
       const remoteLine = git(['ls-remote', remote, branchRef], { env });
       targetSha = immutableSha(remoteLine.split(/\s+/u)[0]);
     } catch {
-      return { repositoryRoot: null, targetSha: null, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+      return { repositoryRoot: null, targetSha: null, reason: unavailableReason };
     }
     if (!targetSha) return { repositoryRoot: null, targetSha: null, reason: 'TARGET_SHA_UNRESOLVED' };
 
@@ -81,7 +84,7 @@ function materializeTargetFactory(root) {
       ], { env });
       git(['-C', destination, 'checkout', '--quiet', '--detach', targetSha], { env });
     } catch {
-      return { repositoryRoot: null, targetSha, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+      return { repositoryRoot: null, targetSha, reason: unavailableReason };
     }
     return { repositoryRoot: destination, targetSha };
   };
