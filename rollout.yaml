@@ -3,6 +3,8 @@ mode: read-only-verify
 targets:
   - syllik/syllik
   - ChipIn-one/.github
+  - ChipIn-one/chipin-frontend
+  - ChipIn-one/chipin-knowledge-base
 authentication:
   type: github-app-installation
   permissions:
