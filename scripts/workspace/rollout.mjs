@@ -190,7 +190,9 @@ export function inspectMaterializedTarget({ repositoryRoot, project, manifest, p
   if (worktreeStatus === null) findings.push(finding('TARGET_GIT_STATUS_UNAVAILABLE', project.localPath));
   else if (worktreeStatus.length > 0) findings.push(finding('TARGET_WIP', project.localPath));
 
-  if (findings.length === 0) validateManagedTarget(repositoryRoot, project, manifest, findings, { validateTaskArtifacts: true });
+  if (findings.length === 0 && project.access === 'managed') {
+    validateManagedTarget(repositoryRoot, project, manifest, findings, { validateTaskArtifacts: true });
+  }
   if (findings.length > 0) {
     const stale = findings.some(({ code }) => code === 'GENERATED_DRIFT');
     const wip = findings.some(({ code }) => code === 'TARGET_WIP');
@@ -201,6 +203,7 @@ export function inspectMaterializedTarget({ repositoryRoot, project, manifest, p
   return {
     repository: project.repository,
     integrationBranch: project.integrationBranch,
+    access: project.access,
     policySha: exactPolicySha,
     policyBlockSha256: blockSha256,
     targetSha: exactTargetSha,
