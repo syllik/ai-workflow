@@ -171,7 +171,11 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
 
   if (!isNonEmptyString(value.policySha) || !SHA_PATTERN.test(value.policySha)) findings.push(finding('INVALID_POLICY_SHA', 'handoff.policySha'));
   if (!isNonEmptyString(value.baseSha) || !SHA_PATTERN.test(value.baseSha)) findings.push(finding('INVALID_BASE_SHA', 'handoff.baseSha'));
-  if (value.headSha !== undefined && (!isNonEmptyString(value.headSha) || !SHA_PATTERN.test(value.headSha))) findings.push(finding('INVALID_HEAD_SHA', 'handoff.headSha'));
+  if (normalized.contractVersion === TASK_CONTRACT_VERSION) {
+    if (!isNonEmptyString(value.headSha) || !SHA_PATTERN.test(value.headSha)) findings.push(finding('INVALID_HEAD_SHA', 'handoff.headSha'));
+  } else if (value.headSha !== undefined && (!isNonEmptyString(value.headSha) || !SHA_PATTERN.test(value.headSha))) {
+    findings.push(finding('INVALID_HEAD_SHA', 'handoff.headSha'));
+  }
   validateAggregateContext(value, findings);
 
   if (normalized.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {
@@ -213,7 +217,7 @@ function currentShaFindings(handoff, runtime, action) {
 
 function scopeFindings(handoff, runtime, action) {
   const requiresExplicitChangedPaths = ['execute', 'correct', 'publish'].includes(action.kind);
-  if (!Array.isArray(action.changedPaths)) {
+  if (!Array.isArray(action.changedPaths) || (requiresExplicitChangedPaths && action.changedPaths.length === 0)) {
     return requiresExplicitChangedPaths ? [finding('INVALID_CHANGED_PATHS', 'action.changedPaths')] : [];
   }
   const changedPaths = action.changedPaths;
@@ -237,12 +241,15 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
   ];
 
   if (action.kind === 'publish') {
-    if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) findings.push(finding('LEGACY_PUBLICATION_REQUIRES_HUMAN', 'action.kind'));
+    if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {
+      findings.push(finding('LEGACY_PUBLICATION_REQUIRES_HUMAN', 'action.kind'));
+    } else if (handoff.approval.publication !== 'allowed') {
+      findings.push(finding('PUBLICATION_NOT_AUTHORIZED', 'handoff.approval.publication'));
+    }
     if (runtime.executionStatus !== 'IMPLEMENTATION_COMPLETE') findings.push(finding('IMPLEMENTATION_NOT_COMPLETE', 'runtime.executionStatus'));
     if (runtime.localValidation?.status !== 'passed' || runtime.localValidation?.headSha !== runtime.currentHeadSha) {
       findings.push(finding('LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD', 'runtime.localValidation'));
     }
-    else if (handoff.approval.publication !== 'allowed') findings.push(finding('PUBLICATION_NOT_AUTHORIZED', 'handoff.approval.publication'));
     if (action.actorRole !== 'publisher') findings.push(finding('UNTRUSTED_PUBLISHER', 'action.actorRole'));
     if (runtime.publicationBatchesForRevision >= policy.publisher.publicationBatchesPerRevision) findings.push(finding('DUPLICATE_PUBLICATION_BATCH', 'runtime.publicationBatchesForRevision'));
     if (action.commitCount !== 1 || action.pushCount !== 1) findings.push(finding('ONE_BATCH_PUBLICATION_REQUIRED', 'action'));
@@ -273,6 +280,7 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
     if (action.actorRole !== 'executor') findings.push(finding('INVALID_EXECUTOR_ROLE', 'action.actorRole'));
   } else if (action.kind === 'audit') {
     if (action.actorRole !== 'auditor') findings.push(finding('INVALID_AUDITOR_ROLE', 'action.actorRole'));
+    if (action.mutationRequested === true) findings.push(finding('AUDITOR_MUTATION_FORBIDDEN', 'action.mutationRequested'));
   } else if (action.kind === 'merge') {
     findings.push(finding('HUMAN_MERGE_REQUIRED', 'action.kind'));
   } else {

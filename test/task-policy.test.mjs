@@ -328,3 +328,72 @@ test('keeps legacy execution compatible without a repository field', () => {
   });
   assert.equal(result.allowed, true);
 });
+
+test('requires headSha for v2 but keeps it optional for legacy compatibility', () => {
+  const v2 = handoff();
+  delete v2.headSha;
+  const v2Result = validateTaskHandoff(v2);
+  assert.equal(v2Result.valid, false);
+  assert.equal(v2Result.findings.some(({ code }) => code === 'INVALID_HEAD_SHA'), true);
+
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  assert.equal(validateTaskHandoff(legacy).valid, true);
+});
+
+test('rejects empty changed-path evidence for mutating actions', () => {
+  for (const kind of ['execute', 'correct', 'publish']) {
+    const action = { kind, actorRole: kind === 'publish' ? 'publisher' : 'executor', expectedHeadSha: headSha, changedPaths: [] };
+    if (kind === 'correct') {
+      action.findingsPackageCount = 1;
+      action.findingsHeadSha = headSha;
+    }
+    if (kind === 'publish') {
+      action.commitCount = 1;
+      action.pushCount = 1;
+      action.forcePush = false;
+      action.historyRewrite = false;
+    }
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ reviewedHeadShas: kind === 'correct' ? [headSha] : [] }),
+      action
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_CHANGED_PATHS'), true);
+  }
+});
+
+test('forbids Auditor mutation requests', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime(),
+    action: { kind: 'audit', actorRole: 'auditor', expectedHeadSha: headSha, changedPaths: [], mutationRequested: true }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'AUDITOR_MUTATION_FORBIDDEN'), true);
+});
+
+test('denies legacy publication without dereferencing v2 approval', () => {
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  const result = evaluateTaskAction({
+    handoff: legacy,
+    runtime: runtime({ legacyAllowedPaths: ['FLOW.md'] }),
+    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'LEGACY_PUBLICATION_REQUIRES_HUMAN'), true);
+});
