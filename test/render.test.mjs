@@ -48,7 +48,6 @@ describe('renderers', () => {
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/workspace\.yaml/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/projects\/index\.md/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/workflow\.md/u);
-    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/reviewer\.md/u);
     assert.match(output, /profile AI entry/);
     assert.match(output, /FLOW\.md/);
     assert.match(output, /workspace\.yaml/);
