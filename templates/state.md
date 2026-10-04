@@ -1,10 +1,6 @@
 # Execution state
 
-Rolling checkpoint for a persisted executor task.
-
-Keep this file concise. Replace stale state instead of appending a journal.
-Do not store reasoning dumps, raw command output, secrets, credentials, or
-reviewer findings.
+Rolling checkpoint for a persisted executor task. Keep this concise and replace stale state instead of appending a journal. Do not store reasoning dumps, raw command output, secrets, credentials, or reviewer findings.
 
 ## Current phase
 
@@ -14,17 +10,9 @@ Use only `IN_PROGRESS`, `IMPLEMENTATION_COMPLETE`, or `BLOCKED`.
 
 ## Task identity and provenance
 
-Copy the supplied task identity unchanged from the prepared task prompt; do not
-infer, substitute, or fabricate a GitHub Issue identity. For ChipIn tasks,
-canonical task identity is `owner/repository#issue`. For non-ChipIn tasks,
-preserve the supplied task-specific identity unchanged; do not invent a GitHub
-Issue.
+Copy supplied values unchanged; do not infer or replace them. For ChipIn, canonical task identity is `owner/repository#issue`; for non-ChipIn preserve the supplied identity. If `contractVersion` is absent, record compatibility as `legacy-v1`; never invent v2 publication/correction rights.
 
-Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
-infer or substitute it.
-
-Copy the supplied approval reference unchanged from the prepared task prompt; do not infer, invent, derive, normalize, or replace it.
-
+- Contract version / compatibility:
 - Task identity:
 - Policy SHA:
 - Repository:
@@ -32,6 +20,9 @@ Copy the supplied approval reference unchanged from the prepared task prompt; do
 - Base SHA:
 - Head SHA:
 - Scope / approval reference:
+- Publication permission:
+- Max correction batches:
+- Correction batches used:
 
 ## Completed
 
@@ -41,7 +32,7 @@ Copy the supplied approval reference unchanged from the prepared task prompt; do
 
 ## Decisions / assumptions
 
-Only task-local facts required for executor continuation.
+Only task-local facts required for Executor continuation.
 
 ## Pending external action
 

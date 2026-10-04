@@ -31,6 +31,18 @@ describe('manifest', () => {
     assert.deepEqual(result.findings, []);
   });
 
+  test('requires the canonical execution policy contract', () => {
+    const manifest = fixtureManifest();
+    assert.deepEqual(validateManifest(manifest).findings, []);
+    manifest.executionPolicy.corrections.maxBatches = 3;
+    assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'INVALID_CORRECTION_BATCH_LIMIT'), true);
+  });
+
+  test('historical activation bases do not require the current execution policy', () => {
+    const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
+    assert.equal(result.valid, true);
+  });
+
   test('rejects a missing assembled execution context budget', () => {
     const manifest = fixtureManifest({
       budgets: {
