@@ -1,6 +1,6 @@
 # Git lifecycle and branch migration
 
-Baseline refreshed: 2026-09-28 UTC. This document records the policy and the bounded six-repository migration inventory for `syllik/ai-workflow#23`, including the completed knowledge-base and organization cutovers. It does not claim global completion.
+Baseline refreshed: 2026-10-04 UTC for the completed canonical settings and organization cleanup receipts. The six-repository migration inventory remains bounded to `syllik/ai-workflow#23`; FE and BE migration state is not re-audited by this receipt, and this document does not claim global completion.
 
 ## Canonical model
 
@@ -21,10 +21,10 @@ Temporary issue branches use `<type>/issue-<number>-<slug>` (for example `fix/is
 
 | Repository | Access in registry | Current default | Current integration | Deployment profile | State | PR / CI / automation consumers |
 | --- | --- | --- | --- | --- | --- | --- |
-| `syllik/syllik` | managed | `master` | `master` | none | canonical | no open PRs; `.github/workflows/profile-ci.yml` targets `master`; active `master protect` ruleset |
-| `syllik/ai-workflow` | managed | `master` | `master` | none | canonical | open PRs #29 and #31; `ci.yml` and `routing-rollout.yml` target `master`; active `master protect` ruleset |
-| `ChipIn-one/.github` | managed | `master` | `master` | none | canonical | cut over at `796b98543ad963e7d18680f243027b6495515f05`; `main` retained as an unprotected rollback ref; active `canonical branches protect` ruleset targets `master`; post-cutover `DEV readiness policy tests` push run on `master` succeeded |
-| `ChipIn-one/chipin-knowledge-base` | read-only | `master` | `master` | none | canonical | cut over at `a0ea83721b47d153dbb4c45d4f8ec718bc899c4b`; `main` retained for rollback; open PR #7 retargeted to `master`; private-repository branch protection is not enforceable on the current organization plan |
+| `syllik/syllik` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; active `master protect` is squash-only, requires linear history, resolved review threads and green `profile-ci` |
+| `syllik/ai-workflow` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; open PRs #31 and #45; `ci.yml` and `routing-rollout.yml` target `master`; active `master protect` is squash-only with linear history and required `verify` |
+| `ChipIn-one/.github` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; `main` is retained as an unprotected rollback ref; active `canonical branches protect` targets `master`; PR #35 removed the temporary `main` readiness triggers and post-merge `evaluate-fixtures` on `master@871823ba72eaa5f2871afc17164d348af57e7feb` succeeded |
+| `ChipIn-one/chipin-knowledge-base` | read-only | `master` | `master` | none | canonical | canonical repository merge settings are live; cut over at `a0ea83721b47d153dbb4c45d4f8ec718bc899c4b`; `main` retained for rollback; PR #7 retargeted to `master`; private-repository branch protection is not enforceable on the current organization plan |
 | `ChipIn-one/chipin-frontend` | managed | `main` | `dev` | production | temporary-exception | PR #307 merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b` and moved read-only KB references to `master`; FE `dev -> main` topology remains unchanged |
 | `ChipIn-one/chipin-backend` | read-only | `develop` | `develop` | production | migration | no open PRs; PR checks target `develop`; staging deploys pushes to `develop`; production is manual; no repository ruleset observed |
 
@@ -36,25 +36,25 @@ Frontend deployment integration outside the observed repository Actions workflow
 
 ## Repository settings diff
 
-Observed on all six repositories: merge commits enabled, squash enabled, rebase enabled, automatic head-branch deletion disabled, and squash title mode `COMMIT_OR_PR_TITLE`.
+The 2026-09-27/28 audit observed merge commits and rebase enabled, automatic head-branch deletion disabled, and squash title mode `COMMIT_OR_PR_TITLE` across the bounded set. On 2026-10-04, the supported canonical repositories below were re-read after the human settings change.
 
 | Repository | Reviewable settings delta |
 | --- | --- |
-| `syllik/syllik` | `allow_merge_commit: true -> false`; keep `allow_squash_merge: true`; `allow_rebase_merge: true -> false`; `delete_branch_on_merge: false -> true`; `squash_merge_commit_title: COMMIT_OR_PR_TITLE -> PR_TITLE` |
-| `syllik/ai-workflow` | same delta |
-| `ChipIn-one/.github` | same delta, after canonical branch migration is prepared |
-| `ChipIn-one/chipin-knowledge-base` | same delta, only under separate write authorization |
+| `syllik/syllik` | applied and verified: merge commits OFF, squash ON, rebase OFF, automatic head-branch deletion ON, squash title `PR_TITLE`, auto-merge OFF |
+| `syllik/ai-workflow` | applied and verified with the same canonical settings |
+| `ChipIn-one/.github` | applied and verified with the same canonical settings |
+| `ChipIn-one/chipin-knowledge-base` | applied and verified with the same canonical repository merge settings; branch-protection enforcement remains plan-limited |
 | `ChipIn-one/chipin-frontend` | defer merge-method restriction until the `dev -> main` promotion replacement is ready; then apply the same canonical delta |
 | `ChipIn-one/chipin-backend` | same delta, only under separate write authorization and after deploy branch references are migrated |
 
-No settings change is applied by PR #29.
+PR #29 itself did not mutate repository settings. The canonical settings above were applied later by the human owner and verified live on 2026-10-04.
 
 ## Rulesets and migration consumers
 
 Current ruleset evidence:
 
-- `syllik/syllik`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `profile-ci`, but currently allows merge/squash/rebase.
-- `syllik/ai-workflow`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `verify`, but currently allows merge/squash/rebase.
+- `syllik/syllik`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `profile-ci`, requires linear history, and allows only squash merges; no bypass actors are configured.
+- `syllik/ai-workflow`: `master protect` blocks deletion/non-fast-forward, requires resolved review threads and green `verify`, requires linear history, and allows only squash merges; no bypass actors are configured.
 - `ChipIn-one/.github`: active `canonical branches protect` targets only `master`, blocks deletion/non-fast-forward, requires resolved review threads, green strict `evaluate-fixtures`, linear history, and allows only squash merges; no bypass actors are configured. The legacy `main` ref is retained temporarily for rollback but is no longer part of the protected canonical path.
 - `ChipIn-one/chipin-frontend`: no Copilot review ruleset is present. The active repository ruleset `main` targets only `main` and currently permits merge commits there; `dev` is separately protected with required `frontend-ci`.
 - `ChipIn-one/chipin-knowledge-base`: `master` is the live default branch, but GitHub reports it unprotected. On the current plan, rulesets for this private organization repository are not enforced; the owner does not currently plan a GitHub Team upgrade. This is an explicit platform limitation recorded on #23, not evidence of protection.
@@ -65,7 +65,7 @@ Before each migration, update every consumer of the old branch atomically with t
 ## 2026-09-28 cutover receipt
 
 - Knowledge base: PR `ChipIn-one/chipin-knowledge-base#14` merged; `master` was created at the exact resulting `main` SHA `a0ea83721b47d153dbb4c45d4f8ec718bc899c4b`; default switched to `master`; `main` retained; PR #7 retargeted to `master`. Protection is not enforceable for this private organization repository on the current plan, so no protection claim is made.
-- Organization coordination repo: PR `ChipIn-one/.github#21` merged; `master` was created at exact merge SHA `796b98543ad963e7d18680f243027b6495515f05`; active ruleset `canonical branches protect` targets only `master`, requires strict `evaluate-fixtures`, resolved review threads and linear history, permits only squash, blocks deletion/non-fast-forward, and has no bypass actors; the legacy `main` ref is retained only as rollback state; default switched to `master`; post-cutover push CI on `master` succeeded.
+- Organization coordination repo: PR `ChipIn-one/.github#21` completed the branch cutover; PR #35 later removed the temporary `main` branch filters from `DEV readiness policy tests`, leaving `pull_request` and `push` on `master` plus manual `workflow_dispatch`. The squash merge landed as `871823ba72eaa5f2871afc17164d348af57e7feb`, and post-merge `evaluate-fixtures` succeeded on that exact `master` head. The legacy `main` ref remains only as rollback state.
 - Frontend consumer: `ChipIn-one/chipin-frontend#307` merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b`; read-only KB references now use `master`. The FE `dev -> main` production topology remains a documented temporary exception and was not migrated.
 - Backend remains owner-owned on `develop`; no backend code, CI, deployment, PR, or branch state was mutated by this cutover.
 - Central PR #44 records the resulting registry state. Concurrent PR #31 remains separate and open; its Deep Dark Factory registration is not copied into this cutover PR.
@@ -88,6 +88,6 @@ After a human merge, cleanup is conservative:
 
 PR #31 in this repository registers Deep Dark Factory and touches the shared manifest/index. Deep Dark Factory is excluded from this audit. Whichever PR lands second must refresh against the first and regenerate the index without inventing lifecycle state for the excluded repository.
 
-Bounded follow-ups are: replace FE `dev -> main` with exact-commit promotion before FE branch migration; migrate BE deploy/PR filters from `develop` only with deploy verification; apply the remaining repository-level merge-setting deltas where supported; and activate/verify KB branch protection if the organization plan later supports enforcement for private repositories. The `.github` and KB default/integration branch cutovers are complete; KB protection remains the documented plan-limited exception.
+Bounded follow-ups are: replace FE `dev -> main` with exact-commit promotion before FE branch migration; migrate BE deploy/PR filters from `develop` only with deploy verification and owner coordination; apply their canonical merge-setting deltas only when those migrations are safe; and activate/verify KB branch protection if the organization plan later supports enforcement for private repositories. The supported canonical settings for `syllik/syllik`, `syllik/ai-workflow`, `ChipIn-one/.github`, and the KB repository-level merge options are complete; KB protection remains the documented plan-limited exception.
 
 `syllik/codex-local-runner`, Deep Dark Factory, and every other repository outside the six-row inventory are intentionally unverified by this task.
