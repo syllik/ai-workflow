@@ -37,10 +37,13 @@ function handoff(overrides = {}) {
 
 function runtime(overrides = {}) {
   return {
+    currentRepository: 'syllik/ai-workflow',
     currentPolicySha: policySha,
     currentBaseSha: baseSha,
     currentHeadSha: headSha,
     publicationBatchesForRevision: 0,
+    executionStatus: 'IMPLEMENTATION_COMPLETE',
+    localValidation: { headSha, status: 'passed' },
     correctionBatchesUsed: 0,
     reviewedHeadShas: [],
     reviewInProgressHeadShas: [],
@@ -223,4 +226,105 @@ describe('deterministic task actions', () => {
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'HUMAN_MERGE_REQUIRED'), true);
   });
+});
+
+test('rejects mutating actions without explicit changed paths', () => {
+  for (const kind of ['execute', 'correct', 'publish']) {
+    const action = { kind, actorRole: kind === 'publish' ? 'publisher' : 'executor', expectedHeadSha: headSha };
+    if (kind === 'correct') {
+      action.findingsPackageCount = 1;
+      action.findingsHeadSha = headSha;
+    }
+    if (kind === 'publish') {
+      action.commitCount = 1;
+      action.pushCount = 1;
+      action.forcePush = false;
+      action.historyRewrite = false;
+    }
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ reviewedHeadShas: kind === 'correct' ? [headSha] : [] }),
+      action
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_CHANGED_PATHS'), true);
+  }
+});
+
+test('binds the handoff to the runtime repository identity', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ currentRepository: 'syllik/mirror' }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'REPOSITORY_MISMATCH'), true);
+});
+
+test('requires completed implementation and local validation for publication', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ executionStatus: 'IN_PROGRESS', localValidation: { headSha, status: 'failed' } }),
+    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+  });
+  assert.equal(result.allowed, false);
+  const codes = result.findings.map(({ code }) => code);
+  assert.equal(codes.includes('IMPLEMENTATION_NOT_COMPLETE'), true);
+  assert.equal(codes.includes('LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD'), true);
+});
+
+test('enforces executor and auditor actor roles', () => {
+  const execute = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime(),
+    action: { kind: 'execute', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(execute.findings.some(({ code }) => code === 'INVALID_EXECUTOR_ROLE'), true);
+
+  const audit = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime(),
+    action: { kind: 'audit', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: [] }
+  });
+  assert.equal(audit.findings.some(({ code }) => code === 'INVALID_AUDITOR_ROLE'), true);
+});
+
+test('binds correction findings to an independent review of the current head', () => {
+  const noReview = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime(),
+    action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1, findingsHeadSha: headSha }
+  });
+  assert.equal(noReview.findings.some(({ code }) => code === 'CURRENT_HEAD_NOT_REVIEWED'), true);
+
+  const stalePackage = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ reviewedHeadShas: [headSha] }),
+    action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1, findingsHeadSha: 'd'.repeat(40) }
+  });
+  assert.equal(stalePackage.findings.some(({ code }) => code === 'STALE_FINDINGS_PACKAGE'), true);
+
+  const valid = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ reviewedHeadShas: [headSha] }),
+    action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1, findingsHeadSha: headSha }
+  });
+  assert.equal(valid.allowed, true);
+});
+
+test('keeps legacy execution compatible without a repository field', () => {
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  const result = evaluateTaskAction({
+    handoff: legacy,
+    runtime: runtime({ legacyAllowedPaths: ['FLOW.md'] }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(result.allowed, true);
 });
