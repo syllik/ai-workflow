@@ -11,6 +11,7 @@ Generated from `workspace.yaml`. Active managed projects route to context on the
 | syllik/ai-workflow | workflows/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/ai-workflow/blob/master/.ai/context.md) | — |
 | syllik/chatgpt-archive-cleanup | tools/ai | managed | active | main | [.ai/context.md](https://github.com/syllik/chatgpt-archive-cleanup/blob/main/.ai/context.md) | — |
 | syllik/codex-local-runner | tools/ai | managed | onboarding | master | [onboarding source](https://github.com/syllik/codex-local-runner/tree/master) | — |
+| syllik/deep-dark-factory | infrastructure/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/deep-dark-factory/blob/master/.ai/context.md) | — |
 | syllik/gpg-signed-commits | guides/git | managed | active | main | [.ai/context.md](https://github.com/syllik/gpg-signed-commits/blob/main/.ai/context.md) | — |
 | syllik/life-ops | personal | managed | active | master | [.ai/context.md](https://github.com/syllik/life-ops/blob/master/.ai/context.md) | — |
 | syllik/life-ops-bot | personal | managed | active | master | [.ai/context.md](https://github.com/syllik/life-ops-bot/blob/master/.ai/context.md) | [syllik/life-ops](https://github.com/syllik/life-ops/tree/master) |
