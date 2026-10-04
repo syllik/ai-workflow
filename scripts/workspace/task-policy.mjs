@@ -52,6 +52,23 @@ function isShaHistory(value) {
   return Array.isArray(value) && value.every((sha) => typeof sha === 'string' && SHA_PATTERN.test(sha));
 }
 
+function isConcretePathList(value, { nonEmpty = false } = {}) {
+  return Array.isArray(value)
+    && (!nonEmpty || value.length > 0)
+    && value.every((entry) => isNonEmptyString(entry)
+      && !entry.startsWith('/')
+      && !entry.includes('\\')
+      && !entry.includes('\0')
+      && !entry.includes('*')
+      && !entry.split('/').some((part) => part === '' || part === '.' || part === '..'))
+    && new Set(value).size === value.length;
+}
+
+function samePathSet(left, right) {
+  return left.length === right.length
+    && [...left].sort().every((value, index) => value === [...right].sort()[index]);
+}
+
 function unknownKeys(value, allowed, prefix, findings) {
   if (!isObject(value)) return;
   for (const key of Object.keys(value).sort()) {
@@ -172,6 +189,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
     findings.push(finding('UNSUPPORTED_HANDOFF_VERSION', 'handoff.contractVersion'));
     return { valid: false, ...normalized, findings };
   }
+  if (findings.length > 0) return { valid: false, ...normalized, findings };
 
   if (!isNonEmptyString(value.policySha) || !SHA_PATTERN.test(value.policySha)) findings.push(finding('INVALID_POLICY_SHA', 'handoff.policySha'));
   if (!isNonEmptyString(value.baseSha) || !SHA_PATTERN.test(value.baseSha)) findings.push(finding('INVALID_BASE_SHA', 'handoff.baseSha'));
@@ -221,10 +239,25 @@ function currentShaFindings(handoff, runtime, action) {
 
 function scopeFindings(handoff, runtime, action) {
   const requiresExplicitChangedPaths = ['execute', 'correct', 'publish'].includes(action.kind);
-  if (!Array.isArray(action.changedPaths) || (requiresExplicitChangedPaths && action.changedPaths.length === 0)) {
+  if (!isConcretePathList(action.changedPaths, { nonEmpty: requiresExplicitChangedPaths })) {
     return requiresExplicitChangedPaths ? [finding('INVALID_CHANGED_PATHS', 'action.changedPaths')] : [];
   }
-  const changedPaths = action.changedPaths;
+
+  let changedPaths = action.changedPaths;
+  if (requiresExplicitChangedPaths) {
+    const evidence = runtime.diffEvidence;
+    if (!isObject(evidence) || !isConcretePathList(evidence.changedPaths, { nonEmpty: true })) {
+      return [finding('DIFF_EVIDENCE_UNAVAILABLE', 'runtime.diffEvidence')];
+    }
+    if (evidence.baseSha !== runtime.currentBaseSha || evidence.headSha !== runtime.currentHeadSha) {
+      return [finding('STALE_DIFF_EVIDENCE', 'runtime.diffEvidence')];
+    }
+    if (!samePathSet(action.changedPaths, evidence.changedPaths)) {
+      return [finding('CHANGED_PATHS_MISMATCH', 'action.changedPaths')];
+    }
+    changedPaths = evidence.changedPaths;
+  }
+
   const allowedPaths = handoff.contractVersion === TASK_CONTRACT_VERSION
     ? handoff.approval.allowedPaths
     : runtime.legacyAllowedPaths;
@@ -261,7 +294,7 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
       findings.push(finding('DUPLICATE_PUBLICATION_BATCH', 'runtime.publicationBatchesForRevision'));
     }
     if (action.commitCount !== 1 || action.pushCount !== 1) findings.push(finding('ONE_BATCH_PUBLICATION_REQUIRED', 'action'));
-    if (action.forcePush === true || action.historyRewrite === true) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
+    if (action.forcePush !== false || action.historyRewrite !== false) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
   } else if (action.kind === 'review') {
     if (action.actorRole !== 'reviewer') findings.push(finding('INVALID_REVIEWER_ROLE', 'action.actorRole'));
     if (policy.review.requiresGreenCi && (runtime.ci?.headSha !== runtime.currentHeadSha || runtime.ci?.status !== 'green')) {
@@ -287,7 +320,8 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
       else if (used >= approved) findings.push(finding('CORRECTION_NOT_AUTHORIZED', 'handoff.approval.maxCorrectionBatches'));
     }
     if (action.findingsPackageCount !== 1) findings.push(finding('FINDINGS_NOT_CONSOLIDATED', 'action.findingsPackageCount'));
-    if (!(runtime.reviewedHeadShas ?? []).includes(runtime.currentHeadSha)) findings.push(finding('CURRENT_HEAD_NOT_REVIEWED', 'runtime.reviewedHeadShas'));
+    if (!isShaHistory(runtime.reviewedHeadShas)) findings.push(finding('REVIEW_HISTORY_UNAVAILABLE', 'runtime.reviewedHeadShas'));
+    else if (!runtime.reviewedHeadShas.includes(runtime.currentHeadSha)) findings.push(finding('CURRENT_HEAD_NOT_REVIEWED', 'runtime.reviewedHeadShas'));
     if (action.findingsHeadSha !== runtime.currentHeadSha) findings.push(finding('STALE_FINDINGS_PACKAGE', 'action.findingsHeadSha'));
   } else if (action.kind === 'execute') {
     if (action.actorRole !== 'executor') findings.push(finding('INVALID_EXECUTOR_ROLE', 'action.actorRole'));

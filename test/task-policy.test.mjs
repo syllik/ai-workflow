@@ -50,6 +50,7 @@ function runtime(overrides = {}) {
     executorContextId: 'executor-1',
     reviewerContextId: 'reviewer-1',
     ci: { headSha, status: 'green' },
+    diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'] },
     ...overrides
   };
 }
@@ -112,7 +113,7 @@ describe('deterministic task actions', () => {
   test('rejects scope expansion', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
-      runtime: runtime(),
+      runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths: ['deployment/production.yml'] } }),
       action: { kind: 'execute', expectedHeadSha: headSha, changedPaths: ['deployment/production.yml'] }
     });
     assert.equal(result.allowed, false);
@@ -437,4 +438,76 @@ test('requires valid review-history receipts before starting review', () => {
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HISTORY_UNAVAILABLE'), true);
   }
+});
+
+test('binds mutating changed paths to pinned authoritative diff evidence', () => {
+  const missing = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ diffEvidence: undefined }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(missing.allowed, false);
+  assert.equal(missing.findings.some(({ code }) => code === 'DIFF_EVIDENCE_UNAVAILABLE'), true);
+
+  const stale = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ diffEvidence: { baseSha: 'd'.repeat(40), headSha, changedPaths: ['FLOW.md'] } }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(stale.allowed, false);
+  assert.equal(stale.findings.some(({ code }) => code === 'STALE_DIFF_EVIDENCE'), true);
+
+  const partial = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md', 'deployment/production.yml'] } }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(partial.allowed, false);
+  assert.equal(partial.findings.some(({ code }) => code === 'CHANGED_PATHS_MISMATCH'), true);
+
+  const complete = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md', 'deployment/production.yml'] } }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['deployment/production.yml', 'FLOW.md'] }
+  });
+  assert.equal(complete.allowed, false);
+  assert.equal(complete.findings.some(({ code }) => code === 'SCOPE_EXPANSION'), true);
+});
+
+test('requires valid review history before authorizing a correction', () => {
+  for (const reviewedHeadShas of [undefined, headSha, ['not-a-sha']]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ reviewedHeadShas }),
+      action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1, findingsHeadSha: headSha }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HISTORY_UNAVAILABLE'), true);
+  }
+});
+
+test('requires explicit false no-rewrite publication flags', () => {
+  for (const flags of [
+    {},
+    { forcePush: false },
+    { historyRewrite: false },
+    { forcePush: 'false', historyRewrite: false },
+    { forcePush: false, historyRewrite: 'false' }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime(),
+      action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, ...flags }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'PUBLISHED_HISTORY_REWRITE_FORBIDDEN'), true);
+  }
+});
+
+test('returns policy findings instead of throwing for malformed nested policy', () => {
+  const invalid = structuredClone(CANONICAL_EXECUTION_POLICY);
+  delete invalid.corrections;
+  const result = validateTaskHandoff(handoff(), invalid);
+  assert.equal(result.valid, false);
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_CORRECTION_POLICY'), true);
 });
