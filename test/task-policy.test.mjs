@@ -397,3 +397,44 @@ test('denies legacy publication without dereferencing v2 approval', () => {
   assert.equal(result.allowed, false);
   assert.equal(result.findings.some(({ code }) => code === 'LEGACY_PUBLICATION_REQUIRES_HUMAN'), true);
 });
+
+test('requires an explicit publication-batch receipt', () => {
+  for (const value of [undefined, -1, 0.5, '0']) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ publicationBatchesForRevision: value }),
+      action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'PUBLICATION_HISTORY_UNAVAILABLE'), true);
+  }
+});
+
+test('requires an explicit correction-batch receipt', () => {
+  for (const value of [undefined, -1, 0.5, '0']) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ correctionBatchesUsed: value, reviewedHeadShas: [headSha] }),
+      action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1, findingsHeadSha: headSha }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CORRECTION_HISTORY_UNAVAILABLE'), true);
+  }
+});
+
+test('requires valid review-history receipts before starting review', () => {
+  for (const overrides of [
+    { reviewedHeadShas: undefined },
+    { reviewInProgressHeadShas: undefined },
+    { reviewedHeadShas: ['not-a-sha'] },
+    { reviewInProgressHeadShas: ['not-a-sha'] }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime(overrides),
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HISTORY_UNAVAILABLE'), true);
+  }
+});

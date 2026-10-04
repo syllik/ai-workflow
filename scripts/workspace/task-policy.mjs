@@ -48,6 +48,10 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function isShaHistory(value) {
+  return Array.isArray(value) && value.every((sha) => typeof sha === 'string' && SHA_PATTERN.test(sha));
+}
+
 function unknownKeys(value, allowed, prefix, findings) {
   if (!isObject(value)) return;
   for (const key of Object.keys(value).sort()) {
@@ -251,7 +255,11 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
       findings.push(finding('LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD', 'runtime.localValidation'));
     }
     if (action.actorRole !== 'publisher') findings.push(finding('UNTRUSTED_PUBLISHER', 'action.actorRole'));
-    if (runtime.publicationBatchesForRevision >= policy.publisher.publicationBatchesPerRevision) findings.push(finding('DUPLICATE_PUBLICATION_BATCH', 'runtime.publicationBatchesForRevision'));
+    if (!Number.isInteger(runtime.publicationBatchesForRevision) || runtime.publicationBatchesForRevision < 0) {
+      findings.push(finding('PUBLICATION_HISTORY_UNAVAILABLE', 'runtime.publicationBatchesForRevision'));
+    } else if (runtime.publicationBatchesForRevision >= policy.publisher.publicationBatchesPerRevision) {
+      findings.push(finding('DUPLICATE_PUBLICATION_BATCH', 'runtime.publicationBatchesForRevision'));
+    }
     if (action.commitCount !== 1 || action.pushCount !== 1) findings.push(finding('ONE_BATCH_PUBLICATION_REQUIRED', 'action'));
     if (action.forcePush === true || action.historyRewrite === true) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
   } else if (action.kind === 'review') {
@@ -259,7 +267,11 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
     if (policy.review.requiresGreenCi && (runtime.ci?.headSha !== runtime.currentHeadSha || runtime.ci?.status !== 'green')) {
       findings.push(finding('CI_NOT_GREEN_FOR_HEAD', 'runtime.ci'));
     }
-    if ((runtime.reviewedHeadShas ?? []).includes(runtime.currentHeadSha) || (runtime.reviewInProgressHeadShas ?? []).includes(runtime.currentHeadSha)) findings.push(finding('DUPLICATE_REVIEW', 'runtime.reviewedHeadShas'));
+    if (!isShaHistory(runtime.reviewedHeadShas) || !isShaHistory(runtime.reviewInProgressHeadShas)) {
+      findings.push(finding('REVIEW_HISTORY_UNAVAILABLE', 'runtime.reviewedHeadShas'));
+    } else if (runtime.reviewedHeadShas.includes(runtime.currentHeadSha) || runtime.reviewInProgressHeadShas.includes(runtime.currentHeadSha)) {
+      findings.push(finding('DUPLICATE_REVIEW', 'runtime.reviewedHeadShas'));
+    }
     if (!isNonEmptyString(runtime.executorContextId) || !isNonEmptyString(runtime.reviewerContextId)) findings.push(finding('REVIEW_INDEPENDENCE_UNPROVEN', 'runtime.reviewerContextId'));
     else if (runtime.executorContextId === runtime.reviewerContextId) findings.push(finding('REVIEW_NOT_INDEPENDENT', 'runtime.reviewerContextId'));
     if (action.mutationRequested === true) findings.push(finding('REVIEWER_MUTATION_FORBIDDEN', 'action.mutationRequested'));
@@ -268,9 +280,10 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
     if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {
       findings.push(finding('LEGACY_CORRECTION_REQUIRES_HUMAN', 'action.kind'));
     } else {
-      const used = runtime.correctionBatchesUsed ?? 0;
+      const used = runtime.correctionBatchesUsed;
       const approved = handoff.approval.maxCorrectionBatches;
-      if (used >= policy.corrections.maxBatches) findings.push(finding('CORRECTION_LIMIT_EXCEEDED', 'runtime.correctionBatchesUsed'));
+      if (!Number.isInteger(used) || used < 0) findings.push(finding('CORRECTION_HISTORY_UNAVAILABLE', 'runtime.correctionBatchesUsed'));
+      else if (used >= policy.corrections.maxBatches) findings.push(finding('CORRECTION_LIMIT_EXCEEDED', 'runtime.correctionBatchesUsed'));
       else if (used >= approved) findings.push(finding('CORRECTION_NOT_AUTHORIZED', 'handoff.approval.maxCorrectionBatches'));
     }
     if (action.findingsPackageCount !== 1) findings.push(finding('FINDINGS_NOT_CONSOLIDATED', 'action.findingsPackageCount'));
