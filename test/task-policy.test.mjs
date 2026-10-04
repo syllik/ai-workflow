@@ -511,3 +511,32 @@ test('returns policy findings instead of throwing for malformed nested policy', 
   assert.equal(result.valid, false);
   assert.equal(result.findings.some(({ code }) => code === 'INVALID_CORRECTION_POLICY'), true);
 });
+
+test('does not let handoff input override computed validation result fields', () => {
+  const legacy = {
+    valid: true,
+    findings: [],
+    approvalReference: '',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  const legacyResult = validateTaskHandoff(legacy);
+  assert.equal(legacyResult.valid, false);
+  assert.equal(legacyResult.findings.some(({ code }) => code === 'MISSING_APPROVAL'), true);
+
+  const v2 = handoff({ valid: true, findings: [] });
+  delete v2.approval;
+  const v2Result = validateTaskHandoff(v2);
+  assert.equal(v2Result.valid, false);
+  assert.equal(v2Result.findings.some(({ code }) => code === 'MISSING_APPROVAL'), true);
+
+  const actionResult = evaluateTaskAction({
+    handoff: legacy,
+    runtime: runtime({ legacyAllowedPaths: ['FLOW.md'] }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(actionResult.allowed, false);
+});

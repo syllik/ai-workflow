@@ -187,9 +187,9 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
   const normalized = normalizeTaskHandoff(value);
   if (![LEGACY_TASK_CONTRACT_VERSION, TASK_CONTRACT_VERSION].includes(normalized.contractVersion)) {
     findings.push(finding('UNSUPPORTED_HANDOFF_VERSION', 'handoff.contractVersion'));
-    return { valid: false, ...normalized, findings };
+    return { ...normalized, valid: false, findings };
   }
-  if (findings.length > 0) return { valid: false, ...normalized, findings };
+  if (findings.length > 0) return { ...normalized, valid: false, findings };
 
   if (!isNonEmptyString(value.policySha) || !SHA_PATTERN.test(value.policySha)) findings.push(finding('INVALID_POLICY_SHA', 'handoff.policySha'));
   if (!isNonEmptyString(value.baseSha) || !SHA_PATTERN.test(value.baseSha)) findings.push(finding('INVALID_BASE_SHA', 'handoff.baseSha'));
@@ -202,7 +202,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
 
   if (normalized.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {
     if (!isNonEmptyString(value.approvalReference)) findings.push(finding('MISSING_APPROVAL', 'handoff.approvalReference'));
-    return { valid: findings.length === 0, ...normalized, findings };
+    return { ...normalized, valid: findings.length === 0, findings };
   }
 
   unknownKeys(value, HANDOFF_V2_KEYS, 'handoff', findings);
@@ -224,7 +224,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
     }
   }
 
-  return { valid: findings.length === 0, ...normalized, findings };
+  return { ...normalized, valid: findings.length === 0, findings };
 }
 
 function currentShaFindings(handoff, runtime, action) {
