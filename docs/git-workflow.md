@@ -26,7 +26,7 @@ Temporary issue branches use `<type>/issue-<number>-<slug>` (for example `fix/is
 | `ChipIn-one/.github` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; `main` is retained as an unprotected rollback ref; active `canonical branches protect` targets `master`; PR #35 removed the temporary `main` readiness triggers and post-merge `evaluate-fixtures` on `master@871823ba72eaa5f2871afc17164d348af57e7feb` succeeded |
 | `ChipIn-one/chipin-knowledge-base` | read-only | `master` | `master` | none | canonical | canonical repository merge settings are live; cut over at `a0ea83721b47d153dbb4c45d4f8ec718bc899c4b`; `main` retained for rollback; PR #7 retargeted to `master`; private-repository branch protection is not enforceable on the current organization plan |
 | `ChipIn-one/chipin-frontend` | managed | `main` | `dev` | production | temporary-exception | PR #307 merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b` and moved read-only KB references to `master`; FE `dev -> main` topology remains unchanged |
-| `ChipIn-one/chipin-backend` | read-only | `develop` | `develop` | production | migration | no open PRs; PR checks target `develop`; staging deploys pushes to `develop`; production is manual; no repository ruleset observed |
+| `ChipIn-one/chipin-backend` | read-only | `develop` | `develop` | production | migration | PR checks target `develop`; staging deploys pushes to `develop`; production is manual; no repository ruleset observed |
 
 The frontend `dev -> main` ancestry gate is an intentional temporary exception. It must remain until a replacement promotion path can promote the exact tested commit without recreating divergence. This policy task therefore does not force squash-only topology onto FE branches.
 
@@ -68,7 +68,7 @@ Before each migration, update every consumer of the old branch atomically with t
 - Organization coordination repo: PR `ChipIn-one/.github#21` completed the branch cutover; PR #35 later removed the temporary `main` branch filters from `DEV readiness policy tests`, leaving `pull_request` and `push` on `master` plus manual `workflow_dispatch`. The squash merge landed as `871823ba72eaa5f2871afc17164d348af57e7feb`, and post-merge `evaluate-fixtures` succeeded on that exact `master` head. The legacy `main` ref remains only as rollback state.
 - Frontend consumer: `ChipIn-one/chipin-frontend#307` merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b`; read-only KB references now use `master`. The FE `dev -> main` production topology remains a documented temporary exception and was not migrated.
 - Backend remains owner-owned on `develop`; no backend code, CI, deployment, PR, or branch state was mutated by this cutover.
-- Central PR #44 records the resulting registry state. Concurrent PR #31 remains separate and open; its Deep Dark Factory registration is not copied into this cutover PR.
+- Central PR #44 records the resulting registry state. PR #31 is a separate Deep Dark Factory change and its registration is not copied into this cutover receipt.
 
 ## Promotion and cleanup safety
 
@@ -84,7 +84,7 @@ After a human merge, cleanup is conservative:
 
 ## Coordination and bounded follow-ups
 
-`ChipIn-one/.github#15` is open and proposes moving the canonical AI workflow into the organization. This task does not change canonical location. If #15 proceeds, the lifecycle contract, validator, generated index, and this policy must exist at the new canonical location before ChipIn consumers switch.
+`ChipIn-one/.github#15` proposes moving the canonical AI workflow into the organization. This task does not change canonical location. If that proposal proceeds, the lifecycle contract, validator, generated index, and this policy must exist at the new canonical location before ChipIn consumers switch.
 
 PR #31 in this repository registers Deep Dark Factory and touches the shared manifest/index. Deep Dark Factory is excluded from this audit. Whichever PR lands second must refresh against the first and regenerate the index without inventing lifecycle state for the excluded repository.
 
