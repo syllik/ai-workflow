@@ -848,3 +848,35 @@ test('fails closed for malformed legacy allowed-path evidence', () => {
     assert.equal(result.findings.some(({ code }) => code === 'INVALID_LEGACY_ALLOWED_PATHS'), true);
   }
 });
+
+test('rejects non-string repository and branch provenance fields', () => {
+  const malformedValues = [
+    { repository: ['syllik/ai-workflow'] },
+    { taskBranch: ['fix/issue-1-x'] },
+    { integrationBranch: ['master'] },
+    { repository: { value: 'syllik/ai-workflow' } },
+    { taskBranch: 42 },
+    { integrationBranch: true }
+  ];
+
+  for (const overrides of malformedValues) {
+    const result = validateTaskHandoff(handoff(overrides));
+    assert.equal(result.valid, false);
+  }
+
+  assert.equal(
+    validateTaskHandoff(handoff({ repository: ['syllik/ai-workflow'] }))
+      .findings.some(({ code }) => code === 'INVALID_HANDOFF_REPOSITORY'),
+    true
+  );
+  assert.equal(
+    validateTaskHandoff(handoff({ taskBranch: ['fix/issue-1-x'] }))
+      .findings.some(({ code }) => code === 'INVALID_TASK_BRANCH'),
+    true
+  );
+  assert.equal(
+    validateTaskHandoff(handoff({ integrationBranch: ['master'] }))
+      .findings.some(({ code }) => code === 'INVALID_INTEGRATION_BRANCH'),
+    true
+  );
+});

@@ -226,9 +226,9 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
 
   unknownKeys(value, HANDOFF_V2_KEYS, 'handoff', findings);
   if (!isNonEmptyString(value.taskId)) findings.push(finding('INVALID_TASK_ID', 'handoff.taskId'));
-  if (!REPOSITORY_PATTERN.test(value.repository ?? '')) findings.push(finding('INVALID_HANDOFF_REPOSITORY', 'handoff.repository'));
-  if (!TASK_BRANCH_PATTERN.test(value.taskBranch ?? '')) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
-  if (!BRANCH_PATTERN.test(value.integrationBranch ?? '')) findings.push(finding('INVALID_INTEGRATION_BRANCH', 'handoff.integrationBranch'));
+  if (typeof value.repository !== 'string' || !REPOSITORY_PATTERN.test(value.repository)) findings.push(finding('INVALID_HANDOFF_REPOSITORY', 'handoff.repository'));
+  if (typeof value.taskBranch !== 'string' || !TASK_BRANCH_PATTERN.test(value.taskBranch)) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
+  if (typeof value.integrationBranch !== 'string' || !BRANCH_PATTERN.test(value.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', 'handoff.integrationBranch'));
   if (!isUniqueNonEmptyStringArray(value.requiredCiChecks)) findings.push(finding('INVALID_REQUIRED_CI_CHECKS', 'handoff.requiredCiChecks'));
   if (value.role !== 'executor') findings.push(finding('INVALID_HANDOFF_ROLE', 'handoff.role'));
 
