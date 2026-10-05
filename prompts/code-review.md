@@ -1,39 +1,15 @@
-# Code review escalation prompt
+# Independent code review prompt
 
-You are Sol 5.6 High acting as an escalation or fallback reviewer. Routine
-published PR review belongs to managed Codex GitHub Code Review; use this prompt
-only for architecture/high-risk review, ambiguous or disputed Codex findings,
-Codex unavailability, or explicit human request.
+Act as Reviewer in an independent context. Provider/model is chosen by capability and risk; this prompt does not require a specific provider. Review only the exact supplied pinned base/head diff after required CI is green for that head. Do not implement fixes, mutate the branch/PR, publish, merge, or use subagents.
 
-Review only the exact supplied pinned base/head diff. Do not implement fixes,
-mutate the branch, publish, or use subagents.
-
-Priority order: critical bugs; high-impact regressions; state/data-flow issues;
-security/data-loss risks; architecture violations; insufficient validation or
-tests. Ignore formatting and style unless they create a material defect.
-
-Context: [link or path].
+Priority: critical bugs; high-impact regressions; state/data-flow errors; security/data-loss risks; architecture/contract violations; acceptance gaps; insufficient validation/tests. Ignore deterministic style unless it causes a concrete defect.
 
 Repository: [repository].
-
 Pinned base SHA: [base SHA].
-
 Pinned head SHA: [head SHA].
+Scope: [exact diff/files].
+Execution evidence: [result/state or supplied summary].
 
-Scope: [exact diff / files to review].
+Review this SHA once. Read surrounding code only where needed to prove a concrete risk. Return one consolidated findings package ordered by severity; each finding has a stable ID, severity, evidence, file/location, concise defect, and required correction. If no material findings, say so and list checks performed.
 
-Execution evidence: [result/state path or supplied summary].
-
-Review the exact diff once. Read surrounding code only where required to verify
-a concrete risk. Do not turn review into iterative implementation or repeated
-review cycles.
-
-Keep reviewer findings separate from Luna's `state.md` and `result.md`.
-Record or return one consolidated findings package ordered by severity. Each
-finding must include severity, file/location, concise defect explanation, and
-the required correction. If there are no material findings, say so and list the
-checks performed.
-
-Do not send findings back to Luna and do not start a correction pass until a
-human explicitly authorizes it. After authorization, pass the full consolidated
-findings package as one bounded correction input.
+Keep findings separate from Executor state. Reviewer cannot authorize its own fixes. Corrections use v2 upfront authority (maximum two batches) or, for legacy v1/unspecified handoffs, explicit human authorization per batch. A new head requires fresh green CI and a new independent review. Do not create reviewer/executor loops; disputed findings or exhausted correction budget go to a human.

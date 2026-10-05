@@ -9,4 +9,4 @@ Commands:
 - `node scripts/workspace/cli.mjs check --manifest-only` validates the manifest only.
 - `node scripts/workspace/cli.mjs check` validates generated routing and budgets.
 
-The integration branch is `master`. Changes are published only through an authorized task branch and a pull request into `master`. `npm run verify` is the completion gate. Real canonical workspace apply is supported after normal safety checks but was not executed in Phase 1A.
+The integration branch is `master`. Current task-policy contract is v2: provider-independent roles plus a separate Trusted Publisher; legacy v1/unspecified handoffs retain human-gated publication/corrections. The exact 32768-byte assembled-context gate remains unchanged. Changes are published only through an authorized task branch and PR into `master`; `npm run verify` is the completion gate. Real canonical workspace apply remains subject to normal safety checks.

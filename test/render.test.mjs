@@ -47,12 +47,11 @@ describe('renderers', () => {
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/FLOW\.md/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/workspace\.yaml/u);
     assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/projects\/index\.md/u);
-    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/architect\.md/u);
-    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/reviewer\.md/u);
+    assert.match(output, /https:\/\/github\.com\/syllik\/ai-workflow\/blob\/HEAD\/global\/workflow\.md/u);
     assert.match(output, /profile AI entry/);
     assert.match(output, /FLOW\.md/);
     assert.match(output, /workspace\.yaml/);
-    assert.match(output, /global\/architect\.md/);
+    assert.match(output, /global\/workflow\.md/);
     assert.match(output, /target AGENTS\.md/);
     assert.match(output, /integrationBranch/);
     assert.match(output, /contextDependencies/);
@@ -60,7 +59,7 @@ describe('renderers', () => {
     assert.ok(Buffer.byteLength(output, 'utf8') <= 1024);
     assert.equal(output.endsWith('\n'), true);
     assert.equal(output.includes('\r'), false);
-    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
+    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/workflow\.md)(?:[` )]|$)/mu);
   });
 
   test('render context scaffold follows the project template without a managed marker', () => {
@@ -90,14 +89,12 @@ describe('renderers', () => {
       'https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md',
       'https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml',
       'https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md',
-      'https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md',
-      'https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md',
-      'https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md'
+      'https://github.com/syllik/ai-workflow/blob/HEAD/global/workflow.md'
     ]) assert.equal(output.includes(url), true, url);
     assert.match(output, /integrationBranch/);
     assert.match(output, /GitHub Issue\/PR entry never bypasses this route/iu);
     assert.doesNotMatch(output, /contextDependencies/u);
-    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/architect\.md)(?:[` )]|$)/mu);
+    assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/workflow\.md)(?:[` )]|$)/mu);
 
     manifest.projects[2].contextDependencies = [{
       repository: 'ChipIn-one/chipin-knowledge-base',
