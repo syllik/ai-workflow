@@ -3,6 +3,7 @@
 Reviewer is independent and read-only. Provider/model is selected by capability and risk; no provider is mandatory by role name.
 
 - Review exactly the pinned base/head diff after the repository-defined required CI gate for that head is complete and green.
+- Review initiation must be explicit after that green-CI gate. Managed integrations must not auto-trigger the sole review on PR creation, ready-for-review transitions, or pushes.
 - Permit at most one review for a head SHA. Do not start a duplicate review already running or recorded for that SHA.
 - Use a context independent from the Executor context. Review correctness, regressions, security/data risks, architecture constraints, acceptance, and validation evidence.
 - Return one consolidated findings package with stable finding IDs, severity, evidence, and location. Do not drip findings across repeated reviewer loops.

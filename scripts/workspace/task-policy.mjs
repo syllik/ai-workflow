@@ -48,6 +48,10 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function normalizeRepositoryIdentity(value) {
+  return isNonEmptyString(value) ? value.trim().toLowerCase() : null;
+}
+
 function isShaHistory(value) {
   return Array.isArray(value) && value.every((sha) => typeof sha === 'string' && SHA_PATTERN.test(sha));
 }
@@ -65,8 +69,10 @@ function isConcretePathList(value, { nonEmpty = false } = {}) {
 }
 
 function samePathSet(left, right) {
-  return left.length === right.length
-    && [...left].sort().every((value, index) => value === [...right].sort()[index]);
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((value, index) => value === sortedRight[index]);
 }
 
 function unknownKeys(value, allowed, prefix, findings) {
@@ -229,7 +235,10 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
 
 function currentShaFindings(handoff, runtime, action) {
   const findings = [];
-  if (handoff.contractVersion === TASK_CONTRACT_VERSION && runtime.currentRepository !== handoff.repository) findings.push(finding('REPOSITORY_MISMATCH', 'runtime.currentRepository'));
+  if (
+    handoff.contractVersion === TASK_CONTRACT_VERSION
+    && normalizeRepositoryIdentity(runtime.currentRepository) !== normalizeRepositoryIdentity(handoff.repository)
+  ) findings.push(finding('REPOSITORY_MISMATCH', 'runtime.currentRepository'));
   if (runtime.currentPolicySha !== handoff.policySha) findings.push(finding('STALE_POLICY_SHA', 'runtime.currentPolicySha'));
   if (runtime.currentBaseSha !== handoff.baseSha) findings.push(finding('STALE_BASE_SHA', 'runtime.currentBaseSha'));
   if (handoff.headSha !== undefined && runtime.currentHeadSha !== handoff.headSha) findings.push(finding('STALE_HEAD_SHA', 'handoff.headSha'));
@@ -271,6 +280,12 @@ function scopeFindings(handoff, runtime, action) {
 export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {} }) {
   const validation = validateTaskHandoff(inputHandoff, policy);
   if (!validation.valid) return { allowed: false, findings: validation.findings, compatibility: validation.compatibility };
+  if (!isObject(runtime)) {
+    return { allowed: false, findings: [finding('INVALID_RUNTIME', 'runtime')], compatibility: validation.compatibility };
+  }
+  if (!isObject(action)) {
+    return { allowed: false, findings: [finding('INVALID_ACTION_INPUT', 'action')], compatibility: validation.compatibility };
+  }
   const handoff = validation;
   const findings = [
     ...currentShaFindings(handoff, runtime, action),

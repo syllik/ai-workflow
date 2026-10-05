@@ -66,6 +66,8 @@ describe('workflow documentation', () => {
     assert.match(policy, /one final commit \+ one push|one final commit and one push/iu);
     assert.match(policy, /never.*rewrite published history|published history is never rewritten/iu);
     assert.match(policy, /one.*review per.*SHA|one review per SHA/iu);
+    assert.match(policy, /Review initiation must be explicit/iu);
+    assert.match(policy, /must not auto-trigger/iu);
     assert.match(policy, /consolidated findings/iu);
     assert.match(policy, /at most two|up to two|0–2/iu);
     assert.match(policy, /Reviewer.*must not mutate|Reviewer is.*read-only/iu);

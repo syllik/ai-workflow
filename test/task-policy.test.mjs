@@ -540,3 +540,30 @@ test('does not let handoff input override computed validation result fields', ()
   });
   assert.equal(actionResult.allowed, false);
 });
+
+test('fails closed for null runtime and action inputs', () => {
+  const nullRuntime = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: null,
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(nullRuntime.allowed, false);
+  assert.equal(nullRuntime.findings.some(({ code }) => code === 'INVALID_RUNTIME'), true);
+
+  const nullAction = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime(),
+    action: null
+  });
+  assert.equal(nullAction.allowed, false);
+  assert.equal(nullAction.findings.some(({ code }) => code === 'INVALID_ACTION_INPUT'), true);
+});
+
+test('compares GitHub repository identities case-insensitively', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff({ repository: 'Syllik/ai-workflow' }),
+    runtime: runtime({ currentRepository: 'syllik/AI-WORKFLOW' }),
+    action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(result.allowed, true);
+});
