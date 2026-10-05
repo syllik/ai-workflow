@@ -613,7 +613,7 @@ test('requires a concrete pinned head before legacy review', () => {
     action: { kind: 'review', actorRole: 'reviewer', changedPaths: [], mutationRequested: false }
   });
   assert.equal(result.allowed, false);
-  assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HEAD_NOT_PINNED'), true);
+  assert.equal(result.findings.some(({ code }) => code === 'ACTION_HEAD_NOT_PINNED'), true);
 });
 
 test('requires explicit read-only intent for reviews', () => {
