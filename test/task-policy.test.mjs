@@ -13,12 +13,16 @@ const policySha = 'a'.repeat(40);
 const baseSha = 'b'.repeat(40);
 const headSha = 'c'.repeat(40);
 const diffDigest = 'd'.repeat(64);
+const taskBranch = 'policy/issue-47-vendor-neutral-role-contract';
+const integrationBranch = 'master';
 
 function handoff(overrides = {}) {
   return {
     contractVersion: 2,
     taskId: 'policy-contract',
     repository: 'syllik/ai-workflow',
+    taskBranch,
+    integrationBranch,
     role: 'executor',
     policySha,
     baseSha,
@@ -42,6 +46,7 @@ function runtime(overrides = {}) {
     currentPolicySha: policySha,
     currentBaseSha: baseSha,
     currentHeadSha: headSha,
+    currentBranch: taskBranch,
     publicationBatchesForRevision: 0,
     executionStatus: 'IMPLEMENTATION_COMPLETE',
     executionDiffDigest: diffDigest,
@@ -52,6 +57,7 @@ function runtime(overrides = {}) {
     executorContextId: 'executor-1',
     reviewerContextId: 'reviewer-1',
     ci: { headSha, status: 'green' },
+    reviewInitiation: { kind: 'explicit-after-green-ci', headSha, receiptId: 'user-comment:1' },
     diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: diffDigest },
     ...overrides
   };
@@ -208,7 +214,7 @@ describe('deterministic task actions', () => {
     const valid = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime(),
-      action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+      action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
     });
     assert.equal(valid.allowed, true);
 
@@ -268,7 +274,7 @@ test('requires completed implementation and local validation for publication', (
   const result = evaluateTaskAction({
     handoff: handoff(),
     runtime: runtime({ executionStatus: 'IN_PROGRESS', localValidation: { headSha, status: 'failed', diffDigest } }),
-    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+    action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
   });
   assert.equal(result.allowed, false);
   const codes = result.findings.map(({ code }) => code);
@@ -404,7 +410,7 @@ test('denies legacy publication without dereferencing v2 approval', () => {
   const result = evaluateTaskAction({
     handoff: legacy,
     runtime: runtime({ legacyAllowedPaths: ['FLOW.md'] }),
-    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+    action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
   });
   assert.equal(result.allowed, false);
   assert.equal(result.findings.some(({ code }) => code === 'LEGACY_PUBLICATION_REQUIRES_HUMAN'), true);
@@ -415,7 +421,7 @@ test('requires an explicit publication-batch receipt', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime({ publicationBatchesForRevision: value }),
-      action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+      action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'PUBLICATION_HISTORY_UNAVAILABLE'), true);
@@ -508,7 +514,7 @@ test('requires explicit false no-rewrite publication flags', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime(),
-      action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, ...flags }
+      action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, ...flags }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'PUBLISHED_HISTORY_REWRITE_FORBIDDEN'), true);
@@ -628,7 +634,7 @@ test('binds publication receipts to the exact authoritative worktree diff', () =
     runtime: runtime({
       diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: changedDigest }
     }),
-    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+    action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
   });
   assert.equal(staleValidation.allowed, false);
   assert.equal(staleValidation.findings.some(({ code }) => code === 'IMPLEMENTATION_NOT_COMPLETE'), true);
@@ -641,7 +647,7 @@ test('binds publication receipts to the exact authoritative worktree diff', () =
       localValidation: { headSha, status: 'passed', diffDigest: changedDigest },
       diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: changedDigest }
     }),
-    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+    action: { kind: 'publish', actorRole: 'publisher', destinationBranch: taskBranch, pullRequestBaseBranch: integrationBranch, expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
   });
   assert.equal(refreshed.allowed, true);
 });
@@ -657,5 +663,68 @@ test('rejects allowed-path wildcard forms the matcher does not support', () => {
   for (const allowedPath of ['FLOW.md', 'src/**', '**']) {
     const approval = { ...handoff().approval, allowedPaths: [allowedPath] };
     assert.equal(validateTaskHandoff(handoff({ approval })).valid, true);
+  }
+});
+
+test('binds publication to the authorized task and integration refs', () => {
+  for (const actionOverrides of [
+    { destinationBranch: integrationBranch },
+    { destinationBranch: taskBranch, pullRequestBaseBranch: 'develop' }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime(),
+      action: {
+        kind: 'publish',
+        actorRole: 'publisher',
+        expectedHeadSha: headSha,
+        changedPaths: ['FLOW.md'],
+        destinationBranch: taskBranch,
+        pullRequestBaseBranch: integrationBranch,
+        commitCount: 1,
+        pushCount: 1,
+        forcePush: false,
+        historyRewrite: false,
+        ...actionOverrides
+      }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'PUBLICATION_REF_MISMATCH'), true);
+  }
+
+  const wrongCheckout = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ currentBranch: integrationBranch }),
+    action: {
+      kind: 'publish',
+      actorRole: 'publisher',
+      expectedHeadSha: headSha,
+      changedPaths: ['FLOW.md'],
+      destinationBranch: taskBranch,
+      pullRequestBaseBranch: integrationBranch,
+      commitCount: 1,
+      pushCount: 1,
+      forcePush: false,
+      historyRewrite: false
+    }
+  });
+  assert.equal(wrongCheckout.allowed, false);
+  assert.equal(wrongCheckout.findings.some(({ code }) => code === 'PUBLICATION_REF_MISMATCH'), true);
+});
+
+test('requires explicit post-CI review initiation evidence', () => {
+  for (const reviewInitiation of [
+    undefined,
+    { kind: 'automatic', headSha, receiptId: 'push' },
+    { kind: 'explicit-after-green-ci', headSha: 'e'.repeat(40), receiptId: 'user-comment:1' },
+    { kind: 'explicit-after-green-ci', headSha, receiptId: '' }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ reviewInitiation }),
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'REVIEW_NOT_EXPLICITLY_INITIATED'), true);
   }
 });

@@ -8,7 +8,7 @@ For each completed revision:
 
 - publish exactly one final commit and one push;
 - never force-push, rebase, squash, amend, or otherwise rewrite published history;
-- preserve the assigned branch/PR and target the registry integration branch;
+- preserve the v2 handoff's assigned task branch/PR and target its pinned registry integration branch; publication must not push the revision to any other ref;
 - do not change required checks, deployment settings, merge settings, Issue/Project state, or unrelated metadata;
 - after a head change, treat all previous CI/review as stale.
 

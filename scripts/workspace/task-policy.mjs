@@ -29,13 +29,16 @@ const PUBLISHER_KEYS = new Set(['kind', 'publicationBatchesPerRevision', 'histor
 const REVIEW_KEYS = new Set(['reviewsPerHeadSha', 'requiresGreenCi', 'findings', 'reviewerMutations']);
 const CORRECTION_KEYS = new Set(['authorization', 'maxBatches']);
 const HANDOFF_V2_KEYS = new Set([
-  'contractVersion', 'taskId', 'repository', 'role', 'policySha', 'baseSha', 'headSha', 'approval',
+  'contractVersion', 'taskId', 'repository', 'taskBranch', 'integrationBranch', 'role',
+  'policySha', 'baseSha', 'headSha', 'approval',
   'assembledContextBudgetBytes', 'assembledContextActualBytes', 'assembledContextCheck'
 ]);
 const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches']);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const DIFF_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
+const TASK_BRANCH_PATTERN = /^[a-z][a-z0-9-]*\/issue-\d+-[a-z0-9][a-z0-9-]*$/u;
+const BRANCH_PATTERN = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -217,6 +220,8 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
   unknownKeys(value, HANDOFF_V2_KEYS, 'handoff', findings);
   if (!isNonEmptyString(value.taskId)) findings.push(finding('INVALID_TASK_ID', 'handoff.taskId'));
   if (!REPOSITORY_PATTERN.test(value.repository ?? '')) findings.push(finding('INVALID_HANDOFF_REPOSITORY', 'handoff.repository'));
+  if (!TASK_BRANCH_PATTERN.test(value.taskBranch ?? '')) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
+  if (!BRANCH_PATTERN.test(value.integrationBranch ?? '')) findings.push(finding('INVALID_INTEGRATION_BRANCH', 'handoff.integrationBranch'));
   if (value.role !== 'executor') findings.push(finding('INVALID_HANDOFF_ROLE', 'handoff.role'));
 
   if (!isObject(value.approval)) {
@@ -321,6 +326,16 @@ export function evaluateTaskAction(input = {}) {
     ) {
       findings.push(finding('LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD', 'runtime.localValidation'));
     }
+    if (
+      handoff.contractVersion === TASK_CONTRACT_VERSION
+      && (
+        runtime.currentBranch !== handoff.taskBranch
+        || action.destinationBranch !== handoff.taskBranch
+        || action.pullRequestBaseBranch !== handoff.integrationBranch
+      )
+    ) {
+      findings.push(finding('PUBLICATION_REF_MISMATCH', 'action.destinationBranch'));
+    }
     if (action.actorRole !== 'publisher') findings.push(finding('UNTRUSTED_PUBLISHER', 'action.actorRole'));
     if (!Number.isInteger(runtime.publicationBatchesForRevision) || runtime.publicationBatchesForRevision < 0) {
       findings.push(finding('PUBLICATION_HISTORY_UNAVAILABLE', 'runtime.publicationBatchesForRevision'));
@@ -342,6 +357,15 @@ export function evaluateTaskAction(input = {}) {
     }
     if (policy.review.requiresGreenCi && (runtime.ci?.headSha !== runtime.currentHeadSha || runtime.ci?.status !== 'green')) {
       findings.push(finding('CI_NOT_GREEN_FOR_HEAD', 'runtime.ci'));
+    }
+    const reviewInitiation = runtime.reviewInitiation;
+    if (
+      !isObject(reviewInitiation)
+      || reviewInitiation.kind !== 'explicit-after-green-ci'
+      || reviewInitiation.headSha !== runtime.currentHeadSha
+      || !isNonEmptyString(reviewInitiation.receiptId)
+    ) {
+      findings.push(finding('REVIEW_NOT_EXPLICITLY_INITIATED', 'runtime.reviewInitiation'));
     }
     if (!isShaHistory(runtime.reviewedHeadShas) || !isShaHistory(runtime.reviewInProgressHeadShas)) {
       findings.push(finding('REVIEW_HISTORY_UNAVAILABLE', 'runtime.reviewedHeadShas'));
