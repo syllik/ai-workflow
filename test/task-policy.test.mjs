@@ -12,6 +12,7 @@ import {
 const policySha = 'a'.repeat(40);
 const baseSha = 'b'.repeat(40);
 const headSha = 'c'.repeat(40);
+const diffDigest = 'd'.repeat(64);
 
 function handoff(overrides = {}) {
   return {
@@ -43,14 +44,15 @@ function runtime(overrides = {}) {
     currentHeadSha: headSha,
     publicationBatchesForRevision: 0,
     executionStatus: 'IMPLEMENTATION_COMPLETE',
-    localValidation: { headSha, status: 'passed' },
+    executionDiffDigest: diffDigest,
+    localValidation: { headSha, status: 'passed', diffDigest },
     correctionBatchesUsed: 0,
     reviewedHeadShas: [],
     reviewInProgressHeadShas: [],
     executorContextId: 'executor-1',
     reviewerContextId: 'reviewer-1',
     ci: { headSha, status: 'green' },
-    diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'] },
+    diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: diffDigest },
     ...overrides
   };
 }
@@ -265,7 +267,7 @@ test('binds the handoff to the runtime repository identity', () => {
 test('requires completed implementation and local validation for publication', () => {
   const result = evaluateTaskAction({
     handoff: handoff(),
-    runtime: runtime({ executionStatus: 'IN_PROGRESS', localValidation: { headSha, status: 'failed' } }),
+    runtime: runtime({ executionStatus: 'IN_PROGRESS', localValidation: { headSha, status: 'failed', diffDigest } }),
     action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
   });
   assert.equal(result.allowed, false);
@@ -371,14 +373,23 @@ test('rejects empty changed-path evidence for mutating actions', () => {
   }
 });
 
-test('forbids Auditor mutation requests', () => {
-  const result = evaluateTaskAction({
+test('requires explicit read-only intent for Auditor actions', () => {
+  const valid = evaluateTaskAction({
     handoff: handoff(),
     runtime: runtime(),
-    action: { kind: 'audit', actorRole: 'auditor', expectedHeadSha: headSha, changedPaths: [], mutationRequested: true }
+    action: { kind: 'audit', actorRole: 'auditor', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
   });
-  assert.equal(result.allowed, false);
-  assert.equal(result.findings.some(({ code }) => code === 'AUDITOR_MUTATION_FORBIDDEN'), true);
+  assert.equal(valid.allowed, true);
+
+  for (const mutationRequested of [undefined, null, true, 'true', 0]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime(),
+      action: { kind: 'audit', actorRole: 'auditor', expectedHeadSha: headSha, changedPaths: [], mutationRequested }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'AUDITOR_MUTATION_FORBIDDEN'), true);
+  }
 });
 
 test('denies legacy publication without dereferencing v2 approval', () => {
@@ -606,5 +617,45 @@ test('requires explicit read-only intent for reviews', () => {
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'REVIEWER_MUTATION_FORBIDDEN'), true);
+  }
+});
+
+test('binds publication receipts to the exact authoritative worktree diff', () => {
+  const changedDigest = 'e'.repeat(64);
+
+  const staleValidation = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({
+      diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: changedDigest }
+    }),
+    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+  });
+  assert.equal(staleValidation.allowed, false);
+  assert.equal(staleValidation.findings.some(({ code }) => code === 'IMPLEMENTATION_NOT_COMPLETE'), true);
+  assert.equal(staleValidation.findings.some(({ code }) => code === 'LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD'), true);
+
+  const refreshed = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({
+      executionDiffDigest: changedDigest,
+      localValidation: { headSha, status: 'passed', diffDigest: changedDigest },
+      diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: changedDigest }
+    }),
+    action: { kind: 'publish', actorRole: 'publisher', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], commitCount: 1, pushCount: 1, forcePush: false, historyRewrite: false }
+  });
+  assert.equal(refreshed.allowed, true);
+});
+
+test('rejects allowed-path wildcard forms the matcher does not support', () => {
+  for (const invalidPath of ['src/*.js', 'src/**/file.js', 'src/foo*', 'src/***']) {
+    const approval = { ...handoff().approval, allowedPaths: [invalidPath] };
+    const result = validateTaskHandoff(handoff({ approval }));
+    assert.equal(result.valid, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_ALLOWED_PATHS'), true);
+  }
+
+  for (const allowedPath of ['FLOW.md', 'src/**', '**']) {
+    const approval = { ...handoff().approval, allowedPaths: [allowedPath] };
+    assert.equal(validateTaskHandoff(handoff({ approval })).valid, true);
   }
 });

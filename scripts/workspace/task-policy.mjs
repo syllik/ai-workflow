@@ -34,6 +34,7 @@ const HANDOFF_V2_KEYS = new Set([
 ]);
 const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches']);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const DIFF_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 
 function finding(code, path, details = {}) {
@@ -130,9 +131,11 @@ export function validateExecutionPolicyConfig(value, path = 'manifest.executionP
 
 function validAllowedPath(value) {
   if (!isNonEmptyString(value) || value.startsWith('/') || value.includes('\\') || value.includes('\0')) return false;
-  const base = value.endsWith('/**') ? value.slice(0, -3) : value;
-  if (!base || base.split('/').some((part) => part === '' || part === '.' || part === '..')) return false;
-  return /^[A-Za-z0-9._*\/-]+$/u.test(value) && !value.includes('***');
+  if (value === '**') return true;
+  const recursive = value.endsWith('/**');
+  const base = recursive ? value.slice(0, -3) : value;
+  if (!base || base.includes('*') || base.split('/').some((part) => part === '' || part === '.' || part === '..')) return false;
+  return /^[A-Za-z0-9._\/-]+$/u.test(base);
 }
 
 function pathAllowed(changedPath, allowedPaths) {
@@ -302,8 +305,20 @@ export function evaluateTaskAction(input = {}) {
     } else if (handoff.approval.publication !== 'allowed') {
       findings.push(finding('PUBLICATION_NOT_AUTHORIZED', 'handoff.approval.publication'));
     }
-    if (runtime.executionStatus !== 'IMPLEMENTATION_COMPLETE') findings.push(finding('IMPLEMENTATION_NOT_COMPLETE', 'runtime.executionStatus'));
-    if (runtime.localValidation?.status !== 'passed' || runtime.localValidation?.headSha !== runtime.currentHeadSha) {
+    const worktreeDigest = runtime.diffEvidence?.digest;
+    if (
+      !isNonEmptyString(worktreeDigest)
+      || !DIFF_DIGEST_PATTERN.test(worktreeDigest)
+      || runtime.executionStatus !== 'IMPLEMENTATION_COMPLETE'
+      || runtime.executionDiffDigest !== worktreeDigest
+    ) {
+      findings.push(finding('IMPLEMENTATION_NOT_COMPLETE', 'runtime.executionStatus'));
+    }
+    if (
+      runtime.localValidation?.status !== 'passed'
+      || runtime.localValidation?.headSha !== runtime.currentHeadSha
+      || runtime.localValidation?.diffDigest !== worktreeDigest
+    ) {
       findings.push(finding('LOCAL_VALIDATION_NOT_PASSED_FOR_HEAD', 'runtime.localValidation'));
     }
     if (action.actorRole !== 'publisher') findings.push(finding('UNTRUSTED_PUBLISHER', 'action.actorRole'));
@@ -355,7 +370,7 @@ export function evaluateTaskAction(input = {}) {
     if (action.actorRole !== 'executor') findings.push(finding('INVALID_EXECUTOR_ROLE', 'action.actorRole'));
   } else if (action.kind === 'audit') {
     if (action.actorRole !== 'auditor') findings.push(finding('INVALID_AUDITOR_ROLE', 'action.actorRole'));
-    if (action.mutationRequested === true) findings.push(finding('AUDITOR_MUTATION_FORBIDDEN', 'action.mutationRequested'));
+    if (action.mutationRequested !== false) findings.push(finding('AUDITOR_MUTATION_FORBIDDEN', 'action.mutationRequested'));
   } else if (action.kind === 'merge') {
     findings.push(finding('HUMAN_MERGE_REQUIRED', 'action.kind'));
   } else {
