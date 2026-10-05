@@ -251,10 +251,22 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
 
 function currentShaFindings(handoff, runtime, action) {
   const findings = [];
-  if (
-    handoff.contractVersion === TASK_CONTRACT_VERSION
-    && normalizeRepositoryIdentity(runtime.currentRepository) !== normalizeRepositoryIdentity(handoff.repository)
-  ) findings.push(finding('REPOSITORY_MISMATCH', 'runtime.currentRepository'));
+  if (handoff.contractVersion === TASK_CONTRACT_VERSION) {
+    if (normalizeRepositoryIdentity(runtime.currentRepository) !== normalizeRepositoryIdentity(handoff.repository)) {
+      findings.push(finding('REPOSITORY_MISMATCH', 'runtime.currentRepository'));
+    }
+
+    const workspaceRecord = runtime.workspaceRecord;
+    if (
+      !isObject(workspaceRecord)
+      || normalizeRepositoryIdentity(workspaceRecord.repository) !== normalizeRepositoryIdentity(handoff.repository)
+      || workspaceRecord.access !== 'managed'
+      || workspaceRecord.status !== 'active'
+      || workspaceRecord.integrationBranch !== handoff.integrationBranch
+    ) {
+      findings.push(finding('WORKSPACE_TARGET_NOT_ACTIVE_MANAGED', 'runtime.workspaceRecord'));
+    }
+  }
   if (runtime.currentPolicySha !== handoff.policySha) findings.push(finding('STALE_POLICY_SHA', 'runtime.currentPolicySha'));
   if (runtime.currentBaseSha !== handoff.baseSha) findings.push(finding('STALE_BASE_SHA', 'runtime.currentBaseSha'));
 
@@ -303,6 +315,9 @@ function scopeFindings(handoff, runtime, action) {
     : runtime.legacyAllowedPaths;
   if (!Array.isArray(allowedPaths) || allowedPaths.length === 0) {
     return changedPaths.length > 0 ? [finding('LEGACY_SCOPE_REQUIRES_HUMAN', 'runtime.legacyAllowedPaths')] : [];
+  }
+  if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION && allowedPaths.some((entry) => !validAllowedPath(entry))) {
+    return [finding('INVALID_LEGACY_ALLOWED_PATHS', 'runtime.legacyAllowedPaths')];
   }
   return changedPaths.filter((changedPath) => !pathAllowed(changedPath, allowedPaths))
     .map((changedPath) => finding('SCOPE_EXPANSION', changedPath));
@@ -369,16 +384,28 @@ export function evaluateTaskAction(input = {}) {
     if (action.forcePush !== false || action.historyRewrite !== false) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
   } else if (action.kind === 'review') {
     if (action.actorRole !== 'reviewer') findings.push(finding('INVALID_REVIEWER_ROLE', 'action.actorRole'));
+    const requiredCiReceipt = runtime.requiredCiReceipt;
     const requiredCiChecks = handoff.contractVersion === TASK_CONTRACT_VERSION
       ? handoff.requiredCiChecks
       : runtime.repositoryRequiredCiChecks;
+    const authoritativeRequiredCiChecks = isObject(requiredCiReceipt) && isUniqueNonEmptyStringArray(requiredCiReceipt.checks)
+      ? requiredCiReceipt.checks
+      : [];
+    const requiredCiReceiptValid = handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION
+      ? isUniqueNonEmptyStringArray(requiredCiChecks)
+      : isObject(requiredCiReceipt)
+        && ['repository-config', 'branch-protection'].includes(requiredCiReceipt.source)
+        && normalizeRepositoryIdentity(requiredCiReceipt.repository) === normalizeRepositoryIdentity(handoff.repository)
+        && requiredCiReceipt.integrationBranch === handoff.integrationBranch
+        && isUniqueNonEmptyStringArray(requiredCiChecks)
+        && samePathSet(requiredCiChecks, authoritativeRequiredCiChecks);
     const completedCiChecks = Array.isArray(runtime.ci?.checks) ? runtime.ci.checks : [];
     const completedCiByName = new Map(
       completedCiChecks
         .filter((check) => isObject(check) && isNonEmptyString(check.name))
         .map((check) => [check.name, check.status])
     );
-    const requiredCiSatisfied = isUniqueNonEmptyStringArray(requiredCiChecks)
+    const requiredCiSatisfied = requiredCiReceiptValid
       && runtime.ci?.headSha === runtime.currentHeadSha
       && runtime.ci?.status === 'green'
       && requiredCiChecks.every((name) => completedCiByName.get(name) === 'green');

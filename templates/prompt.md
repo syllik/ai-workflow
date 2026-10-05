@@ -21,7 +21,7 @@ New handoffs use `contractVersion: 2` and must carry the structured fields below
 - Publication: `allowed | forbidden`
 - Max correction batches: `0 | 1 | 2`
 
-The task branch, integration branch, and required CI check list must come from the resolved repository/workspace contract. The approval reference, allowed paths, publication permission, and correction limit must come from explicit upfront human approval. Issue/Project status is not approval. Missing approval, stale policy/base/head provenance, missing required CI identity, or scope expansion is `BLOCKED`; do not infer or repair authority.
+The task branch and integration branch must come from the resolved active managed workspace record. The required CI check list must come from authoritative repository configuration or branch-protection evidence and must be bound to the same repository/integration branch. The approval reference, allowed paths, publication permission, and correction limit must come from explicit upfront human approval. Issue/Project status is not approval. Missing approval, stale policy/base/head provenance, missing authoritative workspace/CI evidence, or scope expansion is `BLOCKED`; do not infer or repair authority.
 
 For ChipIn tasks, canonical identity is `owner/repository#issue`. The Issue title/body is specification/dependency authority, Organization Issue Fields are structured metadata, and Project #5 Status is workflow state. Trello is historical/read-only. For non-ChipIn tasks, preserve the supplied task identity and do not invent an Issue.
 

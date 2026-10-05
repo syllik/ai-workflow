@@ -49,6 +49,18 @@ function runtime(overrides = {}) {
     currentBaseSha: baseSha,
     currentHeadSha: headSha,
     currentBranch: taskBranch,
+    workspaceRecord: {
+      repository: 'syllik/ai-workflow',
+      access: 'managed',
+      status: 'active',
+      integrationBranch
+    },
+    requiredCiReceipt: {
+      source: 'repository-config',
+      repository: 'syllik/ai-workflow',
+      integrationBranch,
+      checks: requiredCiChecks
+    },
     publicationBatchesForRevision: 0,
     executionStatus: 'IMPLEMENTATION_COMPLETE',
     executionDiffDigest: diffDigest,
@@ -781,4 +793,58 @@ test('requires review scope to equal the complete authoritative diff', () => {
   });
   assert.equal(result.allowed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CHANGED_PATHS_MISMATCH'), true);
+});
+
+test('binds v2 execution to an active managed workspace record', () => {
+  for (const workspaceRecord of [
+    undefined,
+    { repository: 'syllik/ai-workflow', access: 'managed', status: 'onboarding', integrationBranch },
+    { repository: 'syllik/ai-workflow', access: 'read-only', status: 'active', integrationBranch },
+    { repository: 'ChipIn-one/chipin-backend', access: 'managed', status: 'active', integrationBranch }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ workspaceRecord }),
+      action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'WORKSPACE_TARGET_NOT_ACTIVE_MANAGED'), true);
+  }
+});
+
+test('binds handoff required checks to an authoritative repository receipt', () => {
+  for (const requiredCiReceipt of [
+    undefined,
+    { source: 'repository-config', repository: 'syllik/ai-workflow', integrationBranch, checks: ['lint'] },
+    { source: 'repository-config', repository: 'syllik/other', integrationBranch, checks: requiredCiChecks },
+    { source: 'untrusted', repository: 'syllik/ai-workflow', integrationBranch, checks: requiredCiChecks }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ requiredCiReceipt }),
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CI_NOT_GREEN_FOR_HEAD'), true);
+  }
+});
+
+test('fails closed for malformed legacy allowed-path evidence', () => {
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  for (const legacyAllowedPaths of [[null], ['src/*.js'], ['../FLOW.md']]) {
+    const result = evaluateTaskAction({
+      handoff: legacy,
+      runtime: runtime({ legacyAllowedPaths }),
+      action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'] }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_LEGACY_ALLOWED_PATHS'), true);
+  }
 });
