@@ -12,6 +12,7 @@ import {
 const policySha = 'a'.repeat(40);
 const baseSha = 'b'.repeat(40);
 const headSha = 'c'.repeat(40);
+const publishedHeadSha = 'e'.repeat(40);
 const diffDigest = 'd'.repeat(64);
 const taskBranch = 'policy/issue-47-vendor-neutral-role-contract';
 const integrationBranch = 'master';
@@ -49,6 +50,14 @@ function runtime(overrides = {}) {
     currentBaseSha: baseSha,
     currentHeadSha: headSha,
     currentBranch: taskBranch,
+    publishedRevision: {
+      source: 'trusted-publisher',
+      repository: 'syllik/ai-workflow',
+      taskBranch,
+      policySha,
+      baseSha,
+      headSha
+    },
     workspaceRecord: {
       repository: 'syllik/ai-workflow',
       access: 'managed',
@@ -879,4 +888,117 @@ test('rejects non-string repository and branch provenance fields', () => {
       .findings.some(({ code }) => code === 'INVALID_INTEGRATION_BRANCH'),
     true
   );
+});
+
+test('permits review and correction on the exact Trusted Publisher head', () => {
+  const publishedRuntime = runtime({
+    currentHeadSha: publishedHeadSha,
+    publishedRevision: {
+      source: 'trusted-publisher',
+      repository: 'syllik/ai-workflow',
+      taskBranch,
+      policySha,
+      baseSha,
+      headSha: publishedHeadSha
+    },
+    ci: { headSha: publishedHeadSha, status: 'green', checks: [{ name: 'verify', status: 'green' }] },
+    reviewInitiation: { kind: 'explicit-after-green-ci', headSha: publishedHeadSha, receiptId: 'user-comment:published' },
+    diffEvidence: { baseSha, headSha: publishedHeadSha, changedPaths: ['FLOW.md'], digest: diffDigest }
+  });
+
+  const review = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: publishedRuntime,
+    action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: publishedHeadSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+  });
+  assert.equal(review.allowed, true);
+
+  const correction = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: { ...publishedRuntime, reviewedHeadShas: [publishedHeadSha] },
+    action: {
+      kind: 'correct',
+      actorRole: 'executor',
+      expectedHeadSha: publishedHeadSha,
+      changedPaths: ['FLOW.md'],
+      findingsPackageCount: 1,
+      findingsHeadSha: publishedHeadSha
+    }
+  });
+  assert.equal(correction.allowed, true);
+});
+
+test('rejects post-publication actions without the exact Trusted Publisher receipt', () => {
+  for (const publishedRevision of [
+    undefined,
+    { source: 'trusted-publisher', repository: 'syllik/ai-workflow', taskBranch, policySha, baseSha, headSha },
+    { source: 'untrusted', repository: 'syllik/ai-workflow', taskBranch, policySha, baseSha, headSha: publishedHeadSha }
+  ]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({
+        currentHeadSha: publishedHeadSha,
+        publishedRevision,
+        ci: { headSha: publishedHeadSha, status: 'green', checks: [{ name: 'verify', status: 'green' }] },
+        reviewInitiation: { kind: 'explicit-after-green-ci', headSha: publishedHeadSha, receiptId: 'user-comment:published' },
+        diffEvidence: { baseSha, headSha: publishedHeadSha, changedPaths: ['FLOW.md'], digest: diffDigest }
+      }),
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: publishedHeadSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'PUBLISHED_REVISION_NOT_PINNED'), true);
+  }
+});
+
+test('requires executor mutations on the assigned task branch', () => {
+  for (const kind of ['execute', 'correct']) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({
+        currentBranch: integrationBranch,
+        reviewedHeadShas: kind === 'correct' ? [headSha] : []
+      }),
+      action: {
+        kind,
+        actorRole: 'executor',
+        expectedHeadSha: headSha,
+        changedPaths: ['FLOW.md'],
+        ...(kind === 'correct' ? { findingsPackageCount: 1, findingsHeadSha: headSha } : {})
+      }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'TASK_BRANCH_MISMATCH'), true);
+  }
+});
+
+test('permits correction publication from the current published revision head', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({
+      currentHeadSha: publishedHeadSha,
+      publishedRevision: {
+        source: 'trusted-publisher',
+        repository: 'syllik/ai-workflow',
+        taskBranch,
+        policySha,
+        baseSha,
+        headSha: publishedHeadSha
+      },
+      localValidation: { headSha: publishedHeadSha, status: 'passed', diffDigest },
+      diffEvidence: { baseSha, headSha: publishedHeadSha, changedPaths: ['FLOW.md'], digest: diffDigest }
+    }),
+    action: {
+      kind: 'publish',
+      actorRole: 'publisher',
+      destinationBranch: taskBranch,
+      pullRequestBaseBranch: integrationBranch,
+      expectedHeadSha: publishedHeadSha,
+      changedPaths: ['FLOW.md'],
+      commitCount: 1,
+      pushCount: 1,
+      forcePush: false,
+      historyRewrite: false
+    }
+  });
+  assert.equal(result.allowed, true);
 });

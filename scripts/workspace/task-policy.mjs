@@ -249,6 +249,20 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
   return { ...normalized, valid: findings.length === 0, findings };
 }
 
+function validPublishedRevision(handoff, runtime) {
+  const receipt = runtime.publishedRevision;
+  return handoff.contractVersion === TASK_CONTRACT_VERSION
+    && isObject(receipt)
+    && receipt.source === 'trusted-publisher'
+    && normalizeRepositoryIdentity(receipt.repository) === normalizeRepositoryIdentity(handoff.repository)
+    && receipt.taskBranch === handoff.taskBranch
+    && receipt.policySha === handoff.policySha
+    && receipt.baseSha === handoff.baseSha
+    && isNonEmptyString(receipt.headSha)
+    && SHA_PATTERN.test(receipt.headSha)
+    && receipt.headSha === runtime.currentHeadSha;
+}
+
 function currentShaFindings(handoff, runtime, action) {
   const findings = [];
   if (handoff.contractVersion === TASK_CONTRACT_VERSION) {
@@ -266,6 +280,10 @@ function currentShaFindings(handoff, runtime, action) {
     ) {
       findings.push(finding('WORKSPACE_TARGET_NOT_ACTIVE_MANAGED', 'runtime.workspaceRecord'));
     }
+
+    if (['execute', 'correct'].includes(action.kind) && runtime.currentBranch !== handoff.taskBranch) {
+      findings.push(finding('TASK_BRANCH_MISMATCH', 'runtime.currentBranch'));
+    }
   }
   if (runtime.currentPolicySha !== handoff.policySha) findings.push(finding('STALE_POLICY_SHA', 'runtime.currentPolicySha'));
   if (runtime.currentBaseSha !== handoff.baseSha) findings.push(finding('STALE_BASE_SHA', 'runtime.currentBaseSha'));
@@ -281,11 +299,30 @@ function currentShaFindings(handoff, runtime, action) {
     )
   ) {
     findings.push(finding('ACTION_HEAD_NOT_PINNED', 'action.expectedHeadSha'));
+    return findings;
+  }
+
+  if (action.expectedHeadSha !== undefined && runtime.currentHeadSha !== action.expectedHeadSha) {
+    findings.push(finding('STALE_HEAD_SHA', 'action.expectedHeadSha'));
+    return findings;
+  }
+
+  if (handoff.contractVersion === TASK_CONTRACT_VERSION) {
+    if (action.kind === 'execute' && runtime.currentHeadSha !== handoff.headSha) {
+      findings.push(finding('STALE_HEAD_SHA', 'handoff.headSha'));
+    } else if (['review', 'correct'].includes(action.kind) && !validPublishedRevision(handoff, runtime)) {
+      findings.push(finding('PUBLISHED_REVISION_NOT_PINNED', 'runtime.publishedRevision'));
+    } else if (
+      action.kind === 'publish'
+      && runtime.currentHeadSha !== handoff.headSha
+      && !validPublishedRevision(handoff, runtime)
+    ) {
+      findings.push(finding('PUBLISHED_REVISION_NOT_PINNED', 'runtime.publishedRevision'));
+    }
   } else if (handoff.headSha !== undefined && runtime.currentHeadSha !== handoff.headSha) {
     findings.push(finding('STALE_HEAD_SHA', 'handoff.headSha'));
-  } else if (action.expectedHeadSha !== undefined && runtime.currentHeadSha !== action.expectedHeadSha) {
-    findings.push(finding('STALE_HEAD_SHA', 'action.expectedHeadSha'));
   }
+
   return findings;
 }
 
