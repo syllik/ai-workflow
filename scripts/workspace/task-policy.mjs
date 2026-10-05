@@ -277,7 +277,11 @@ function scopeFindings(handoff, runtime, action) {
     .map((changedPath) => finding('SCOPE_EXPANSION', changedPath));
 }
 
-export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {} }) {
+export function evaluateTaskAction(input = {}) {
+  if (!isObject(input)) {
+    return { allowed: false, findings: [finding('INVALID_POLICY_EVALUATION_INPUT', 'input')], compatibility: 'invalid' };
+  }
+  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {} } = input;
   const validation = validateTaskHandoff(inputHandoff, policy);
   if (!validation.valid) return { allowed: false, findings: validation.findings, compatibility: validation.compatibility };
   if (!isObject(runtime)) {
@@ -312,6 +316,15 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
     if (action.forcePush !== false || action.historyRewrite !== false) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
   } else if (action.kind === 'review') {
     if (action.actorRole !== 'reviewer') findings.push(finding('INVALID_REVIEWER_ROLE', 'action.actorRole'));
+    if (
+      !isNonEmptyString(runtime.currentHeadSha)
+      || !SHA_PATTERN.test(runtime.currentHeadSha)
+      || !isNonEmptyString(action.expectedHeadSha)
+      || !SHA_PATTERN.test(action.expectedHeadSha)
+      || action.expectedHeadSha !== runtime.currentHeadSha
+    ) {
+      findings.push(finding('REVIEW_HEAD_NOT_PINNED', 'action.expectedHeadSha'));
+    }
     if (policy.review.requiresGreenCi && (runtime.ci?.headSha !== runtime.currentHeadSha || runtime.ci?.status !== 'green')) {
       findings.push(finding('CI_NOT_GREEN_FOR_HEAD', 'runtime.ci'));
     }
@@ -322,7 +335,7 @@ export function evaluateTaskAction({ handoff: inputHandoff, policy = CANONICAL_E
     }
     if (!isNonEmptyString(runtime.executorContextId) || !isNonEmptyString(runtime.reviewerContextId)) findings.push(finding('REVIEW_INDEPENDENCE_UNPROVEN', 'runtime.reviewerContextId'));
     else if (runtime.executorContextId === runtime.reviewerContextId) findings.push(finding('REVIEW_NOT_INDEPENDENT', 'runtime.reviewerContextId'));
-    if (action.mutationRequested === true) findings.push(finding('REVIEWER_MUTATION_FORBIDDEN', 'action.mutationRequested'));
+    if (action.mutationRequested !== false) findings.push(finding('REVIEWER_MUTATION_FORBIDDEN', 'action.mutationRequested'));
   } else if (action.kind === 'correct') {
     if (action.actorRole !== 'executor') findings.push(finding('INVALID_CORRECTION_ROLE', 'action.actorRole'));
     if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {

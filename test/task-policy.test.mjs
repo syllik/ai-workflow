@@ -567,3 +567,44 @@ test('compares GitHub repository identities case-insensitively', () => {
   });
   assert.equal(result.allowed, true);
 });
+
+test('fails closed for a null policy-evaluation envelope', () => {
+  const result = evaluateTaskAction(null);
+  assert.equal(result.allowed, false);
+  assert.equal(result.compatibility, 'invalid');
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_POLICY_EVALUATION_INPUT'), true);
+});
+
+test('requires a concrete pinned head before legacy review', () => {
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  const result = evaluateTaskAction({
+    handoff: legacy,
+    runtime: runtime({
+      currentHeadSha: undefined,
+      ci: { headSha: undefined, status: 'green' },
+      legacyAllowedPaths: ['FLOW.md']
+    }),
+    action: { kind: 'review', actorRole: 'reviewer', changedPaths: [], mutationRequested: false }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HEAD_NOT_PINNED'), true);
+});
+
+test('requires explicit read-only intent for reviews', () => {
+  for (const mutationRequested of [undefined, null, true, 'true', 0]) {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime(),
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested }
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'REVIEWER_MUTATION_FORBIDDEN'), true);
+  }
+});
