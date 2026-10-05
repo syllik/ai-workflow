@@ -15,6 +15,7 @@ const headSha = 'c'.repeat(40);
 const diffDigest = 'd'.repeat(64);
 const taskBranch = 'policy/issue-47-vendor-neutral-role-contract';
 const integrationBranch = 'master';
+const requiredCiChecks = ['verify'];
 
 function handoff(overrides = {}) {
   return {
@@ -23,6 +24,7 @@ function handoff(overrides = {}) {
     repository: 'syllik/ai-workflow',
     taskBranch,
     integrationBranch,
+    requiredCiChecks,
     role: 'executor',
     policySha,
     baseSha,
@@ -56,7 +58,7 @@ function runtime(overrides = {}) {
     reviewInProgressHeadShas: [],
     executorContextId: 'executor-1',
     reviewerContextId: 'reviewer-1',
-    ci: { headSha, status: 'green' },
+    ci: { headSha, status: 'green', checks: [{ name: 'verify', status: 'green' }] },
     reviewInitiation: { kind: 'explicit-after-green-ci', headSha, receiptId: 'user-comment:1' },
     diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md'], digest: diffDigest },
     ...overrides
@@ -152,7 +154,7 @@ describe('deterministic task actions', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime({ reviewedHeadShas: [headSha] }),
-      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'DUPLICATE_REVIEW'), true);
@@ -162,7 +164,7 @@ describe('deterministic task actions', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime({ reviewInProgressHeadShas: [headSha] }),
-      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'DUPLICATE_REVIEW'), true);
@@ -450,7 +452,7 @@ test('requires valid review-history receipts before starting review', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime(overrides),
-      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'REVIEW_HISTORY_UNAVAILABLE'), true);
@@ -605,7 +607,7 @@ test('requires a concrete pinned head before legacy review', () => {
     handoff: legacy,
     runtime: runtime({
       currentHeadSha: undefined,
-      ci: { headSha: undefined, status: 'green' },
+      ci: { headSha: undefined, status: 'green', checks: [{ name: 'verify', status: 'green' }] },
       legacyAllowedPaths: ['FLOW.md']
     }),
     action: { kind: 'review', actorRole: 'reviewer', changedPaths: [], mutationRequested: false }
@@ -619,7 +621,7 @@ test('requires explicit read-only intent for reviews', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime(),
-      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested }
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'REVIEWER_MUTATION_FORBIDDEN'), true);
@@ -722,9 +724,61 @@ test('requires explicit post-CI review initiation evidence', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime({ reviewInitiation }),
-      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: [], mutationRequested: false }
+      action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'REVIEW_NOT_EXPLICITLY_INITIATED'), true);
   }
+});
+
+test('requires a concrete pinned head for legacy execution', () => {
+  const legacy = {
+    approvalReference: 'human-approved-existing-task',
+    policySha,
+    baseSha,
+    assembledContextBudgetBytes: 32768,
+    assembledContextActualBytes: 4096,
+    assembledContextCheck: 'PASSED'
+  };
+  const result = evaluateTaskAction({
+    handoff: legacy,
+    runtime: runtime({
+      currentHeadSha: undefined,
+      diffEvidence: { baseSha, headSha: undefined, changedPaths: ['FLOW.md'], digest: diffDigest },
+      legacyAllowedPaths: ['FLOW.md']
+    }),
+    action: { kind: 'execute', actorRole: 'executor', changedPaths: ['FLOW.md'] }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'ACTION_HEAD_NOT_PINNED'), true);
+});
+
+test('requires the repository-defined required CI check set before review', () => {
+  const missingGate = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ ci: { headSha, status: 'green', checks: [{ name: 'lint', status: 'green' }] } }),
+    action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+  });
+  assert.equal(missingGate.allowed, false);
+  assert.equal(missingGate.findings.some(({ code }) => code === 'CI_NOT_GREEN_FOR_HEAD'), true);
+
+  const failedGate = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({ ci: { headSha, status: 'green', checks: [{ name: 'verify', status: 'failed' }] } }),
+    action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+  });
+  assert.equal(failedGate.allowed, false);
+  assert.equal(failedGate.findings.some(({ code }) => code === 'CI_NOT_GREEN_FOR_HEAD'), true);
+});
+
+test('requires review scope to equal the complete authoritative diff', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({
+      diffEvidence: { baseSha, headSha, changedPaths: ['FLOW.md', 'global/reviewer.md'], digest: diffDigest }
+    }),
+    action: { kind: 'review', actorRole: 'reviewer', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], mutationRequested: false }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CHANGED_PATHS_MISMATCH'), true);
 });

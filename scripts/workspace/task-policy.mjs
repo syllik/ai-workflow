@@ -29,7 +29,7 @@ const PUBLISHER_KEYS = new Set(['kind', 'publicationBatchesPerRevision', 'histor
 const REVIEW_KEYS = new Set(['reviewsPerHeadSha', 'requiresGreenCi', 'findings', 'reviewerMutations']);
 const CORRECTION_KEYS = new Set(['authorization', 'maxBatches']);
 const HANDOFF_V2_KEYS = new Set([
-  'contractVersion', 'taskId', 'repository', 'taskBranch', 'integrationBranch', 'role',
+  'contractVersion', 'taskId', 'repository', 'taskBranch', 'integrationBranch', 'requiredCiChecks', 'role',
   'policySha', 'baseSha', 'headSha', 'approval',
   'assembledContextBudgetBytes', 'assembledContextActualBytes', 'assembledContextCheck'
 ]);
@@ -58,6 +58,13 @@ function normalizeRepositoryIdentity(value) {
 
 function isShaHistory(value) {
   return Array.isArray(value) && value.every((sha) => typeof sha === 'string' && SHA_PATTERN.test(sha));
+}
+
+function isUniqueNonEmptyStringArray(value) {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every(isNonEmptyString)
+    && new Set(value).size === value.length;
 }
 
 function isConcretePathList(value, { nonEmpty = false } = {}) {
@@ -222,6 +229,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
   if (!REPOSITORY_PATTERN.test(value.repository ?? '')) findings.push(finding('INVALID_HANDOFF_REPOSITORY', 'handoff.repository'));
   if (!TASK_BRANCH_PATTERN.test(value.taskBranch ?? '')) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
   if (!BRANCH_PATTERN.test(value.integrationBranch ?? '')) findings.push(finding('INVALID_INTEGRATION_BRANCH', 'handoff.integrationBranch'));
+  if (!isUniqueNonEmptyStringArray(value.requiredCiChecks)) findings.push(finding('INVALID_REQUIRED_CI_CHECKS', 'handoff.requiredCiChecks'));
   if (value.role !== 'executor') findings.push(finding('INVALID_HANDOFF_ROLE', 'handoff.role'));
 
   if (!isObject(value.approval)) {
@@ -249,13 +257,28 @@ function currentShaFindings(handoff, runtime, action) {
   ) findings.push(finding('REPOSITORY_MISMATCH', 'runtime.currentRepository'));
   if (runtime.currentPolicySha !== handoff.policySha) findings.push(finding('STALE_POLICY_SHA', 'runtime.currentPolicySha'));
   if (runtime.currentBaseSha !== handoff.baseSha) findings.push(finding('STALE_BASE_SHA', 'runtime.currentBaseSha'));
-  if (handoff.headSha !== undefined && runtime.currentHeadSha !== handoff.headSha) findings.push(finding('STALE_HEAD_SHA', 'handoff.headSha'));
-  else if (action.expectedHeadSha !== undefined && runtime.currentHeadSha !== action.expectedHeadSha) findings.push(finding('STALE_HEAD_SHA', 'action.expectedHeadSha'));
+
+  const requiresPinnedHead = ['execute', 'correct', 'publish', 'review'].includes(action.kind);
+  if (
+    requiresPinnedHead
+    && (
+      !isNonEmptyString(runtime.currentHeadSha)
+      || !SHA_PATTERN.test(runtime.currentHeadSha)
+      || !isNonEmptyString(action.expectedHeadSha)
+      || !SHA_PATTERN.test(action.expectedHeadSha)
+    )
+  ) {
+    findings.push(finding('ACTION_HEAD_NOT_PINNED', 'action.expectedHeadSha'));
+  } else if (handoff.headSha !== undefined && runtime.currentHeadSha !== handoff.headSha) {
+    findings.push(finding('STALE_HEAD_SHA', 'handoff.headSha'));
+  } else if (action.expectedHeadSha !== undefined && runtime.currentHeadSha !== action.expectedHeadSha) {
+    findings.push(finding('STALE_HEAD_SHA', 'action.expectedHeadSha'));
+  }
   return findings;
 }
 
 function scopeFindings(handoff, runtime, action) {
-  const requiresExplicitChangedPaths = ['execute', 'correct', 'publish'].includes(action.kind);
+  const requiresExplicitChangedPaths = ['execute', 'correct', 'publish', 'review'].includes(action.kind);
   if (!isConcretePathList(action.changedPaths, { nonEmpty: requiresExplicitChangedPaths })) {
     return requiresExplicitChangedPaths ? [finding('INVALID_CHANGED_PATHS', 'action.changedPaths')] : [];
   }
@@ -346,16 +369,20 @@ export function evaluateTaskAction(input = {}) {
     if (action.forcePush !== false || action.historyRewrite !== false) findings.push(finding('PUBLISHED_HISTORY_REWRITE_FORBIDDEN', 'action'));
   } else if (action.kind === 'review') {
     if (action.actorRole !== 'reviewer') findings.push(finding('INVALID_REVIEWER_ROLE', 'action.actorRole'));
-    if (
-      !isNonEmptyString(runtime.currentHeadSha)
-      || !SHA_PATTERN.test(runtime.currentHeadSha)
-      || !isNonEmptyString(action.expectedHeadSha)
-      || !SHA_PATTERN.test(action.expectedHeadSha)
-      || action.expectedHeadSha !== runtime.currentHeadSha
-    ) {
-      findings.push(finding('REVIEW_HEAD_NOT_PINNED', 'action.expectedHeadSha'));
-    }
-    if (policy.review.requiresGreenCi && (runtime.ci?.headSha !== runtime.currentHeadSha || runtime.ci?.status !== 'green')) {
+    const requiredCiChecks = handoff.contractVersion === TASK_CONTRACT_VERSION
+      ? handoff.requiredCiChecks
+      : runtime.repositoryRequiredCiChecks;
+    const completedCiChecks = Array.isArray(runtime.ci?.checks) ? runtime.ci.checks : [];
+    const completedCiByName = new Map(
+      completedCiChecks
+        .filter((check) => isObject(check) && isNonEmptyString(check.name))
+        .map((check) => [check.name, check.status])
+    );
+    const requiredCiSatisfied = isUniqueNonEmptyStringArray(requiredCiChecks)
+      && runtime.ci?.headSha === runtime.currentHeadSha
+      && runtime.ci?.status === 'green'
+      && requiredCiChecks.every((name) => completedCiByName.get(name) === 'green');
+    if (policy.review.requiresGreenCi && !requiredCiSatisfied) {
       findings.push(finding('CI_NOT_GREEN_FOR_HEAD', 'runtime.ci'));
     }
     const reviewInitiation = runtime.reviewInitiation;
