@@ -12,6 +12,23 @@ budgets:
   assembled execution context: 32768
   result.md: 4096
   human plan.md: 16384
+executionPolicy:
+  contractVersion: 2
+  roles: [planner, architect, executor, reviewer, auditor]
+  modelSelection: risk-capability
+  publisher:
+    kind: trusted
+    publicationBatchesPerRevision: 1
+    historyRewrite: forbidden
+  review:
+    reviewsPerHeadSha: 1
+    requiresGreenCi: true
+    findings: consolidated
+    reviewerMutations: forbidden
+  corrections:
+    authorization: upfront-or-legacy-human
+    maxBatches: 2
+  merge: human-only
 gitLifecycle:
   canonicalBranch: master
   normalMergeMethod: squash

@@ -1,7 +1,6 @@
 # Execution result
 
-Use this for a persisted executor task. A separate result file is optional for a
-lightweight task.
+Use for a persisted executor task; a separate result is optional for lightweight work.
 
 ## Status
 
@@ -9,17 +8,9 @@ Use `IMPLEMENTATION_COMPLETE` or `BLOCKED`.
 
 ## Task identity and provenance
 
-Copy the supplied task identity unchanged from the prepared task prompt; do not
-infer, substitute, or fabricate a GitHub Issue identity. For ChipIn tasks,
-canonical task identity is `owner/repository#issue`. For non-ChipIn tasks,
-preserve the supplied task-specific identity unchanged; do not invent a GitHub
-Issue.
+Copy supplied values unchanged; do not infer or replace them. For ChipIn, canonical task identity is `owner/repository#issue`; for non-ChipIn preserve the supplied identity. If `contractVersion` was absent, record `legacy-v1`; do not promote legacy authority to v2.
 
-Copy the supplied Policy SHA unchanged from the prepared task prompt; do not
-infer or substitute it.
-
-Copy the supplied approval reference unchanged from the prepared task prompt; do not infer, invent, derive, normalize, or replace it.
-
+- Contract version / compatibility:
 - Task identity:
 - Policy SHA:
 - Repository:
@@ -27,6 +18,9 @@ Copy the supplied approval reference unchanged from the prepared task prompt; do
 - Base SHA:
 - Head SHA:
 - Scope / approval reference:
+- Publication permission:
+- Max correction batches:
+- Correction batches used:
 
 ## Done
 

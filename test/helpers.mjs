@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { CANONICAL_EXECUTION_POLICY } from '../scripts/workspace/task-policy.mjs';
 
 export const expectedProjects = [
   { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'active', integrationBranch: 'master', contextPath: '.ai/context.md' },
@@ -65,6 +66,7 @@ export function fixtureManifest(overrides = {}) {
     schemaVersion: 2,
     canonicalRoot: '~/Desktop/WORK',
     budgets: { ...fixtureBudgets },
+    executionPolicy: overrides.executionPolicy ?? structuredClone(CANONICAL_EXECUTION_POLICY),
     gitLifecycle: overrides.gitLifecycle ?? {
       ...fixtureGitLifecycle,
       repositories: lifecycleRepositories

@@ -2,10 +2,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { ASSEMBLED_CONTEXT_BUDGET_BYTES, validateExecutionPolicyConfig } from './task-policy.mjs';
 
 export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
 export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY = 'assembled execution context';
-export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET = 32768;
+export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET = ASSEMBLED_CONTEXT_BUDGET_BYTES;
 
 export const HARD_BUDGETS = Object.freeze({
   'AI.md': 1024,
@@ -21,7 +22,7 @@ export const HARD_BUDGETS = Object.freeze({
   'human plan.md': 16384
 });
 
-const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'gitLifecycle', 'projects']);
+const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'executionPolicy', 'gitLifecycle', 'projects']);
 const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
 const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const GIT_LIFECYCLE_KEYS = new Set(['canonicalBranch', 'normalMergeMethod', 'productionPromotion', 'temporaryIssueBranchPattern', 'repositories']);
@@ -237,6 +238,7 @@ export function validateManifest(value) {
     }
   }
 
+  findings.push(...validateExecutionPolicyConfig(value.executionPolicy));
   validateGitLifecycle(value.gitLifecycle, value.projects, findings);
 
   if (!Array.isArray(value.projects)) {
