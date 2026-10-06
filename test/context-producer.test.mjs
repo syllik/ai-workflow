@@ -44,6 +44,10 @@ function sourceByPath(value, path) {
   return value.sources.find((source) => source.path === path);
 }
 
+function expectedSourceByPath(value, path) {
+  return value.expectedSources.find((source) => source.path === path);
+}
+
 test('builds a deterministic minimal handoff with complete expected sources, exact dependency SHA and UTF-8 byte provenance', () => {
   const first = buildTaskContextPackage(input());
   const second = buildTaskContextPackage(input());
@@ -70,6 +74,28 @@ test('requires a non-empty explicit expected-source set', () => {
   const result = buildTaskContextPackage(input({ expectedSources: [] }));
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_EXPECTED_SOURCES_UNAVAILABLE'), true);
+});
+
+test('binds every policy, role, and target source to the single policySha', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  sourceByPath(value, 'global/executor.md').revisionSha = stale;
+  sourceByPath(value, 'global/executor.md').expectedRevisionSha = stale;
+  expectedSourceByPath(value, 'global/executor.md').revisionSha = stale;
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expected, actual }) =>
+    code === 'CONTEXT_POLICY_SHA_MISMATCH' && expected === policySha && actual === stale), true);
+});
+
+test('rejects duplicate actual sources even when their metadata key is identical', () => {
+  const value = input();
+  const duplicate = { ...sourceByPath(value, 'common/specs/dashboard.md'), content: '**DSH-001** conflicting body\n' };
+  value.sources.push(duplicate);
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_DUPLICATE'), true);
+  assert.equal(result.manifest.sources.filter(({ path }) => path === 'common/specs/dashboard.md').length, 1);
 });
 
 test('blocks unavailable required dependency context', () => {

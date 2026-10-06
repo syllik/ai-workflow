@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const POLICY_BOUND_KINDS = new Set(['policy', 'role', 'target']);
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -158,12 +159,39 @@ export function buildTaskContextPackage(input = {}) {
   }
 
   const sources = [];
+  const seenSources = new Set();
   if (!Array.isArray(input.sources) || input.sources.length === 0) {
     findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
   } else {
     input.sources.forEach((source, index) => {
       const normalized = normalizeSource(source, index, findings);
-      if (normalized) sources.push(normalized);
+      if (!normalized) return;
+      const key = sourceKey(normalized);
+      if (seenSources.has(key)) {
+        findings.push(finding('CONTEXT_SOURCE_DUPLICATE', `sources.${index}`));
+        return;
+      }
+      seenSources.add(key);
+      sources.push(normalized);
+    });
+  }
+
+  if (validSha(input.policySha)) {
+    expectedSources.forEach((source, index) => {
+      if (POLICY_BOUND_KINDS.has(source.kind) && source.revisionSha !== input.policySha) {
+        findings.push(finding('CONTEXT_POLICY_SHA_MISMATCH', `expectedSources.${index}.revisionSha`, {
+          expected: input.policySha,
+          actual: source.revisionSha
+        }));
+      }
+    });
+    sources.forEach((source, index) => {
+      if (POLICY_BOUND_KINDS.has(source.kind) && source.revisionSha !== input.policySha) {
+        findings.push(finding('CONTEXT_POLICY_SHA_MISMATCH', `sources.${index}.revisionSha`, {
+          expected: input.policySha,
+          actual: source.revisionSha
+        }));
+      }
     });
   }
 
