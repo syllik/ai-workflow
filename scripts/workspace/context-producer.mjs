@@ -1,10 +1,18 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
 const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
+const CANONICAL_ROLE_PATHS = new Set([
+  'global/planner.md',
+  'global/architect.md',
+  'global/executor.md',
+  'global/reviewer.md',
+  'global/auditor.md'
+]);
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -42,8 +50,12 @@ function validateCanonicalExpectedSources(expectedSources, policySha, findings) 
   }
 
   const roleSources = expectedSources.filter((source) => source.kind === 'role' && source.revisionSha === policySha);
-  if (roleSources.length !== 1) {
-    findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', { actualCount: roleSources.length }));
+  const canonicalRoleSources = roleSources.filter((source) => CANONICAL_ROLE_PATHS.has(source.path));
+  if (roleSources.length !== 1 || canonicalRoleSources.length !== 1) {
+    findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', {
+      actualCount: roleSources.length,
+      canonicalCount: canonicalRoleSources.length
+    }));
   }
 
   const targetAgents = expectedSources.filter((source) => source.kind === 'target' && source.path === 'AGENTS.md');
@@ -63,6 +75,53 @@ function validateCanonicalExpectedSources(expectedSources, policySha, findings) 
     )
   ) {
     findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target'));
+  }
+}
+
+function validateRequiredContextDependencies(sources, dependencies, findings) {
+  const workspaceSource = sources.find((source) => source.kind === 'policy' && source.path === 'workspace.yaml');
+  const targetAgents = sources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
+  const targetContext = sources.find((source) => source.kind === 'target' && source.path === '.ai/context.md');
+  if (!workspaceSource || !targetAgents || !targetContext) return;
+
+  let workspace;
+  try {
+    workspace = parse(workspaceSource.content);
+  } catch {
+    findings.push(finding('CONTEXT_WORKSPACE_REGISTRY_UNAVAILABLE', 'sources.workspace.yaml'));
+    return;
+  }
+
+  const projects = Array.isArray(workspace?.projects) ? workspace.projects : [];
+  const targetRepository = normalizeRepository(targetAgents.repository);
+  const targetRecords = projects.filter((project) =>
+    normalizeRepository(project?.repository) === targetRepository
+  );
+  if (targetRecords.length !== 1) {
+    findings.push(finding('CONTEXT_TARGET_REGISTRY_UNAVAILABLE', 'workspace.projects', {
+      repository: targetAgents.repository,
+      actualCount: targetRecords.length
+    }));
+    return;
+  }
+
+  const requiredDependencies = targetRecords[0].contextDependencies ?? [];
+  if (!Array.isArray(requiredDependencies)) {
+    findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', 'workspace.contextDependencies'));
+    return;
+  }
+
+  for (const [index, dependency] of requiredDependencies.entries()) {
+    const repository = dependency?.repository;
+    if (typeof repository !== 'string' || repository.trim().length === 0) {
+      findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', `workspace.contextDependencies.${index}`));
+      continue;
+    }
+    if (!dependencies.some((actual) =>
+      normalizeRepository(actual.repository) === normalizeRepository(repository)
+    )) {
+      findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `workspace.contextDependencies.${repository}`));
+    }
   }
 }
 
@@ -216,6 +275,8 @@ export function buildTaskContextPackage(input = {}) {
       sources.push(normalized);
     });
   }
+
+  validateRequiredContextDependencies(sources, normalizedDependencies, findings);
 
   if (validSha(input.policySha)) {
     expectedSources.forEach((source, index) => {

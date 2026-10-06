@@ -11,7 +11,15 @@ function canonicalSources() {
   return [
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
-    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', revisionSha: policySha, expectedRevisionSha: policySha, content: 'schemaVersion: 2\n' },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', revisionSha: policySha, expectedRevisionSha: policySha, content: [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      '    contextDependencies:',
+      '      - repository: ChipIn-one/chipin-knowledge-base',
+      ''
+    ].join('\n') },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'projects/index.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# projects\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/workflow.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# roles\n' },
     { kind: 'role', repository: 'syllik/ai-workflow', path: 'global/executor.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# executor\n' },
@@ -101,6 +109,28 @@ test('requires one selected role and one coherent target instruction pair', () =
   const targetResult = buildTaskContextPackage(mixedTarget);
   assert.equal(targetResult.passed, false);
   assert.equal(targetResult.findings.some(({ code }) => code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'), true);
+});
+
+test('rejects an arbitrary policy-revision file as the selected role', () => {
+  const value = input();
+  sourceByPath(value, 'global/executor.md').path = 'README.md';
+  expectedSourceByPath(value, 'global/executor.md').path = 'README.md';
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
+test('requires contextDependencies declared by the pinned target workspace record', () => {
+  const value = input();
+  value.dependencies = [];
+  value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.expectedSources = value.expectedSources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.requirementIds = [];
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
+    && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
 });
 
 test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {
