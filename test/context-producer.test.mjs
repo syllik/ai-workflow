@@ -76,6 +76,33 @@ test('requires a non-empty explicit expected-source set', () => {
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_EXPECTED_SOURCES_UNAVAILABLE'), true);
 });
 
+test('rejects a caller-declared subset that omits a canonical mandatory identity', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ path }) => path !== 'AI.md');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'AI.md');
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_CANONICAL_SOURCE_UNAVAILABLE' && path === 'canonical.policy.AI.md'), true);
+});
+
+test('requires one selected role and one coherent target instruction pair', () => {
+  const missingRole = input();
+  missingRole.sources = missingRole.sources.filter(({ kind }) => kind !== 'role');
+  missingRole.expectedSources = missingRole.expectedSources.filter(({ kind }) => kind !== 'role');
+  const roleResult = buildTaskContextPackage(missingRole);
+  assert.equal(roleResult.passed, false);
+  assert.equal(roleResult.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+
+  const mixedTarget = input();
+  expectedSourceByPath(mixedTarget, '.ai/context.md').revisionSha = baseSha;
+  sourceByPath(mixedTarget, '.ai/context.md').revisionSha = baseSha;
+  sourceByPath(mixedTarget, '.ai/context.md').expectedRevisionSha = baseSha;
+  const targetResult = buildTaskContextPackage(mixedTarget);
+  assert.equal(targetResult.passed, false);
+  assert.equal(targetResult.findings.some(({ code }) => code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'), true);
+});
+
 test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {
   const stale = 'e'.repeat(40);
   const value = input();
@@ -100,6 +127,24 @@ test('rejects duplicate actual sources even when their metadata key is identical
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_DUPLICATE'), true);
   assert.equal(result.manifest.sources.filter(({ path }) => path === 'common/specs/dashboard.md').length, 1);
+});
+
+test('treats GitHub repository casing aliases as the same source identity', () => {
+  const value = input();
+  const original = sourceByPath(value, 'common/specs/dashboard.md');
+  value.sources.push({
+    ...original,
+    repository: original.repository.toLowerCase(),
+    content: '**DSH-001** conflicting case-alias body\n'
+  });
+  value.expectedSources.push({
+    ...expectedSourceByPath(value, 'common/specs/dashboard.md'),
+    repository: original.repository.toLowerCase()
+  });
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) =>
+    code === 'CONTEXT_EXPECTED_SOURCE_DUPLICATE' || code === 'CONTEXT_SOURCE_DUPLICATE'), true);
 });
 
 test('rejects undeclared actual sources outside the expected-source set', () => {

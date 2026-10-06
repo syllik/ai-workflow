@@ -4,6 +4,7 @@ import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
+const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -23,8 +24,46 @@ function uniqueStrings(value) {
     && new Set(value).size === value.length;
 }
 
+function normalizeRepository(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
 function sourceKey(source) {
-  return [source.kind, source.repository, source.path, source.revisionSha].join('\0');
+  return [source.kind, normalizeRepository(source.repository), source.path, source.revisionSha].join('\0');
+}
+
+function validateCanonicalExpectedSources(expectedSources, policySha, findings) {
+  if (!validSha(policySha)) return;
+
+  for (const path of CANONICAL_POLICY_PATHS) {
+    if (!expectedSources.some((source) => source.kind === 'policy' && source.path === path && source.revisionSha === policySha)) {
+      findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', `canonical.policy.${path}`));
+    }
+  }
+
+  const roleSources = expectedSources.filter((source) => source.kind === 'role' && source.revisionSha === policySha);
+  if (roleSources.length !== 1) {
+    findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', { actualCount: roleSources.length }));
+  }
+
+  const targetAgents = expectedSources.filter((source) => source.kind === 'target' && source.path === 'AGENTS.md');
+  const targetContexts = expectedSources.filter((source) => source.kind === 'target' && source.path === '.ai/context.md');
+  if (targetAgents.length !== 1) {
+    findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target.AGENTS.md', { actualCount: targetAgents.length }));
+  }
+  if (targetContexts.length !== 1) {
+    findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target..ai/context.md', { actualCount: targetContexts.length }));
+  }
+  if (
+    targetAgents.length === 1
+    && targetContexts.length === 1
+    && (
+      normalizeRepository(targetAgents[0].repository) !== normalizeRepository(targetContexts[0].repository)
+      || targetAgents[0].revisionSha !== targetContexts[0].revisionSha
+    )
+  ) {
+    findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target'));
+  }
 }
 
 function normalizeExpectedSource(source, index, findings) {
@@ -131,6 +170,8 @@ export function buildTaskContextPackage(input = {}) {
       expectedSources.push(normalized);
     });
   }
+
+  validateCanonicalExpectedSources(expectedSources, input.policySha, findings);
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
