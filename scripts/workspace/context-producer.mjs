@@ -46,7 +46,7 @@ function normalizeSource(source, index, findings) {
   if (validSha(source.revisionSha) && validSha(source.expectedRevisionSha) && source.revisionSha !== source.expectedRevisionSha) {
     findings.push(finding('CONTEXT_SOURCE_STALE', prefix, { expected: source.expectedRevisionSha, actual: source.revisionSha }));
   }
-  if (typeof source.content !== 'string' || source.content.length === 0) {
+  if (typeof source.content !== 'string' || source.content.trim().length === 0) {
     findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', `${prefix}.content`));
     structurallyValid = false;
   }

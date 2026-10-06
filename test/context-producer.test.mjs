@@ -41,6 +41,16 @@ test('blocks unavailable required dependency context', () => {
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'), true);
 });
 
+test('blocks whitespace-only required source content without rewriting the original body', () => {
+  const value = input();
+  value.sources[1].content = ' \n\t ';
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_SOURCE_UNAVAILABLE' && path === 'sources.1.content'), true);
+  assert.equal(result.assembledContext.includes(' \n\t '), true);
+});
+
 test('blocks stale source and dependency revisions', () => {
   const stale = 'e'.repeat(40);
   const value = input();
