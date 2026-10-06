@@ -41,14 +41,22 @@ test('blocks unavailable required dependency context', () => {
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'), true);
 });
 
-test('blocks whitespace-only required source content without rewriting the original body', () => {
+test('blocks whitespace-only required source content', () => {
   const value = input();
   value.sources[1].content = ' \n\t ';
   const result = buildTaskContextPackage(value);
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code, path }) =>
     code === 'CONTEXT_SOURCE_UNAVAILABLE' && path === 'sources.1.content'), true);
-  assert.equal(result.assembledContext.includes(' \n\t '), true);
+});
+
+test('preserves original whitespace for valid source hashing and assembly', () => {
+  const value = input();
+  value.sources[1].content = ' \n**DSH-001** behavior\n\t ';
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.assembledContext.includes(value.sources[1].content), true);
+  assert.equal(result.manifest.sources[1].bytes, Buffer.byteLength(value.sources[1].content, 'utf8'));
 });
 
 test('blocks stale source and dependency revisions', () => {
