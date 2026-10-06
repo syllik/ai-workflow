@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
-const POLICY_BOUND_KINDS = new Set(['policy', 'role', 'target']);
+const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -195,9 +195,22 @@ export function buildTaskContextPackage(input = {}) {
     });
   }
 
+  const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
   for (const [index, expectedSource] of expectedSources.entries()) {
-    if (!sources.some((source) => sourceKey(source) === sourceKey(expectedSource))) {
+    if (!seenSources.has(sourceKey(expectedSource))) {
       findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', `expectedSources.${index}`, { expected: expectedSource }));
+    }
+  }
+  for (const [index, source] of sources.entries()) {
+    if (!expectedSourceKeys.has(sourceKey(source))) {
+      findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`, {
+        actual: {
+          kind: source.kind,
+          repository: source.repository,
+          path: source.path,
+          revisionSha: source.revisionSha
+        }
+      }));
     }
   }
 

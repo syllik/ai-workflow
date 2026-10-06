@@ -15,8 +15,8 @@ function canonicalSources() {
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'projects/index.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# projects\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/workflow.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# roles\n' },
     { kind: 'role', repository: 'syllik/ai-workflow', path: 'global/executor.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# executor\n' },
-    { kind: 'target', repository: 'syllik/ai-workflow', path: 'AGENTS.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# rules\n' },
-    { kind: 'target', repository: 'syllik/ai-workflow', path: '.ai/context.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# context\n' },
+    { kind: 'target', repository: 'ChipIn-one/chipin-frontend', path: 'AGENTS.md', revisionSha: headSha, expectedRevisionSha: headSha, content: '# rules\n' },
+    { kind: 'target', repository: 'ChipIn-one/chipin-frontend', path: '.ai/context.md', revisionSha: headSha, expectedRevisionSha: headSha, content: '# context\n' },
     { kind: 'dependency', repository: 'ChipIn-one/chipin-knowledge-base', path: 'common/specs/dashboard.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: '**DSH-001** behavior\n', requirementIds: ['DSH-001'] }
   ];
 }
@@ -76,7 +76,7 @@ test('requires a non-empty explicit expected-source set', () => {
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_EXPECTED_SOURCES_UNAVAILABLE'), true);
 });
 
-test('binds every policy, role, and target source to the single policySha', () => {
+test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {
   const stale = 'e'.repeat(40);
   const value = input();
   sourceByPath(value, 'global/executor.md').revisionSha = stale;
@@ -86,6 +86,10 @@ test('binds every policy, role, and target source to the single policySha', () =
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code, expected, actual }) =>
     code === 'CONTEXT_POLICY_SHA_MISMATCH' && expected === policySha && actual === stale), true);
+
+  const target = input();
+  assert.equal(sourceByPath(target, 'AGENTS.md').revisionSha, headSha);
+  assert.equal(buildTaskContextPackage(target).passed, true);
 });
 
 test('rejects duplicate actual sources even when their metadata key is identical', () => {
@@ -96,6 +100,21 @@ test('rejects duplicate actual sources even when their metadata key is identical
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_DUPLICATE'), true);
   assert.equal(result.manifest.sources.filter(({ path }) => path === 'common/specs/dashboard.md').length, 1);
+});
+
+test('rejects undeclared actual sources outside the expected-source set', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'Other/repository',
+    path: 'README.md',
+    revisionSha: 'f'.repeat(40),
+    expectedRevisionSha: 'f'.repeat(40),
+    content: 'undeclared context\n'
+  });
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
 });
 
 test('blocks unavailable required dependency context', () => {
