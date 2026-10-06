@@ -22,6 +22,32 @@ function uniqueStrings(value) {
     && new Set(value).size === value.length;
 }
 
+function sourceKey(source) {
+  return [source.kind, source.repository, source.path, source.revisionSha].join('\0');
+}
+
+function normalizeExpectedSource(source, index, findings) {
+  const prefix = `expectedSources.${index}`;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', prefix));
+    return null;
+  }
+  const normalized = {};
+  for (const key of ['kind', 'repository', 'path']) {
+    if (typeof source[key] !== 'string' || source[key].trim().length === 0) {
+      findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', `${prefix}.${key}`));
+      return null;
+    }
+    normalized[key] = source[key].trim();
+  }
+  if (!validSha(source.revisionSha)) {
+    findings.push(finding('INVALID_CONTEXT_SHA', `${prefix}.revisionSha`));
+    return null;
+  }
+  normalized.revisionSha = source.revisionSha;
+  return normalized;
+}
+
 function normalizeSource(source, index, findings) {
   const prefix = `sources.${index}`;
   let structurallyValid = true;
@@ -80,12 +106,30 @@ export function buildTaskContextPackage(input = {}) {
   }
 
   const acceptanceText = input.acceptance?.text;
-  if (typeof acceptanceText !== 'string' || acceptanceText.length === 0) {
+  if (typeof acceptanceText !== 'string' || acceptanceText.trim().length === 0) {
     findings.push(finding('CONTEXT_ACCEPTANCE_UNAVAILABLE', 'acceptance.text'));
   }
 
   const requirementIds = input.requirementIds ?? [];
   if (!uniqueStrings(requirementIds)) findings.push(finding('INVALID_CONTEXT_REQUIREMENT_IDS', 'requirementIds'));
+
+  const expectedSources = [];
+  const seenExpectedSources = new Set();
+  if (!Array.isArray(input.expectedSources) || input.expectedSources.length === 0) {
+    findings.push(finding('CONTEXT_EXPECTED_SOURCES_UNAVAILABLE', 'expectedSources'));
+  } else {
+    input.expectedSources.forEach((source, index) => {
+      const normalized = normalizeExpectedSource(source, index, findings);
+      if (!normalized) return;
+      const key = sourceKey(normalized);
+      if (seenExpectedSources.has(key)) {
+        findings.push(finding('CONTEXT_EXPECTED_SOURCE_DUPLICATE', `expectedSources.${index}`));
+        return;
+      }
+      seenExpectedSources.add(key);
+      expectedSources.push(normalized);
+    });
+  }
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -123,6 +167,12 @@ export function buildTaskContextPackage(input = {}) {
     });
   }
 
+  for (const [index, expectedSource] of expectedSources.entries()) {
+    if (!sources.some((source) => sourceKey(source) === sourceKey(expectedSource))) {
+      findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', `expectedSources.${index}`, { expected: expectedSource }));
+    }
+  }
+
   if (validSha(input.policySha) && !sources.some(({ kind, revisionSha }) => kind === 'policy' && revisionSha === input.policySha)) {
     findings.push(finding('CONTEXT_POLICY_UNAVAILABLE', 'sources'));
   }
@@ -158,6 +208,7 @@ export function buildTaskContextPackage(input = {}) {
       ? { sha256: sha256(acceptanceText), bytes: utf8Bytes(acceptanceText) }
       : null,
     requirementIds: uniqueStrings(requirementIds) ? [...requirementIds] : [],
+    expectedSources,
     dependencies: normalizedDependencies,
     sources: sources.map((source) => ({
       kind: source.kind,
