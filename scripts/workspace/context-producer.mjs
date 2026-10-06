@@ -5,6 +5,7 @@ import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
+const CANONICAL_POLICY_REPOSITORY = 'syllik/ai-workflow';
 const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
 const CANONICAL_ROLE_PATHS = new Set([
   'global/planner.md',
@@ -40,16 +41,25 @@ function sourceKey(source) {
   return [source.kind, normalizeRepository(source.repository), source.path, source.revisionSha].join('\0');
 }
 
-function validateCanonicalExpectedSources(expectedSources, policySha, findings) {
-  if (!validSha(policySha)) return;
+function validateCanonicalExpectedSources(expectedSources, policySha, headSha, findings) {
+  if (!validSha(policySha) || !validSha(headSha)) return;
 
   for (const path of CANONICAL_POLICY_PATHS) {
-    if (!expectedSources.some((source) => source.kind === 'policy' && source.path === path && source.revisionSha === policySha)) {
+    if (!expectedSources.some((source) =>
+      source.kind === 'policy'
+      && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+      && source.path === path
+      && source.revisionSha === policySha
+    )) {
       findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', `canonical.policy.${path}`));
     }
   }
 
-  const roleSources = expectedSources.filter((source) => source.kind === 'role' && source.revisionSha === policySha);
+  const roleSources = expectedSources.filter((source) =>
+    source.kind === 'role'
+    && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+    && source.revisionSha === policySha
+  );
   const canonicalRoleSources = roleSources.filter((source) => CANONICAL_ROLE_PATHS.has(source.path));
   if (roleSources.length !== 1 || canonicalRoleSources.length !== 1) {
     findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', {
@@ -71,10 +81,15 @@ function validateCanonicalExpectedSources(expectedSources, policySha, findings) 
     && targetContexts.length === 1
     && (
       normalizeRepository(targetAgents[0].repository) !== normalizeRepository(targetContexts[0].repository)
-      || targetAgents[0].revisionSha !== targetContexts[0].revisionSha
+      || targetAgents[0].revisionSha !== headSha
+      || targetContexts[0].revisionSha !== headSha
     )
   ) {
-    findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target'));
+    findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target', {
+      expectedRevisionSha: headSha,
+      agentsRevisionSha: targetAgents[0].revisionSha,
+      contextRevisionSha: targetContexts[0].revisionSha
+    }));
   }
 }
 
@@ -230,7 +245,7 @@ export function buildTaskContextPackage(input = {}) {
     });
   }
 
-  validateCanonicalExpectedSources(expectedSources, input.policySha, findings);
+  validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, findings);
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -245,8 +260,9 @@ export function buildTaskContextPackage(input = {}) {
         findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', prefix));
         return;
       }
-      if (seenDependencies.has(dependency.repository)) findings.push(finding('CONTEXT_DEPENDENCY_DUPLICATE', prefix));
-      seenDependencies.add(dependency.repository);
+      const dependencyKey = normalizeRepository(dependency.repository);
+      if (seenDependencies.has(dependencyKey)) findings.push(finding('CONTEXT_DEPENDENCY_DUPLICATE', prefix));
+      seenDependencies.add(dependencyKey);
       if (!validSha(dependency.revisionSha)) findings.push(finding('INVALID_CONTEXT_SHA', `${prefix}.revisionSha`));
       if (!validSha(dependency.expectedRevisionSha)) findings.push(finding('INVALID_CONTEXT_SHA', `${prefix}.expectedRevisionSha`));
       if (validSha(dependency.revisionSha) && validSha(dependency.expectedRevisionSha) && dependency.revisionSha !== dependency.expectedRevisionSha) {
@@ -321,7 +337,10 @@ export function buildTaskContextPackage(input = {}) {
   }
 
   for (const dependency of normalizedDependencies) {
-    if (!sources.some(({ repository, revisionSha }) => repository === dependency.repository && revisionSha === dependency.revisionSha)) {
+    if (!sources.some(({ repository, revisionSha }) =>
+      normalizeRepository(repository) === normalizeRepository(dependency.repository)
+      && revisionSha === dependency.revisionSha
+    )) {
       findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `dependencies.${dependency.repository}`));
     }
   }

@@ -111,12 +111,41 @@ test('requires one selected role and one coherent target instruction pair', () =
   assert.equal(targetResult.findings.some(({ code }) => code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'), true);
 });
 
+test('binds both target instruction sources to the handoff head SHA', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  for (const path of ['AGENTS.md', '.ai/context.md']) {
+    expectedSourceByPath(value, path).revisionSha = stale;
+    sourceByPath(value, path).revisionSha = stale;
+    sourceByPath(value, path).expectedRevisionSha = stale;
+  }
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expectedRevisionSha }) =>
+    code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH' && expectedRevisionSha === headSha), true);
+});
+
 test('rejects an arbitrary policy-revision file as the selected role', () => {
   const value = input();
   sourceByPath(value, 'global/executor.md').path = 'README.md';
   expectedSourceByPath(value, 'global/executor.md').path = 'README.md';
   const result = buildTaskContextPackage(value);
   assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
+test('rejects canonical policy and role identities from a non-canonical repository', () => {
+  const value = input();
+  for (const source of value.sources) {
+    if (source.kind === 'policy' || source.kind === 'role') source.repository = 'evil/fork';
+  }
+  for (const source of value.expectedSources) {
+    if (source.kind === 'policy' || source.kind === 'role') source.repository = 'evil/fork';
+  }
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_CANONICAL_SOURCE_UNAVAILABLE' && path === 'canonical.policy.AI.md'), true);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
 });
 
@@ -131,6 +160,18 @@ test('requires contextDependencies declared by the pinned target workspace recor
   assert.equal(result.findings.some(({ code, path }) =>
     code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
     && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
+});
+
+test('treats dependency repository casing aliases as one exact dependency identity', () => {
+  const value = input();
+  value.dependencies.push({
+    repository: 'chipin-one/chipin-knowledge-base',
+    revisionSha: 'e'.repeat(40),
+    expectedRevisionSha: 'e'.repeat(40)
+  });
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_DUPLICATE'), true);
 });
 
 test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {
