@@ -5,6 +5,7 @@ import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
+const SUPPORTED_SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency']);
 const CANONICAL_POLICY_REPOSITORY = 'syllik/ai-workflow';
 const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
 const CANONICAL_ROLE_PATHS = new Set([
@@ -90,20 +91,36 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, f
   if (targetContexts.length !== 1) {
     findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target..ai/context.md', { actualCount: targetContexts.length }));
   }
-  if (
-    targetAgents.length === 1
-    && targetContexts.length === 1
-    && (
-      normalizeRepository(targetAgents[0].repository) !== normalizeRepository(targetContexts[0].repository)
+  if (targetAgents.length === 1 && targetContexts.length === 1) {
+    const targetRepository = normalizeRepository(targetAgents[0].repository);
+    if (
+      targetRepository !== normalizeRepository(targetContexts[0].repository)
       || targetAgents[0].revisionSha !== headSha
       || targetContexts[0].revisionSha !== headSha
-    )
-  ) {
-    findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target', {
-      expectedRevisionSha: headSha,
-      agentsRevisionSha: targetAgents[0].revisionSha,
-      contextRevisionSha: targetContexts[0].revisionSha
-    }));
+    ) {
+      findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target', {
+        expectedRevisionSha: headSha,
+        agentsRevisionSha: targetAgents[0].revisionSha,
+        contextRevisionSha: targetContexts[0].revisionSha
+      }));
+    }
+
+    for (const [index, source] of expectedSources.entries()) {
+      if (
+        source.kind === 'target'
+        && (
+          normalizeRepository(source.repository) !== targetRepository
+          || source.revisionSha !== headSha
+        )
+      ) {
+        findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', `expectedSources.${index}`, {
+          expectedRepository: targetAgents[0].repository,
+          expectedRevisionSha: headSha,
+          actualRepository: source.repository,
+          actualRevisionSha: source.revisionSha
+        }));
+      }
+    }
   }
 }
 
@@ -202,6 +219,10 @@ function normalizeExpectedSource(source, index, findings) {
     }
     normalized[key] = source[key].trim();
   }
+  if (!SUPPORTED_SOURCE_KINDS.has(normalized.kind)) {
+    findings.push(finding('INVALID_CONTEXT_SOURCE_KIND', `${prefix}.kind`, { actual: normalized.kind }));
+    return null;
+  }
   if (!validSha(source.revisionSha)) {
     findings.push(finding('INVALID_CONTEXT_SHA', `${prefix}.revisionSha`));
     return null;
@@ -222,6 +243,14 @@ function normalizeSource(source, index, findings) {
       findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', `${prefix}.${key}`));
       structurallyValid = false;
     }
+  }
+  if (
+    typeof source.kind === 'string'
+    && source.kind.trim().length > 0
+    && !SUPPORTED_SOURCE_KINDS.has(source.kind.trim())
+  ) {
+    findings.push(finding('INVALID_CONTEXT_SOURCE_KIND', `${prefix}.kind`, { actual: source.kind.trim() }));
+    structurallyValid = false;
   }
   if (!validSha(source.revisionSha)) {
     findings.push(finding('INVALID_CONTEXT_SHA', `${prefix}.revisionSha`));
@@ -390,6 +419,20 @@ export function buildTaskContextPackage(input = {}) {
       && revisionSha === dependency.revisionSha
     )) {
       findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `dependencies.${dependency.repository}`));
+    }
+  }
+  for (const [index, source] of sources.entries()) {
+    if (
+      source.kind === 'dependency'
+      && !normalizedDependencies.some((dependency) =>
+        normalizeRepository(dependency.repository) === normalizeRepository(source.repository)
+        && dependency.revisionSha === source.revisionSha
+      )
+    ) {
+      findings.push(finding('CONTEXT_DEPENDENCY_SOURCE_UNDECLARED', `sources.${index}`, {
+        repository: source.repository,
+        revisionSha: source.revisionSha
+      }));
     }
   }
 

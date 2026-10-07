@@ -370,6 +370,78 @@ test('rejects undeclared actual sources outside the expected-source set', () => 
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
 });
 
+test('rejects unrecognized expected and actual source kinds', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'garbage',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'notes.md',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: 'unrecognized context\n'
+  });
+  value.expectedSources.push({
+    kind: 'garbage',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'notes.md',
+    revisionSha: headSha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_SOURCE_KIND'), true);
+});
+
+test('binds every target-kind source to the selected target repository and headSha', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'target',
+    repository: 'Other/repository',
+    path: '.ai/decisions.md',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: '# foreign target context\n'
+  });
+  value.expectedSources.push({
+    kind: 'target',
+    repository: 'Other/repository',
+    path: '.ai/decisions.md',
+    revisionSha: headSha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expectedRepository }) =>
+    code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'
+    && expectedRepository === 'ChipIn-one/chipin-frontend'), true);
+});
+
+test('binds every dependency-kind source to a declared dependency revision', () => {
+  const value = input();
+  const staleSha = 'e'.repeat(40);
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'ChipIn-one/chipin-knowledge-base',
+    path: 'common/specs/extra.md',
+    revisionSha: staleSha,
+    expectedRevisionSha: staleSha,
+    content: 'mixed dependency revision\n'
+  });
+  value.expectedSources.push({
+    kind: 'dependency',
+    repository: 'ChipIn-one/chipin-knowledge-base',
+    path: 'common/specs/extra.md',
+    revisionSha: staleSha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, repository, revisionSha }) =>
+    code === 'CONTEXT_DEPENDENCY_SOURCE_UNDECLARED'
+    && repository === 'ChipIn-one/chipin-knowledge-base'
+    && revisionSha === staleSha), true);
+});
+
 test('blocks unavailable required dependency context', () => {
   const value = input();
   value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
