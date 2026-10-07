@@ -183,6 +183,18 @@ test('loads source bodies from exact Git revisions on the production loader path
     assert.equal(forged.findings.some(({ code }) => code === 'CONTEXT_SOURCE_CONTENT_MISMATCH'), true);
     assert.equal(forged.assembledContext.includes('# forged policy'), false);
     assert.equal(forged.assembledContext.includes('# entry'), true);
+
+    sourceByPath(value, 'AI.md').content = policyFiles['AI.md'];
+    const dependencySource = sourceByPath(value, 'common/specs/dashboard.md');
+    const expectedDependency = expectedSourceByPath(value, 'common/specs/dashboard.md');
+    dependencySource.path = 'common/specs';
+    delete dependencySource.content;
+    expectedDependency.path = 'common/specs';
+    value.requirementIds = ['dashboard.md'];
+
+    const directorySource = buildTaskContextPackage(value);
+    assert.equal(directorySource.passed, false);
+    assert.equal(directorySource.findings.some(({ code }) => code === 'CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE'), true);
   } finally {
     removeFixtureRoot(root);
   }
@@ -214,6 +226,12 @@ test('requires a non-empty explicit expected-source set', () => {
   const result = build(input({ expectedSources: [] }));
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_EXPECTED_SOURCES_UNAVAILABLE'), true);
+});
+
+test('rejects whitespace-only requirement identifiers', () => {
+  const result = build(input({ requirementIds: ['   '] }));
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_REQUIREMENT_IDS'), true);
 });
 
 test('rejects a caller-declared subset that omits a canonical mandatory identity', () => {

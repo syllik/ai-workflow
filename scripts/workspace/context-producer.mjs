@@ -31,7 +31,7 @@ function validSha(value) {
 
 function uniqueStrings(value) {
   return Array.isArray(value)
-    && value.every((entry) => typeof entry === 'string' && entry.length > 0)
+    && value.every((entry) => typeof entry === 'string' && entry.trim().length > 0)
     && new Set(value).size === value.length;
 }
 
@@ -94,6 +94,9 @@ function gitSourceLoader(source, input) {
   if (objectType !== 'commit') throw new Error('revision is not a commit');
 
   const objectRef = `${source.revisionSha}:${source.path}`;
+  const sourceType = gitText(repositoryRoot, ['cat-file', '-t', objectRef]).trim();
+  if (sourceType !== 'blob') throw new Error('source object is not a blob');
+
   const blobSha = gitText(repositoryRoot, ['rev-parse', objectRef]).trim();
   if (!validSha(blobSha)) throw new Error('source blob sha unavailable');
 
