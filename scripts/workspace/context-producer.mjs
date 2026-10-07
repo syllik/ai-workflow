@@ -55,12 +55,12 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, f
     }
   }
 
-  const roleSources = expectedSources.filter((source) =>
-    source.kind === 'role'
-    && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+  const roleSources = expectedSources.filter((source) => source.kind === 'role');
+  const canonicalRoleSources = roleSources.filter((source) =>
+    normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
     && source.revisionSha === policySha
+    && CANONICAL_ROLE_PATHS.has(source.path)
   );
-  const canonicalRoleSources = roleSources.filter((source) => CANONICAL_ROLE_PATHS.has(source.path));
   if (roleSources.length !== 1 || canonicalRoleSources.length !== 1) {
     findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', {
       actualCount: roleSources.length,
@@ -93,8 +93,13 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, f
   }
 }
 
-function validateRequiredContextDependencies(sources, dependencies, findings) {
-  const workspaceSource = sources.find((source) => source.kind === 'policy' && source.path === 'workspace.yaml');
+function validateRequiredContextDependencies(sources, dependencies, policySha, findings) {
+  const workspaceSource = sources.find((source) =>
+    source.kind === 'policy'
+    && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+    && source.path === 'workspace.yaml'
+    && source.revisionSha === policySha
+  );
   const targetAgents = sources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
   const targetContext = sources.find((source) => source.kind === 'target' && source.path === '.ai/context.md');
   if (!workspaceSource || !targetAgents || !targetContext) return;
@@ -126,16 +131,35 @@ function validateRequiredContextDependencies(sources, dependencies, findings) {
     return;
   }
 
+  const requiredRepositories = new Set();
   for (const [index, dependency] of requiredDependencies.entries()) {
     const repository = dependency?.repository;
     if (typeof repository !== 'string' || repository.trim().length === 0) {
       findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', `workspace.contextDependencies.${index}`));
       continue;
     }
-    if (!dependencies.some((actual) =>
-      normalizeRepository(actual.repository) === normalizeRepository(repository)
-    )) {
-      findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `workspace.contextDependencies.${repository}`));
+    const repositoryKey = normalizeRepository(repository);
+    if (requiredRepositories.has(repositoryKey)) {
+      findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', `workspace.contextDependencies.${index}`, {
+        repository
+      }));
+      continue;
+    }
+    requiredRepositories.add(repositoryKey);
+  }
+
+  const actualRepositories = new Set(dependencies.map(({ repository }) => normalizeRepository(repository)));
+  for (const repositoryKey of requiredRepositories) {
+    if (!actualRepositories.has(repositoryKey)) {
+      const declared = requiredDependencies.find((dependency) =>
+        normalizeRepository(dependency?.repository) === repositoryKey
+      );
+      findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `workspace.contextDependencies.${declared.repository}`));
+    }
+  }
+  for (const dependency of dependencies) {
+    if (!requiredRepositories.has(normalizeRepository(dependency.repository))) {
+      findings.push(finding('CONTEXT_DEPENDENCY_UNEXPECTED', `dependencies.${dependency.repository}`));
     }
   }
 }
@@ -292,7 +316,7 @@ export function buildTaskContextPackage(input = {}) {
     });
   }
 
-  validateRequiredContextDependencies(sources, normalizedDependencies, findings);
+  validateRequiredContextDependencies(sources, normalizedDependencies, input.policySha, findings);
 
   if (validSha(input.policySha)) {
     expectedSources.forEach((source, index) => {

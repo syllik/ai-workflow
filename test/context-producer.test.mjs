@@ -162,6 +162,94 @@ test('requires contextDependencies declared by the pinned target workspace recor
     && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
 });
 
+test('resolves contextDependencies only from the canonical workspace source at policySha', () => {
+  const value = input();
+  value.dependencies = [];
+  value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.expectedSources = value.expectedSources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.requirementIds = [];
+
+  const forkWorkspace = {
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'workspace.yaml',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      ''
+    ].join('\n')
+  };
+  value.sources.unshift(forkWorkspace);
+  value.expectedSources.unshift({
+    kind: forkWorkspace.kind,
+    repository: forkWorkspace.repository,
+    path: forkWorkspace.path,
+    revisionSha: forkWorkspace.revisionSha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
+    && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
+});
+
+test('rejects dependencies that are not declared by the canonical target workspace record', () => {
+  const value = input();
+  const extraSha = 'f'.repeat(40);
+  value.dependencies.push({
+    repository: 'Other/approved-looking-repo',
+    revisionSha: extraSha,
+    expectedRevisionSha: extraSha
+  });
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'Other/approved-looking-repo',
+    path: 'README.md',
+    revisionSha: extraSha,
+    expectedRevisionSha: extraSha,
+    content: 'extra dependency context\n'
+  });
+  value.expectedSources.push({
+    kind: 'dependency',
+    repository: 'Other/approved-looking-repo',
+    path: 'README.md',
+    revisionSha: extraSha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNEXPECTED'
+    && path === 'dependencies.Other/approved-looking-repo'), true);
+});
+
+test('rejects additional non-canonical role sources even when the canonical role is present', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'role',
+    repository: 'evil/fork',
+    path: 'global/executor.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# conflicting role\n'
+  });
+  value.expectedSources.push({
+    kind: 'role',
+    repository: 'evil/fork',
+    path: 'global/executor.md',
+    revisionSha: policySha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
 test('treats dependency repository casing aliases as one exact dependency identity', () => {
   const value = input();
   value.dependencies.push({
