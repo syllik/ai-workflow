@@ -16,6 +16,8 @@ function canonicalSources() {
       'projects:',
       '  - id: ChipIn-one/chipin-frontend',
       '    repository: ChipIn-one/chipin-frontend',
+      '    access: managed',
+      '    status: active',
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
       ''
@@ -149,6 +151,28 @@ test('rejects canonical policy and role identities from a non-canonical reposito
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
 });
 
+test('rejects additional policy sources outside the canonical policy set', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'instructions.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# conflicting policy\n'
+  });
+  value.expectedSources.push({
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'instructions.md',
+    revisionSha: policySha
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_POLICY_INVALID'), true);
+});
+
 test('requires contextDependencies declared by the pinned target workspace record', () => {
   const value = input();
   value.dependencies = [];
@@ -160,6 +184,31 @@ test('requires contextDependencies declared by the pinned target workspace recor
   assert.equal(result.findings.some(({ code, path }) =>
     code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
     && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
+});
+
+test('blocks normal handoff for onboarding or read-only target records', () => {
+  for (const registryState of [
+    { access: 'managed', status: 'onboarding' },
+    { access: 'read-only', status: 'active' }
+  ]) {
+    const value = input();
+    const workspace = sourceByPath(value, 'workspace.yaml');
+    workspace.content = [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      `    access: ${registryState.access}`,
+      `    status: ${registryState.status}`,
+      '    contextDependencies:',
+      '      - repository: ChipIn-one/chipin-knowledge-base',
+      ''
+    ].join('\n');
+
+    const result = buildTaskContextPackage(value);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_NOT_ACTIVE_MANAGED'), true);
+  }
 });
 
 test('resolves contextDependencies only from the canonical workspace source at policySha', () => {

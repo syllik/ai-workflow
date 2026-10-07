@@ -44,6 +44,20 @@ function sourceKey(source) {
 function validateCanonicalExpectedSources(expectedSources, policySha, headSha, findings) {
   if (!validSha(policySha) || !validSha(headSha)) return;
 
+  const policySources = expectedSources.filter((source) => source.kind === 'policy');
+  const unexpectedPolicySources = policySources.filter((source) =>
+    normalizeRepository(source.repository) !== CANONICAL_POLICY_REPOSITORY
+    || !CANONICAL_POLICY_PATHS.includes(source.path)
+    || source.revisionSha !== policySha
+  );
+  if (policySources.length !== CANONICAL_POLICY_PATHS.length || unexpectedPolicySources.length > 0) {
+    findings.push(finding('CONTEXT_CANONICAL_POLICY_INVALID', 'canonical.policy', {
+      actualCount: policySources.length,
+      expectedCount: CANONICAL_POLICY_PATHS.length,
+      unexpectedCount: unexpectedPolicySources.length
+    }));
+  }
+
   for (const path of CANONICAL_POLICY_PATHS) {
     if (!expectedSources.some((source) =>
       source.kind === 'policy'
@@ -125,7 +139,17 @@ function validateRequiredContextDependencies(sources, dependencies, policySha, f
     return;
   }
 
-  const requiredDependencies = targetRecords[0].contextDependencies ?? [];
+  const targetRecord = targetRecords[0];
+  if (targetRecord.access !== 'managed' || targetRecord.status !== 'active') {
+    findings.push(finding('CONTEXT_TARGET_NOT_ACTIVE_MANAGED', 'workspace.projects', {
+      repository: targetAgents.repository,
+      access: targetRecord.access ?? null,
+      status: targetRecord.status ?? null
+    }));
+    return;
+  }
+
+  const requiredDependencies = targetRecord.contextDependencies ?? [];
   if (!Array.isArray(requiredDependencies)) {
     findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', 'workspace.contextDependencies'));
     return;
