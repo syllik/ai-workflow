@@ -1,8 +1,9 @@
-schemaVersion: 1
+schemaVersion: 2
 mode: read-only-verify
-targets:
+roots:
   - syllik/syllik
   - ChipIn-one/.github
+  - ChipIn-one/chipin-frontend
 authentication:
   type: github-app-installation
   permissions:

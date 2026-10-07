@@ -45,26 +45,40 @@ jobs:
         run: npm ci
       - name: Recheck source rollout policy
         run: node scripts/workspace/rollout-ci.mjs source
-      - name: Mint read token for syllik/syllik
+      - name: Resolve rollout repository scopes
+        id: rollout-scopes
+        shell: bash
+        run: |
+          {
+            echo 'syllik<<EOF'
+            node scripts/workspace/rollout-ci.mjs auth-scope syllik
+            echo 'EOF'
+            echo 'chipin_one<<EOF'
+            node scripts/workspace/rollout-ci.mjs auth-scope ChipIn-one
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Mint read token for syllik rollout roots
+        if: steps.rollout-scopes.outputs.syllik != ''
         id: syllik-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
           private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
           owner: syllik
-          repositories: syllik
+          repositories: ${{ steps.rollout-scopes.outputs.syllik }}
           permission-contents: read
-      - name: Mint read token for ChipIn-one/.github
+      - name: Mint read token for ChipIn rollout roots and dependencies
+        if: steps.rollout-scopes.outputs.chipin_one != ''
         id: chipin-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
           private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
           owner: ChipIn-one
-          repositories: .github
+          repositories: ${{ steps.rollout-scopes.outputs.chipin_one }}
           permission-contents: read
-      - name: Verify pilot rollout at exact target revisions
+      - name: Verify routing coverage at exact target revisions
         env:
           WORKSPACE_READ_TOKEN_SYLLIK: ${{ steps.syllik-token.outputs.token }}
-          WORKSPACE_READ_TOKEN_CHIPIN: ${{ steps.chipin-token.outputs.token }}
+          WORKSPACE_READ_TOKEN_CHIPIN_ONE: ${{ steps.chipin-token.outputs.token }}
         run: node scripts/workspace/rollout-ci.mjs targets

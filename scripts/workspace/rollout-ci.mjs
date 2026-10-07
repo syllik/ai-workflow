@@ -6,11 +6,16 @@ import { githubAppGitAuthorization } from './github-auth.mjs';
 import { loadManifest } from './manifest.mjs';
 import { evaluatePilotRollout, immutableSha, loadRolloutPolicy, resolveRolloutProjects, routingBlockSha256, validateRolloutPolicy } from './rollout.mjs';
 
-const TOKEN_ENV_BY_REPOSITORY = Object.freeze({
-  'syllik/syllik': 'WORKSPACE_READ_TOKEN_SYLLIK',
-  'ChipIn-one/.github': 'WORKSPACE_READ_TOKEN_CHIPIN'
-});
+function repositoryParts(repository) {
+  if (typeof repository !== 'string') return null;
+  const parts = repository.split('/');
+  if (parts.length !== 2 || parts.some((part) => part.length === 0)) return null;
+  return { owner: parts[0], name: parts[1] };
+}
 
+function tokenEnvForOwner(owner) {
+  return `WORKSPACE_READ_TOKEN_${owner.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`;
+}
 function git(args, options = {}) {
   return execFileSync('git', args, {
     encoding: 'utf8',
@@ -38,7 +43,12 @@ function sourceResult(manifest, policy, policySha) {
       stage: 'source-validation',
       policySha: exactPolicySha,
       policyBlockSha256: routingBlockSha256(manifest),
-      targets: policy.targets ?? [],
+      roots: policy.roots ?? [],
+      coverage: resolveRolloutProjects(policy, manifest).map(({ repository, access, requiredBy = [] }) => ({
+        repository,
+        access,
+        requiredBy
+      })),
       outcome: findings.length === 0 ? 'complete' : 'incomplete',
       ...(findings.length > 0 ? { findings } : {})
     }
@@ -56,9 +66,10 @@ function authEnvironment(token) {
 
 function materializeTargetFactory(root) {
   return (project) => {
-    const tokenEnv = TOKEN_ENV_BY_REPOSITORY[project.repository];
-    const token = tokenEnv ? process.env[tokenEnv] : null;
-    if (!token) return { repositoryRoot: null, targetSha: null, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+    const parts = repositoryParts(project.repository);
+    const token = parts ? process.env[tokenEnvForOwner(parts.owner)] : null;
+    const unavailableReason = project.access === 'read-only' ? 'REQUIRED_CONTEXT_UNAVAILABLE' : 'TARGET_PRIVATE_UNAVAILABLE';
+    if (!token) return { repositoryRoot: null, targetSha: null, reason: unavailableReason };
 
     const remote = `https://github.com/${project.repository}.git`;
     const branchRef = `refs/heads/${project.integrationBranch}`;
@@ -68,7 +79,7 @@ function materializeTargetFactory(root) {
       const remoteLine = git(['ls-remote', remote, branchRef], { env });
       targetSha = immutableSha(remoteLine.split(/\s+/u)[0]);
     } catch {
-      return { repositoryRoot: null, targetSha: null, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+      return { repositoryRoot: null, targetSha: null, reason: unavailableReason };
     }
     if (!targetSha) return { repositoryRoot: null, targetSha: null, reason: 'TARGET_SHA_UNRESOLVED' };
 
@@ -81,7 +92,7 @@ function materializeTargetFactory(root) {
       ], { env });
       git(['-C', destination, 'checkout', '--quiet', '--detach', targetSha], { env });
     } catch {
-      return { repositoryRoot: null, targetSha, reason: 'TARGET_PRIVATE_UNAVAILABLE' };
+      return { repositoryRoot: null, targetSha, reason: unavailableReason };
     }
     return { repositoryRoot: destination, targetSha };
   };
@@ -107,6 +118,7 @@ function writeReceipts(result) {
 }
 
 const mode = process.argv[2] ?? 'source';
+const modeArgument = process.argv[3];
 const manifest = loadManifest('workspace.yaml');
 const policy = loadRolloutPolicy();
 let policySha = process.env.WORKSPACE_POLICY_SHA;
@@ -122,6 +134,19 @@ const source = sourceResult(manifest, policy, policySha);
 if (mode === 'source') {
   process.stdout.write(`${JSON.stringify(source.receipt)}\n`);
   if (!source.passed) process.exitCode = 1;
+} else if (mode === 'auth-scope') {
+  if (!source.passed) {
+    process.exitCode = 1;
+  } else if (typeof modeArgument !== 'string' || modeArgument.length === 0) {
+    process.stderr.write('auth-scope requires an owner\n');
+    process.exitCode = 2;
+  } else {
+    const names = resolveRolloutProjects(policy, manifest)
+      .map(({ repository }) => repositoryParts(repository))
+      .filter((parts) => parts?.owner.toLowerCase() === modeArgument.toLowerCase())
+      .map(({ name }) => name);
+    process.stdout.write(names.join('\n') + (names.length > 0 ? '\n' : ''));
+  }
 } else if (mode === 'targets') {
   if (!source.passed) {
     writeReceipts({ passed: false, findings: source.receipt.findings ?? [], receipts: [] });
@@ -129,10 +154,6 @@ if (mode === 'source') {
   } else {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'ai-workflow-rollout-'));
     try {
-      const projects = resolveRolloutProjects(policy, manifest);
-      for (const project of projects) {
-        if (!TOKEN_ENV_BY_REPOSITORY[project.repository]) throw new Error(`No credential route for ${project.repository}`);
-      }
       const result = evaluatePilotRollout({
         manifest,
         policy,
