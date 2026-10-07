@@ -106,6 +106,7 @@ describe('workflow documentation', () => {
     const workflow = text('.github/workflows/ci.yml');
     assert.match(packageJson.scripts.verify, /ci-activation\.mjs/u);
     assert.match(workflow, /WORKSPACE_ACTIVATION_BASE_SHA/u);
+    assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/u);
     assert.match(workflow, /fetch-depth:\s*0/u);
     assert.match(workflow, /run:\s*npm run verify/u);
   });
