@@ -136,7 +136,7 @@ test('aligned pilot targets produce exact-revision receipts and retries are idem
     const manifest = pilotManifest();
     const policy = loadRolloutPolicy();
     const materialized = new Map();
-    for (const project of manifest.projects.filter(({ repository }) => policy.targets.includes(repository))) {
+    for (const project of resolveRolloutProjects(policy, manifest)) {
       materialized.set(project.repository, materializeRolloutTarget(root, project, manifest));
     }
     const materializeTarget = (project) => materialized.get(project.repository);
