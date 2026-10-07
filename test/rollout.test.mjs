@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { githubAppGitAuthorization } from '../scripts/workspace/github-auth.mjs';
 import { renderAgentsBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
-import { evaluatePilotRollout, inspectMaterializedTarget, loadRolloutPolicy, validateRolloutPolicy } from '../scripts/workspace/rollout.mjs';
+import { evaluatePilotRollout, inspectMaterializedTarget, loadRolloutPolicy, resolveRolloutProjects, validateRolloutPolicy } from '../scripts/workspace/rollout.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot } from './helpers.mjs';
 
 const POLICY_SHA = 'a'.repeat(40);
@@ -72,11 +72,10 @@ test('rollout policy covers managed consumers plus the required read-only KB dep
   const manifest = pilotManifest();
   const policy = loadRolloutPolicy();
   assert.deepEqual(validateRolloutPolicy(policy, manifest), []);
-  assert.deepEqual(policy.targets, [
+  assert.deepEqual(policy.roots, [
     'syllik/syllik',
     'ChipIn-one/.github',
-    'ChipIn-one/chipin-frontend',
-    'ChipIn-one/chipin-knowledge-base'
+    'ChipIn-one/chipin-frontend'
   ]);
   assert.deepEqual(policy.authentication.permissions, { contents: 'read' });
 });
@@ -90,7 +89,9 @@ test('rollout workflow mints private-repository tokens only for trusted master r
   assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/master'/u);
   assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
-  assert.match(workflow, /repositories:\s*\|[\s\S]*\.github[\s\S]*chipin-frontend[\s\S]*chipin-knowledge-base/u);
+  assert.match(workflow, /rollout-ci\.mjs auth-scope ChipIn-one/u);
+  assert.match(workflow, /repositories:\s*\$\{\{ steps\.rollout-scopes\.outputs\.chipin_one \}\}/u);
+  assert.doesNotMatch(workflow, /chipin-frontend|chipin-knowledge-base/u);
   assert.match(workflow, /permission-contents:\s*read/u);
   assert.match(workflow, /persist-credentials:\s*false/u);
 });
@@ -107,20 +108,25 @@ test('GitHub App installation tokens use x-access-token HTTP Basic auth for Git'
   assert.throws(() => githubAppGitAuthorization(''), /installation token is required/u);
 });
 
-test('rollout policy fails closed on allowlist expansion', () => {
+test('rollout policy treats roots as declarative managed consumers', () => {
   const manifest = pilotManifest();
   const policy = loadRolloutPolicy();
-  const expanded = { ...policy, targets: [...policy.targets, 'ChipIn-one/chipin-backend'] };
+  const expanded = { ...policy, roots: [...policy.roots, 'ChipIn-one/chipin-knowledge-base'] };
   const findings = validateRolloutPolicy(expanded, manifest);
-  assert.equal(findings.some(({ code }) => code === 'ROLLOUT_ALLOWLIST_MISMATCH'), true);
-  assert.equal(findings.some(({ code }) => code === 'ROLLOUT_TARGET_NOT_ALLOWED'), true);
+  assert.equal(findings.some(({ code }) => code === 'ROLLOUT_ROOT_RECORD_INVALID'), true);
 });
 
-test('read-only rollout coverage must match the managed consumer dependency declaration', () => {
+test('read-only rollout coverage is derived from the managed root dependency declaration', () => {
   const manifest = pilotManifest();
+  const policy = loadRolloutPolicy();
+  const projects = resolveRolloutProjects(policy, manifest);
+  const knowledgeBase = projects.find(({ repository }) => repository === 'ChipIn-one/chipin-knowledge-base');
+  assert.equal(knowledgeBase.access, 'read-only');
+  assert.deepEqual(knowledgeBase.requiredBy, ['ChipIn-one/chipin-frontend']);
+
   const frontend = manifest.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend');
-  frontend.contextDependencies = [];
-  const findings = validateRolloutPolicy(loadRolloutPolicy(), manifest);
+  frontend.contextDependencies[0].access = 'managed';
+  const findings = validateRolloutPolicy(policy, manifest);
   assert.equal(findings.some(({ code }) => code === 'ROLLOUT_REQUIRED_CONTEXT_MISMATCH'), true);
 });
 
