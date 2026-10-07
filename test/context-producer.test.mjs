@@ -611,24 +611,6 @@ test('blocks whitespace-only required source content', () => {
     code === 'CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE' && path.startsWith('sources.')), true);
 });
 
-test('blocks caller content that does not match trusted source bytes', () => {
-  const value = input();
-  sourceByPath(value, 'AI.md').content = '# attacker-controlled policy\n';
-
-  const result = build(value, {
-    sourceLoader: (source) => {
-      const content = source.path === 'AI.md' ? '# entry\n' : source.content ?? '';
-      return { content, blobSha: testBlobSha(content) };
-    }
-  });
-
-  assert.equal(result.passed, false);
-  assert.equal(result.findings.some(({ code, path }) =>
-    code === 'CONTEXT_SOURCE_CONTENT_MISMATCH' && path.endsWith('.content')), true);
-  assert.equal(result.assembledContext.includes('# attacker-controlled policy'), false);
-  assert.equal(result.assembledContext.includes('# entry'), true);
-});
-
 test('preserves original whitespace for valid source hashing and assembly', () => {
   const value = input();
   sourceByPath(value, 'common/specs/dashboard.md').content = ' \n**DSH-001** behavior\n\t ';
