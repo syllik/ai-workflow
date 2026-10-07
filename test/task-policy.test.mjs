@@ -114,6 +114,51 @@ describe('task handoff compatibility', () => {
     assert.equal(result.automaticCorrectionBatches, 2);
   });
 
+  test('accepts an approved issue-free branch for a non-ChipIn task', () => {
+    const result = validateTaskHandoff(handoff({
+      taskId: 'docs-cleanup',
+      taskBranch: 'docs/refresh-role-guide'
+    }));
+    assert.equal(result.valid, true);
+  });
+
+  test('keeps ChipIn task branches issue-backed and aligned to canonical identity', () => {
+    const valid = validateTaskHandoff(handoff({
+      taskId: 'ChipIn-one/chipin-frontend#357',
+      repository: 'ChipIn-one/chipin-frontend',
+      taskBranch: 'fix/issue-357-routing-policy',
+      integrationBranch: 'dev'
+    }));
+    assert.equal(valid.valid, true);
+
+    const issueFree = validateTaskHandoff(handoff({
+      taskId: 'ChipIn-one/chipin-frontend#357',
+      repository: 'ChipIn-one/chipin-frontend',
+      taskBranch: 'docs/refresh-role-guide',
+      integrationBranch: 'dev'
+    }));
+    assert.equal(issueFree.valid, false);
+    assert.equal(issueFree.findings.some(({ code }) => code === 'INVALID_TASK_BRANCH'), true);
+
+    const mismatchedIssue = validateTaskHandoff(handoff({
+      taskId: 'ChipIn-one/chipin-frontend#357',
+      repository: 'ChipIn-one/chipin-frontend',
+      taskBranch: 'fix/issue-358-routing-policy',
+      integrationBranch: 'dev'
+    }));
+    assert.equal(mismatchedIssue.valid, false);
+    assert.equal(mismatchedIssue.findings.some(({ code }) => code === 'INVALID_TASK_BRANCH'), true);
+  });
+
+  test('rejects an unsafe issue-free branch', () => {
+    const result = validateTaskHandoff(handoff({
+      taskId: 'docs-cleanup',
+      taskBranch: 'master'
+    }));
+    assert.equal(result.valid, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_TASK_BRANCH'), true);
+  });
+
   test('keeps a valid legacy handoff human-gated for publication and corrections', () => {
     const legacy = {
       approvalReference: 'human-approved-existing-task',
@@ -141,11 +186,20 @@ describe('task handoff compatibility', () => {
 });
 
 describe('deterministic task actions', () => {
-  test('rejects scope expansion', () => {
+  test('allows truthful clean actual diff before initial execute', () => {
+    const result = evaluateTaskAction({
+      handoff: handoff(),
+      runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths: [], digest: diffDigest } }),
+      action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: [] }
+    });
+    assert.equal(result.allowed, true);
+  });
+
+  test('rejects out-of-scope authoritative actual diff before execute', () => {
     const result = evaluateTaskAction({
       handoff: handoff(),
       runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths: ['deployment/production.yml'] } }),
-      action: { kind: 'execute', expectedHeadSha: headSha, changedPaths: ['deployment/production.yml'] }
+      action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['deployment/production.yml'] }
     });
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'SCOPE_EXPANSION'), true);
@@ -379,8 +433,8 @@ test('requires headSha for v2 but keeps it optional for legacy compatibility', (
   assert.equal(validateTaskHandoff(legacy).valid, true);
 });
 
-test('rejects empty changed-path evidence for mutating actions', () => {
-  for (const kind of ['execute', 'correct', 'publish']) {
+test('requires a non-empty actual diff for correction and publication', () => {
+  for (const kind of ['correct', 'publish']) {
     const action = { kind, actorRole: kind === 'publish' ? 'publisher' : 'executor', expectedHeadSha: headSha, changedPaths: [] };
     if (kind === 'correct') {
       action.findingsPackageCount = 1;
@@ -400,6 +454,29 @@ test('rejects empty changed-path evidence for mutating actions', () => {
     assert.equal(result.allowed, false);
     assert.equal(result.findings.some(({ code }) => code === 'INVALID_CHANGED_PATHS'), true);
   }
+});
+
+test('rejects publication without a non-empty authoritative actual diff', () => {
+  const result = evaluateTaskAction({
+    handoff: handoff(),
+    runtime: runtime({
+      diffEvidence: { baseSha, headSha, changedPaths: [], digest: diffDigest }
+    }),
+    action: {
+      kind: 'publish',
+      actorRole: 'publisher',
+      destinationBranch: taskBranch,
+      pullRequestBaseBranch: integrationBranch,
+      expectedHeadSha: headSha,
+      changedPaths: ['FLOW.md'],
+      commitCount: 1,
+      pushCount: 1,
+      forcePush: false,
+      historyRewrite: false
+    }
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'DIFF_EVIDENCE_UNAVAILABLE'), true);
 });
 
 test('requires explicit read-only intent for Auditor actions', () => {

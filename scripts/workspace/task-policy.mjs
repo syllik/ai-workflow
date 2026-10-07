@@ -38,6 +38,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const DIFF_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const TASK_BRANCH_PATTERN = /^[a-z][a-z0-9-]*\/issue-\d+-[a-z0-9][a-z0-9-]*$/u;
+const ISSUE_FREE_TASK_BRANCH_PATTERN = /^[a-z][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/u;
 const BRANCH_PATTERN = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 
 function finding(code, path, details = {}) {
@@ -54,6 +55,28 @@ function isNonEmptyString(value) {
 
 function normalizeRepositoryIdentity(value) {
   return isNonEmptyString(value) ? value.trim().toLowerCase() : null;
+}
+
+function isChipInRepository(value) {
+  return normalizeRepositoryIdentity(value)?.startsWith('chipin-one/') === true;
+}
+
+function chipInTaskIssueNumber(taskId, repository) {
+  if (!isNonEmptyString(taskId) || !isNonEmptyString(repository)) return null;
+  const match = /^(.*)#(\d+)$/u.exec(taskId.trim());
+  if (!match || normalizeRepositoryIdentity(match[1]) !== normalizeRepositoryIdentity(repository)) return null;
+  return match[2];
+}
+
+function validTaskBranch(handoff) {
+  if (typeof handoff.taskBranch !== 'string') return false;
+  if (isChipInRepository(handoff.repository)) {
+    const issueNumber = chipInTaskIssueNumber(handoff.taskId, handoff.repository);
+    const branchMatch = /^[a-z][a-z0-9-]*\/issue-(\d+)-[a-z0-9][a-z0-9-]*$/u.exec(handoff.taskBranch);
+    return issueNumber !== null && branchMatch?.[1] === issueNumber;
+  }
+  return handoff.taskBranch !== handoff.integrationBranch
+    && (TASK_BRANCH_PATTERN.test(handoff.taskBranch) || ISSUE_FREE_TASK_BRANCH_PATTERN.test(handoff.taskBranch));
 }
 
 function isShaHistory(value) {
@@ -227,7 +250,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
   unknownKeys(value, HANDOFF_V2_KEYS, 'handoff', findings);
   if (!isNonEmptyString(value.taskId)) findings.push(finding('INVALID_TASK_ID', 'handoff.taskId'));
   if (typeof value.repository !== 'string' || !REPOSITORY_PATTERN.test(value.repository)) findings.push(finding('INVALID_HANDOFF_REPOSITORY', 'handoff.repository'));
-  if (typeof value.taskBranch !== 'string' || !TASK_BRANCH_PATTERN.test(value.taskBranch)) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
+  if (!validTaskBranch(value)) findings.push(finding('INVALID_TASK_BRANCH', 'handoff.taskBranch'));
   if (typeof value.integrationBranch !== 'string' || !BRANCH_PATTERN.test(value.integrationBranch)) findings.push(finding('INVALID_INTEGRATION_BRANCH', 'handoff.integrationBranch'));
   if (!isUniqueNonEmptyStringArray(value.requiredCiChecks)) findings.push(finding('INVALID_REQUIRED_CI_CHECKS', 'handoff.requiredCiChecks'));
   if (value.role !== 'executor') findings.push(finding('INVALID_HANDOFF_ROLE', 'handoff.role'));
@@ -327,15 +350,16 @@ function currentShaFindings(handoff, runtime, action) {
 }
 
 function scopeFindings(handoff, runtime, action) {
-  const requiresExplicitChangedPaths = ['execute', 'correct', 'publish', 'review'].includes(action.kind);
-  if (!isConcretePathList(action.changedPaths, { nonEmpty: requiresExplicitChangedPaths })) {
-    return requiresExplicitChangedPaths ? [finding('INVALID_CHANGED_PATHS', 'action.changedPaths')] : [];
+  const checksObservedDiff = ['execute', 'correct', 'publish', 'review'].includes(action.kind);
+  const requiresNonEmptyObservedDiff = ['correct', 'publish', 'review'].includes(action.kind);
+  if (!isConcretePathList(action.changedPaths, { nonEmpty: requiresNonEmptyObservedDiff })) {
+    return checksObservedDiff ? [finding('INVALID_CHANGED_PATHS', 'action.changedPaths')] : [];
   }
 
   let changedPaths = action.changedPaths;
-  if (requiresExplicitChangedPaths) {
+  if (checksObservedDiff) {
     const evidence = runtime.diffEvidence;
-    if (!isObject(evidence) || !isConcretePathList(evidence.changedPaths, { nonEmpty: true })) {
+    if (!isObject(evidence) || !isConcretePathList(evidence.changedPaths, { nonEmpty: requiresNonEmptyObservedDiff })) {
       return [finding('DIFF_EVIDENCE_UNAVAILABLE', 'runtime.diffEvidence')];
     }
     if (evidence.baseSha !== runtime.currentBaseSha || evidence.headSha !== runtime.currentHeadSha) {
