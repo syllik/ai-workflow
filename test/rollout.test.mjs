@@ -91,6 +91,8 @@ test('rollout workflow mints private-repository tokens only for trusted master r
   assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
   assert.match(workflow, /rollout-ci\.mjs auth-scope ChipIn-one/u);
   assert.match(workflow, /repositories:\s*\$\{\{ steps\.rollout-scopes\.outputs\.chipin_one \}\}/u);
+  assert.match(workflow, /if:\s*steps\.rollout-scopes\.outputs\.syllik != ''/u);
+  assert.match(workflow, /if:\s*steps\.rollout-scopes\.outputs\.chipin_one != ''/u);
   assert.doesNotMatch(workflow, /chipin-frontend|chipin-knowledge-base/u);
   assert.match(workflow, /permission-contents:\s*read/u);
   assert.match(workflow, /persist-credentials:\s*false/u);
