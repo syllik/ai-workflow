@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
@@ -45,6 +46,93 @@ function sourceKey(source) {
     source.path,
     source.revisionSha
   ]);
+}
+
+function normalizeRemote(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim()
+    .replace(/^git@github\.com:/u, 'https://github.com/')
+    .replace(/^ssh:\/\/git@github\.com\//u, 'https://github.com/')
+    .replace(/\.git$/u, '')
+    .replace(/\/$/u, '')
+    .toLowerCase();
+}
+
+function repositoryRootFor(repositoryRoots, repository) {
+  if (!repositoryRoots || typeof repositoryRoots !== 'object' || Array.isArray(repositoryRoots)) return null;
+  const key = normalizeRepository(repository);
+  for (const [candidate, root] of Object.entries(repositoryRoots)) {
+    if (
+      normalizeRepository(candidate) === key
+      && typeof root === 'string'
+      && root.trim().length > 0
+    ) {
+      return root.trim();
+    }
+  }
+  return null;
+}
+
+function gitText(repositoryRoot, args) {
+  return execFileSync('git', ['-C', repositoryRoot, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+}
+
+function gitSourceLoader(source, input) {
+  const repositoryRoot = repositoryRootFor(input.repositoryRoots, source.repository);
+  if (!repositoryRoot) throw new Error('repository root unavailable');
+
+  const origin = gitText(repositoryRoot, ['config', '--get', 'remote.origin.url']).trim();
+  const expectedRemote = `https://github.com/${source.repository}`;
+  if (normalizeRemote(origin) !== normalizeRemote(expectedRemote)) {
+    throw new Error('repository origin mismatch');
+  }
+
+  const objectType = gitText(repositoryRoot, ['cat-file', '-t', source.revisionSha]).trim();
+  if (objectType !== 'commit') throw new Error('revision is not a commit');
+
+  const objectRef = `${source.revisionSha}:${source.path}`;
+  const blobSha = gitText(repositoryRoot, ['rev-parse', objectRef]).trim();
+  if (!validSha(blobSha)) throw new Error('source blob sha unavailable');
+
+  const content = gitText(repositoryRoot, ['show', objectRef]);
+  return { content, blobSha };
+}
+
+function hydrateSource(source, index, input, findings, sourceLoader) {
+  let trusted;
+  try {
+    trusted = sourceLoader(source, input);
+  } catch {
+    findings.push(finding('CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE', `sources.${index}`));
+    return null;
+  }
+
+  if (
+    !trusted
+    || typeof trusted.content !== 'string'
+    || trusted.content.trim().length === 0
+    || !validSha(trusted.blobSha)
+  ) {
+    findings.push(finding('CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE', `sources.${index}`));
+    return null;
+  }
+
+  if (source.content !== null && source.content !== trusted.content) {
+    findings.push(finding('CONTEXT_SOURCE_CONTENT_MISMATCH', `sources.${index}.content`, {
+      repository: source.repository,
+      path: source.path,
+      revisionSha: source.revisionSha
+    }));
+  }
+
+  return {
+    ...source,
+    content: trusted.content,
+    blobSha: trusted.blobSha
+  };
 }
 
 function validateCanonicalExpectedSources(expectedSources, policySha, headSha, findings) {
@@ -268,12 +356,8 @@ function normalizeSource(source, index, findings) {
   if (validSha(source.revisionSha) && validSha(source.expectedRevisionSha) && source.revisionSha !== source.expectedRevisionSha) {
     findings.push(finding('CONTEXT_SOURCE_STALE', prefix, { expected: source.expectedRevisionSha, actual: source.revisionSha }));
   }
-  if (typeof source.content !== 'string' || source.content.trim().length === 0) {
+  if (source.content !== undefined && typeof source.content !== 'string') {
     findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', `${prefix}.content`));
-    structurallyValid = false;
-  }
-  if (source.requirementIds !== undefined && !uniqueStrings(source.requirementIds)) {
-    findings.push(finding('INVALID_CONTEXT_REQUIREMENT_IDS', `${prefix}.requirementIds`));
     structurallyValid = false;
   }
   if (!structurallyValid) return null;
@@ -282,8 +366,7 @@ function normalizeSource(source, index, findings) {
     repository: source.repository.trim(),
     path: source.path.trim(),
     revisionSha: source.revisionSha,
-    content: source.content,
-    requirementIds: source.requirementIds ?? []
+    content: typeof source.content === 'string' ? source.content : null
   };
 }
 
@@ -291,8 +374,9 @@ function renderSection(source) {
   return `=== ${source.kind} ${source.repository}@${source.revisionSha}:${source.path} ===\n${source.content}\n`;
 }
 
-export function buildTaskContextPackage(input = {}) {
+export function buildTaskContextPackage(input = {}, options = {}) {
   const findings = [];
+  const sourceLoader = typeof options.sourceLoader === 'function' ? options.sourceLoader : gitSourceLoader;
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
@@ -364,13 +448,15 @@ export function buildTaskContextPackage(input = {}) {
     input.sources.forEach((source, index) => {
       const normalized = normalizeSource(source, index, findings);
       if (!normalized) return;
-      const key = sourceKey(normalized);
+      const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
+      if (!hydrated) return;
+      const key = sourceKey(hydrated);
       if (seenSources.has(key)) {
         findings.push(finding('CONTEXT_SOURCE_DUPLICATE', `sources.${index}`));
         return;
       }
       seenSources.add(key);
-      sources.push(normalized);
+      sources.push(hydrated);
     });
   }
 
@@ -442,9 +528,10 @@ export function buildTaskContextPackage(input = {}) {
   }
 
   if (uniqueStrings(requirementIds)) {
-    const covered = new Set(sources.flatMap(({ requirementIds: ids }) => ids));
     for (const requirementId of requirementIds) {
-      if (!covered.has(requirementId)) findings.push(finding('CONTEXT_REQUIREMENT_UNAVAILABLE', `requirementIds.${requirementId}`));
+      if (!sources.some(({ content }) => content.includes(requirementId))) {
+        findings.push(finding('CONTEXT_REQUIREMENT_UNAVAILABLE', `requirementIds.${requirementId}`));
+      }
     }
   }
 
@@ -473,9 +560,9 @@ export function buildTaskContextPackage(input = {}) {
       repository: source.repository,
       path: source.path,
       revisionSha: source.revisionSha,
+      blobSha: source.blobSha,
       sha256: sha256(source.content),
-      bytes: utf8Bytes(source.content),
-      requirementIds: [...source.requirementIds]
+      bytes: utf8Bytes(source.content)
     })),
     assembledContextSha256: sha256(assembledContext),
     assembledContextBudgetBytes: measured.maxBytes,
