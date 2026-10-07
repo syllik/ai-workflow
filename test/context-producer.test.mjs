@@ -416,6 +416,28 @@ test('binds every target-kind source to the selected target repository and headS
     && expectedRepository === 'ChipIn-one/chipin-frontend'), true);
 });
 
+test('uses collision-safe source identities when fields contain NUL characters', () => {
+  const value = input();
+  value.expectedSources.push({
+    kind: 'target',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'foo\0bar',
+    revisionSha: headSha
+  });
+  value.sources.push({
+    kind: 'target',
+    repository: 'ChipIn-one/chipin-frontend\0foo',
+    path: 'bar',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: '# collision attempt\n'
+  });
+
+  const result = buildTaskContextPackage(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+});
+
 test('binds every dependency-kind source to a declared dependency revision', () => {
   const value = input();
   const staleSha = 'e'.repeat(40);

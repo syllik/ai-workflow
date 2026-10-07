@@ -39,7 +39,12 @@ function normalizeRepository(value) {
 }
 
 function sourceKey(source) {
-  return [source.kind, normalizeRepository(source.repository), source.path, source.revisionSha].join('\0');
+  return JSON.stringify([
+    source.kind,
+    normalizeRepository(source.repository),
+    source.path,
+    source.revisionSha
+  ]);
 }
 
 function validateCanonicalExpectedSources(expectedSources, policySha, headSha, findings) {
