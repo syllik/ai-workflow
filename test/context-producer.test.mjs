@@ -24,6 +24,8 @@ function canonicalSources() {
       '    status: active',
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
       ''
     ].join('\n') },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'projects/index.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# projects\n' },
@@ -42,6 +44,7 @@ function expectedSources(sources) {
 function input(overrides = {}) {
   const sources = canonicalSources();
   return {
+    role: 'executor',
     policySha,
     baseSha,
     headSha,
@@ -72,9 +75,20 @@ function testSourceLoader(source) {
   return { content, blobSha: testBlobSha(content) };
 }
 
+function testIntegrationBranchResolver(dependency) {
+  if (
+    dependency.repository.toLowerCase() === 'chipin-one/chipin-knowledge-base'
+    && dependency.integrationBranch === 'master'
+  ) {
+    return dependencySha;
+  }
+  throw new Error('unexpected dependency branch');
+}
+
 function build(value, options = {}) {
   return buildTaskContextPackage(value, {
-    sourceLoader: options.sourceLoader ?? testSourceLoader
+    sourceLoader: options.sourceLoader ?? testSourceLoader,
+    integrationBranchResolver: options.integrationBranchResolver ?? testIntegrationBranchResolver
   });
 }
 
@@ -103,6 +117,8 @@ test('loads source bodies from exact Git revisions on the production loader path
       '    status: active',
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
       ''
     ].join('\n');
 
@@ -154,6 +170,7 @@ test('loads source bodies from exact Git revisions on the production loader path
     ];
 
     const value = {
+      role: 'executor',
       policySha: policy.revisionSha,
       baseSha,
       headSha: target.revisionSha,
@@ -350,6 +367,8 @@ test('blocks normal handoff for onboarding or read-only target records', () => {
       `    status: ${registryState.status}`,
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
       ''
     ].join('\n');
 
@@ -457,6 +476,64 @@ test('treats dependency repository casing aliases as one exact dependency identi
   const result = build(value);
   assert.equal(result.passed, false);
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_DUPLICATE'), true);
+});
+
+test('binds the selected role source to the Executor handoff role', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ path }) => path !== 'global/executor.md');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'global/executor.md');
+  value.sources.push({
+    kind: 'role',
+    repository: 'syllik/ai-workflow',
+    path: 'global/reviewer.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# reviewer\n'
+  });
+  value.expectedSources.push({
+    kind: 'role',
+    repository: 'syllik/ai-workflow',
+    path: 'global/reviewer.md',
+    revisionSha: policySha
+  });
+
+  const wrongRoleFile = build(value);
+  assert.equal(wrongRoleFile.passed, false);
+  assert.equal(wrongRoleFile.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+
+  const wrongHandoffRole = build(input({ role: 'reviewer' }));
+  assert.equal(wrongHandoffRole.passed, false);
+  assert.equal(wrongHandoffRole.findings.some(({ code }) => code === 'INVALID_CONTEXT_ROLE'), true);
+});
+
+test('binds dependency revision to the workspace-declared integration branch head', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  value.dependencies[0].revisionSha = stale;
+  value.dependencies[0].expectedRevisionSha = stale;
+  const source = sourceByPath(value, 'common/specs/dashboard.md');
+  source.revisionSha = stale;
+  source.expectedRevisionSha = stale;
+  expectedSourceByPath(value, 'common/specs/dashboard.md').revisionSha = stale;
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, integrationBranch, expected, actual }) =>
+    code === 'CONTEXT_DEPENDENCY_BRANCH_SHA_MISMATCH'
+    && integrationBranch === 'master'
+    && expected === dependencySha
+    && actual === stale), true);
+});
+
+test('fails closed when dependency integration-branch provenance is unavailable', () => {
+  const result = build(input(), {
+    integrationBranchResolver: () => {
+      throw new Error('branch unavailable');
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) =>
+    code === 'CONTEXT_DEPENDENCY_BRANCH_PROVENANCE_UNAVAILABLE'), true);
 });
 
 test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {

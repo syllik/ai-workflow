@@ -9,13 +9,8 @@ const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
 const SUPPORTED_SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency']);
 const CANONICAL_POLICY_REPOSITORY = 'syllik/ai-workflow';
 const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
-const CANONICAL_ROLE_PATHS = new Set([
-  'global/planner.md',
-  'global/architect.md',
-  'global/executor.md',
-  'global/reviewer.md',
-  'global/auditor.md'
-]);
+const CANONICAL_HANDOFF_ROLE = 'executor';
+const CANONICAL_HANDOFF_ROLE_PATH = 'global/executor.md';
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
@@ -104,6 +99,30 @@ function gitSourceLoader(source, input) {
   return { content, blobSha };
 }
 
+function gitIntegrationBranchResolver(dependency, input) {
+  const repositoryRoot = repositoryRootFor(input.repositoryRoots, dependency.repository);
+  if (!repositoryRoot) throw new Error('dependency repository root unavailable');
+
+  const origin = gitText(repositoryRoot, ['config', '--get', 'remote.origin.url']).trim();
+  const expectedRemote = `https://github.com/${dependency.repository}`;
+  if (normalizeRemote(origin) !== normalizeRemote(expectedRemote)) {
+    throw new Error('dependency repository origin mismatch');
+  }
+
+  for (const ref of [
+    `refs/remotes/origin/${dependency.integrationBranch}`,
+    `refs/heads/${dependency.integrationBranch}`
+  ]) {
+    try {
+      const sha = gitText(repositoryRoot, ['rev-parse', '--verify', `${ref}^{commit}`]).trim();
+      if (validSha(sha)) return sha;
+    } catch {
+      // Try the next trusted local branch reference.
+    }
+  }
+  throw new Error('dependency integration branch unavailable');
+}
+
 function hydrateSource(source, index, input, findings, sourceLoader) {
   let trusted;
   try {
@@ -138,7 +157,13 @@ function hydrateSource(source, index, input, findings, sourceLoader) {
   };
 }
 
-function validateCanonicalExpectedSources(expectedSources, policySha, headSha, findings) {
+function validateCanonicalExpectedSources(expectedSources, policySha, headSha, role, findings) {
+  if (role !== CANONICAL_HANDOFF_ROLE) {
+    findings.push(finding('INVALID_CONTEXT_ROLE', 'role', {
+      expected: CANONICAL_HANDOFF_ROLE,
+      actual: role ?? null
+    }));
+  }
   if (!validSha(policySha) || !validSha(headSha)) return;
 
   const policySources = expectedSources.filter((source) => source.kind === 'policy');
@@ -170,10 +195,12 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, f
   const canonicalRoleSources = roleSources.filter((source) =>
     normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
     && source.revisionSha === policySha
-    && CANONICAL_ROLE_PATHS.has(source.path)
+    && source.path === CANONICAL_HANDOFF_ROLE_PATH
   );
   if (roleSources.length !== 1 || canonicalRoleSources.length !== 1) {
     findings.push(finding('CONTEXT_CANONICAL_ROLE_INVALID', 'canonical.role', {
+      expectedRole: CANONICAL_HANDOFF_ROLE,
+      expectedPath: CANONICAL_HANDOFF_ROLE_PATH,
       actualCount: roleSources.length,
       canonicalCount: canonicalRoleSources.length
     }));
@@ -220,7 +247,7 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, f
   }
 }
 
-function validateRequiredContextDependencies(sources, dependencies, policySha, findings) {
+function validateRequiredContextDependencies(sources, dependencies, policySha, input, findings, integrationBranchResolver) {
   const workspaceSource = sources.find((source) =>
     source.kind === 'policy'
     && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
@@ -271,7 +298,13 @@ function validateRequiredContextDependencies(sources, dependencies, policySha, f
   const requiredRepositories = new Set();
   for (const [index, dependency] of requiredDependencies.entries()) {
     const repository = dependency?.repository;
-    if (typeof repository !== 'string' || repository.trim().length === 0) {
+    if (
+      typeof repository !== 'string'
+      || repository.trim().length === 0
+      || dependency?.access !== 'read-only'
+      || typeof dependency?.integrationBranch !== 'string'
+      || dependency.integrationBranch.trim().length === 0
+    ) {
       findings.push(finding('CONTEXT_DEPENDENCY_REGISTRY_INVALID', `workspace.contextDependencies.${index}`));
       continue;
     }
@@ -285,13 +318,44 @@ function validateRequiredContextDependencies(sources, dependencies, policySha, f
     requiredRepositories.add(repositoryKey);
   }
 
-  const actualRepositories = new Set(dependencies.map(({ repository }) => normalizeRepository(repository)));
+  const actualDependencies = new Map(
+    dependencies.map((dependency) => [normalizeRepository(dependency.repository), dependency])
+  );
   for (const repositoryKey of requiredRepositories) {
-    if (!actualRepositories.has(repositoryKey)) {
-      const declared = requiredDependencies.find((dependency) =>
-        normalizeRepository(dependency?.repository) === repositoryKey
-      );
+    const declared = requiredDependencies.find((dependency) =>
+      normalizeRepository(dependency?.repository) === repositoryKey
+    );
+    const actual = actualDependencies.get(repositoryKey);
+    if (!actual) {
       findings.push(finding('CONTEXT_DEPENDENCY_UNAVAILABLE', `workspace.contextDependencies.${declared.repository}`));
+      continue;
+    }
+
+    let branchSha = null;
+    try {
+      branchSha = integrationBranchResolver({
+        repository: declared.repository,
+        integrationBranch: declared.integrationBranch
+      }, input);
+    } catch {
+      findings.push(finding('CONTEXT_DEPENDENCY_BRANCH_PROVENANCE_UNAVAILABLE', `dependencies.${declared.repository}`, {
+        repository: declared.repository,
+        integrationBranch: declared.integrationBranch
+      }));
+      continue;
+    }
+    if (!validSha(branchSha)) {
+      findings.push(finding('CONTEXT_DEPENDENCY_BRANCH_PROVENANCE_UNAVAILABLE', `dependencies.${declared.repository}`, {
+        repository: declared.repository,
+        integrationBranch: declared.integrationBranch
+      }));
+    } else if (branchSha !== actual.revisionSha) {
+      findings.push(finding('CONTEXT_DEPENDENCY_BRANCH_SHA_MISMATCH', `dependencies.${declared.repository}`, {
+        repository: declared.repository,
+        integrationBranch: declared.integrationBranch,
+        expected: branchSha,
+        actual: actual.revisionSha
+      }));
     }
   }
   for (const dependency of dependencies) {
@@ -380,6 +444,9 @@ function renderSection(source) {
 export function buildTaskContextPackage(input = {}, options = {}) {
   const findings = [];
   const sourceLoader = typeof options.sourceLoader === 'function' ? options.sourceLoader : gitSourceLoader;
+  const integrationBranchResolver = typeof options.integrationBranchResolver === 'function'
+    ? options.integrationBranchResolver
+    : gitIntegrationBranchResolver;
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
@@ -414,7 +481,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     });
   }
 
-  validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, findings);
+  validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, input.role, findings);
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -463,7 +530,14 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     });
   }
 
-  validateRequiredContextDependencies(sources, normalizedDependencies, input.policySha, findings);
+  validateRequiredContextDependencies(
+    sources,
+    normalizedDependencies,
+    input.policySha,
+    input,
+    findings,
+    integrationBranchResolver
+  );
 
   if (validSha(input.policySha)) {
     expectedSources.forEach((source, index) => {
@@ -549,6 +623,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
 
   const passed = findings.length === 0 && measured.actualBytes > 0;
   const manifest = {
+    role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
     policySha: validSha(input.policySha) ? input.policySha : null,
     baseSha: validSha(input.baseSha) ? input.baseSha : null,
     headSha: validSha(input.headSha) ? input.headSha : null,
