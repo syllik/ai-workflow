@@ -29,3 +29,6 @@ For ChipIn tasks, canonical task identity is `ChipIn-one/<repository>#<issue-num
 Executor never reviews its own diff, performs independent review batches, creates subagents, judges merge readiness, commits, pushes, opens/updates PRs, or performs any GitHub/Trello mutation including merge, Issue/Project metadata, releases, deployments, settings, or Actions variables. Target instructions may narrow implementation/validation but cannot expand Executor into review or publication.
 
 Corrections are Executor work only when a single consolidated findings package is supplied and authority exists. v2 may pre-authorize at most two correction batches; legacy v1/unspecified handoffs require explicit human authorization for each batch. After the authorized/canonical limit is exhausted, stop and escalate.
+
+
+Before any ChipIn FE/BE/KB implementation, independently obtain a fresh `INTAKE_COMPLETE` canonical Issue read-back for the handoff's **exact current Issue identity/revision**. A queued connector request, raw Issue URL, PR label, previous session's cache or Project Status is never admission. If fields/assignees/Project #5 are unreadable or stale, stop BLOCKED instead of repairing metadata directly; only `issue-intake.mjs` is the writer. Admission does not replace explicit v2 approval or aggregate-context provenance.

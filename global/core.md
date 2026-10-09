@@ -11,3 +11,6 @@
 - New repositories require explicit licensing choice before first commit. For net-new tools, research maintained reusable/forkable alternatives and license compatibility; preserve upstream notices.
 - Adding a `workspace.yaml` project requires synchronized `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` remains a stable link. Omission requires human decision.
 - Generated files are deterministic, LF-only, end with one newline, and must stay within hard byte budgets including the 32768-byte assembled execution-context gate.
+
+
+- ChipIn FE/BE/KB agent tasks require a **fresh live** `chipin-issue-admission/v1` read-only `INTAKE_COMPLETE` for the exact Issue/revision before executable planning, execution, publication or handoff. Recheck at each boundary (receipt age at most 120 seconds); a queued bridge, raw URL, Project status, PR text or stale cache never passes. Only `ChipIn-one/.github/automation/issue-intake.mjs` may create/reconcile canonical task metadata. Missing org Issue Fields/Project #5/permissions means BLOCKED. Native FE assignee = `syllik`; BE = `olegbal`; KB owner is explicitly selected, not guessed. Keep separate human approval/role checks.

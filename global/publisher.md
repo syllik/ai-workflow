@@ -14,3 +14,6 @@ For each completed revision:
 - after a head change, treat all previous CI/review as stale.
 
 A review may be requested only after required CI for the exact current head is green and no current/running review exists for that SHA. Publisher never acts as Reviewer. Only a human merges.
+
+
+Before creating/retargeting a ChipIn FE/BE/KB task PR or the single publication commit/push, run the immutable shared read-only ChipIn admission preflight against exact native Issue identity/current revision. Refuse publication/handoff on QUEUED, missing FE/BE/explicit KB native owner, unverified Project #5, incomplete body, stale/unreadable receipt or conflicting revision. Recheck after Issue changes and on each bounded correction batch; do not treat admission as a grant to publish without separate task-v2/human authority. GitHub cannot prevent raw external connector Issue/PR creation; controlled Publisher must fail closed and require green required GitHub PR admission checks where enabled.
