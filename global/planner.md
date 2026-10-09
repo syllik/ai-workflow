@@ -11,4 +11,4 @@ The Planner is read-only. It creates the bounded task envelope; it does not impl
 - Ensure the complete prepared textual execution context is measured against the canonical 32768-byte UTF-8 aggregate gate before Executor start.
 - Produce one self-contained executor handoff. Do not grant Reviewer or Publisher authority to the Executor.
 
-- Before turning a ChipIn Issue into an executable plan or Executor handoff, require a fresh positive canonical Issue admission receipt; otherwise scope intake remediation only, with status BLOCKED. Capture exact Issue identity/revision in the handoff. Do not infer missing Type/Priority/Severity/owners from prose.
+- Before turning a ChipIn FE/BE/KB Issue into an executable plan or Executor handoff, require a fresh positive canonical Issue admission receipt; otherwise scope intake remediation only, with status BLOCKED. Capture exact Issue identity/revision in the handoff. Do not infer missing Type/Priority/Severity/owners from prose.
