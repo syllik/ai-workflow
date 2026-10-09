@@ -63,8 +63,3 @@ Canonical AI routing:
 GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.
 Canonical root: ~/Desktop/WORK
 <!-- ai-workflow:agents-routing:end -->
-
-
-## ChipIn canonical task admission
-
-For managed ChipIn FE/BE/KB Issue-backed tasks, do not initiate execution planning, implementation, a task branch/PR, review handoff or publication without a fresh `INTAKE_COMPLETE` receipt from the versioned read-only `ChipIn-one/.github/automation/issue-admission.mjs` contract, for the exact native Issue identity and revision. This admission does **not** grant execution approval; v2 task authority remains required. FE native assignee `syllik`, BE `olegbal`, KB explicitly selected owner. A raw Issue, queued connector bridge, labels, stale cached receipt, PR body or human docs cannot replace Project #5/native metadata read-back. Org #53 has an expressly scoped one-Issue governance bootstrap, not a default exception.
