@@ -144,14 +144,6 @@ projects:
     status: active
     integrationBranch: main
     contextPath: .ai/context.md
-  - id: syllik/codex-local-runner
-    repository: syllik/codex-local-runner
-    localPath: tools/ai/codex-local-runner
-    group: tools/ai
-    access: managed
-    status: onboarding
-    integrationBranch: master
-    contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
     localPath: tools/content/youtube-metadata-translator
