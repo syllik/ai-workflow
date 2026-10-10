@@ -20,6 +20,24 @@ The audited Git lifecycle is defined in `workspace.yaml.gitLifecycle` and docume
 [`docs/git-workflow.md`](docs/git-workflow.md). Only listed repositories are lifecycle-audited;
 all other workspace records remain unverified for branch/merge migration state.
 
+### Retired runner reference
+
+`syllik/codex-local-runner` was retired on 2026-10-10 and removed from executable
+workspace routing. Its original repository remains private and archived; the
+separate `codex-local-runner-control` repository was already deleted on 2026-09-06.
+The local service account, runner data, GitHub runner registrations and dedicated
+runner/publisher Apps were removed.
+
+The public [MIT source archive](https://github.com/syllik/codex-local-runner-archive)
+at `tools/ai/codex-local-runner-archive` is historical reference for
+[Deep Dark Factory](https://github.com/syllik/deep-dark-factory), with
+[reuse lessons](https://github.com/syllik/codex-local-runner-archive/blob/master/docs/DDF-LESSONS.md)
+and a [dependency audit](https://github.com/syllik/codex-local-runner-archive/blob/master/docs/DEPENDENCY-AUDIT.md).
+It is intentionally excluded from `workspace.yaml`: schema v2 has only active
+and onboarding states, neither of which represents a retired runtime. The archive
+grants no execution, publication or management authority. Resolve the documented
+dependency vulnerabilities before reusing its code in a maintained runtime.
+
 The workspace validator is intentionally bounded:
 
 ```text
