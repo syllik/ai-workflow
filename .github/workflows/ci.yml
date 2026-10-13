@@ -30,5 +30,24 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Mint scoped read token for private activation
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        id: private-activation-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
+          owner: syllik
+          repositories: Zero-Touch-DCA
+          permission-contents: read
       - name: Verify canonical workflow
-        run: npm run verify
+        env:
+          GH_TOKEN: ${{ steps.private-activation-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${GH_TOKEN:-}" ]]; then
+            # Use the App installation token for git clones in activation validation.
+            gh auth setup-git
+          fi
+          npm run verify
