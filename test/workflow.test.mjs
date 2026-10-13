@@ -109,6 +109,25 @@ describe('workflow documentation', () => {
     assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/u);
     assert.match(workflow, /fetch-depth:\s*0/u);
     assert.match(workflow, /run:\s*npm run verify/u);
+    assert.match(workflow, /if: github\.event_name == 'push'/u);
+    assert.match(workflow, /WORKSPACE_ACTIVATION_BASE_SHA:.*github\.event_name == 'push'/u);
+  });
+
+  test('keeps private activation credentials out of PR-head code', () => {
+    const ci = text('.github/workflows/ci.yml');
+    const trusted = text('.github/workflows/activation-trusted.yml');
+    assert.match(ci, /if: github\.event_name == 'push'/u);
+    assert.doesNotMatch(ci, /pull_request\.head\.repo\.full_name/u);
+    assert.match(trusted, /pull_request_target/u);
+    assert.match(trusted, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/u);
+    assert.match(trusted, /persist-credentials: false/u);
+    assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:workspace\.yaml" > workspace\.yaml/u);
+    assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:projects\/index\.md" > projects\/index\.md/u);
+    assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:AGENTS\.md" > AGENTS\.md/u);
+    assert.match(trusted, /github\.event\.pull_request\.user\.login != 'dependabot\[bot\]'/u);
+    assert.match(trusted, /\$PR_HEAD_SHA/u);
+    assert.match(trusted, /npm run verify/u);
+    assert.match(trusted, /permission-contents: read/u);
   });
 
   test('retains the exact 32768-byte aggregate-context contract', () => {
