@@ -2,6 +2,8 @@
 
 Baseline refreshed: 2026-10-04 UTC for the completed canonical settings and organization cleanup receipts. The six-repository migration inventory remains bounded to `syllik/ai-workflow#23`; FE and BE migration state is not re-audited by this receipt, and this document does not claim global completion.
 
+**Additional inventory (2026-10-13):** `syllik/Zero-Touch-DCA` is newly audited as a documentation-stage private repository with `master` as its canonical branch. This is separate from the original six-repository migration inventory on #23. Its branch protection cannot be enforced on the current GitHub plan; all CI/review/merge rules are procedural until protection is available. Central registry status remains `onboarding` until local instructions and context are merged and verified.
+
 ## Canonical model
 
 ```text
@@ -23,6 +25,7 @@ Temporary issue branches use `<type>/issue-<number>-<slug>` (for example `fix/is
 | --- | --- | --- | --- | --- | --- | --- |
 | `syllik/syllik` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; `.github/workflows/profile-ci.yml` targets `master`; active `master protect` is squash-only, requires linear history, resolved review threads and green `profile-ci` |
 | `syllik/ai-workflow` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; `ci.yml` and `routing-rollout.yml` target `master`; active `master protect` is squash-only with linear history and required `verify` |
+| `syllik/Zero-Touch-DCA` | managed / onboarding | `master` | `master` | none | canonical | private repository; squash-only merge settings verified 2026-10-13; documentation-stage CI proposed in target PR #3; branch protection not enforceable on current plan |
 | `ChipIn-one/.github` | managed | `master` | `master` | none | canonical | canonical repository merge settings are live; `main` is retained as an unprotected rollback ref; active `canonical branches protect` targets `master`; PR #35 removed the temporary `main` readiness triggers and post-merge `evaluate-fixtures` on `master@871823ba72eaa5f2871afc17164d348af57e7feb` succeeded |
 | `ChipIn-one/chipin-knowledge-base` | read-only | `master` | `master` | none | canonical | canonical repository merge settings are live; cut over at `a0ea83721b47d153dbb4c45d4f8ec718bc899c4b`; `main` retained for rollback; PR #7 retargeted to `master`; private-repository branch protection is not enforceable on the current organization plan |
 | `ChipIn-one/chipin-frontend` | managed | `main` | `dev` | production | temporary-exception | PR #307 merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b` and moved read-only KB references to `master`; FE `dev -> main` topology remains unchanged |
@@ -90,4 +93,4 @@ PR #31 in this repository registers Deep Dark Factory and touches the shared man
 
 Bounded follow-ups are: replace FE `dev -> main` with exact-commit promotion before FE branch migration; migrate BE deploy/PR filters from `develop` only with deploy verification and owner coordination; apply their canonical merge-setting deltas only when those migrations are safe; and activate/verify KB branch protection if the organization plan later supports enforcement for private repositories. The supported canonical settings for `syllik/syllik`, `syllik/ai-workflow`, `ChipIn-one/.github`, and the KB repository-level merge options are complete; KB protection remains the documented plan-limited exception.
 
-`syllik/codex-local-runner`, Deep Dark Factory, and every other repository outside the six-row inventory are intentionally unverified by this task.
+The original six-repository migration inventory remains limited to `syllik/ai-workflow#23`. This onboarding change separately audits only `syllik/Zero-Touch-DCA`'s documented canonical branch and merge settings; its private-repository branch protection remains unenforceable on the current plan. `syllik/codex-local-runner`, Deep Dark Factory, and every other repository outside those two explicitly scoped inventories remain intentionally unverified.
