@@ -123,6 +123,8 @@ describe('workflow documentation', () => {
     assert.match(trusted, /persist-credentials: false/u);
     assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:workspace\.yaml" > workspace\.yaml/u);
     assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:projects\/index\.md" > projects\/index\.md/u);
+    assert.match(trusted, /git show "\$\{PR_HEAD_SHA\}:AGENTS\.md" > AGENTS\.md/u);
+    assert.match(trusted, /github\.event\.pull_request\.user\.login != 'dependabot\[bot\]'/u);
     assert.match(trusted, /\$PR_HEAD_SHA/u);
     assert.match(trusted, /npm run verify/u);
     assert.match(trusted, /permission-contents: read/u);

@@ -1,7 +1,7 @@
 name: Trusted Workspace Activation
 
 # This workflow runs from the trusted base branch, never from the PR checkout.
-# The PR contributes only the two manifest/index data blobs, not executable code.
+# The PR contributes only manifest, index, and routing AGENTS.md data blobs, not executable code.
 on:
   pull_request_target:
     branches:
@@ -13,6 +13,8 @@ permissions:
 
 jobs:
   activation:
+    # Dependabot pull_request_target runs cannot read repository Actions secrets.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     env:
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -32,7 +34,7 @@ jobs:
           cache: npm
       - name: Install trusted dependencies
         run: npm ci
-      - name: Read exact PR manifest and index as untrusted data
+      - name: Read exact PR-generated routing files as untrusted data
         shell: bash
         run: |
           set -euo pipefail
@@ -42,6 +44,7 @@ jobs:
           [[ "$(git rev-parse FETCH_HEAD)" == "$PR_HEAD_SHA" ]]
           git show "${PR_HEAD_SHA}:workspace.yaml" > workspace.yaml
           git show "${PR_HEAD_SHA}:projects/index.md" > projects/index.md
+          git show "${PR_HEAD_SHA}:AGENTS.md" > AGENTS.md
       - name: Mint scoped read token for private activation
         id: private-activation-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
