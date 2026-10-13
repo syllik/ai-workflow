@@ -45,6 +45,11 @@ gitLifecycle:
       branchState: canonical
       defaultBranch: master
       integrationBranch: master
+    - repository: syllik/Zero-Touch-DCA
+      deploymentProfile: none
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
     - repository: ChipIn-one/.github
       deploymentProfile: none
       branchState: canonical
@@ -167,4 +172,12 @@ projects:
     access: managed
     status: active
     integrationBranch: main
+    contextPath: .ai/context.md
+  - id: syllik/Zero-Touch-DCA
+    repository: syllik/Zero-Touch-DCA
+    localPath: products/Zero-Touch-DCA
+    group: products
+    access: managed
+    status: onboarding
+    integrationBranch: master
     contextPath: .ai/context.md
