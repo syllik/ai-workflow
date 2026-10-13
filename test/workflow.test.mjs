@@ -109,6 +109,7 @@ describe('workflow documentation', () => {
     assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/u);
     assert.match(workflow, /fetch-depth:\s*0/u);
     assert.match(workflow, /run:\s*npm run verify/u);
+    assert.match(workflow, /github\.actor != 'dependabot\[bot\]'/u);
   });
 
   test('retains the exact 32768-byte aggregate-context contract', () => {
