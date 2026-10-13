@@ -178,6 +178,6 @@ projects:
     localPath: products/Zero-Touch-DCA
     group: products
     access: managed
-    status: onboarding
+    status: active
     integrationBranch: master
     contextPath: .ai/context.md
