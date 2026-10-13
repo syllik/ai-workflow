@@ -1,0 +1,61 @@
+name: Trusted Workspace Activation
+
+# This workflow runs from the trusted base branch, never from the PR checkout.
+# The PR contributes only the two manifest/index data blobs, not executable code.
+on:
+  pull_request_target:
+    branches:
+      - master
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  activation:
+    runs-on: ubuntu-24.04
+    env:
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      WORKSPACE_ACTIVATION_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout trusted base policy only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Install trusted dependencies
+        run: npm ci
+      - name: Read exact PR manifest and index as untrusted data
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+          [[ "$(git rev-parse FETCH_HEAD)" == "$PR_HEAD_SHA" ]]
+          git show "${PR_HEAD_SHA}:workspace.yaml" > workspace.yaml
+          git show "${PR_HEAD_SHA}:projects/index.md" > projects/index.md
+      - name: Mint scoped read token for private activation
+        id: private-activation-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
+          owner: syllik
+          repositories: Zero-Touch-DCA
+          permission-contents: read
+      - name: Configure trusted Git credentials
+        env:
+          GH_TOKEN: ${{ steps.private-activation-token.outputs.token }}
+        run: gh auth setup-git
+      - name: Verify proposed activation using trusted code
+        env:
+          GH_TOKEN: ${{ steps.private-activation-token.outputs.token }}
+        run: npm run verify
