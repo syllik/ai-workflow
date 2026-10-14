@@ -12,3 +12,5 @@ The Planner is read-only. It creates the bounded task envelope; it does not impl
 - Produce one self-contained executor handoff. Do not grant Reviewer or Publisher authority to the Executor.
 
 - Before turning a ChipIn FE/BE/KB Issue into an executable plan or Executor handoff, require a fresh positive canonical Issue admission receipt; otherwise scope intake remediation only, with status BLOCKED. Capture exact Issue identity/revision in the handoff. Do not infer missing Type/Priority/Severity/owners from prose.
+
+ChipIn handoff discovery before any PR: use `scripts/workspace/chipin-admission-route.mjs` and the selected record's exact `integrationBranch`; only the shared .github preflight/verified consumer supplies a fresh exact-Issue/full-revision receipt. Missing shell token alone is not BLOCKED if authorized `gh api` works. A pending route or absent trusted connector delivery is not admission. Record redacted failure diagnostics; do not invoke the metadata writer.

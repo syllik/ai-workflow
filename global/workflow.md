@@ -12,3 +12,5 @@ Use `FLOW.md` for the lifecycle and `global/core.md` for shared invariants. Load
 Role names never imply a provider or model. Select capabilities by risk; do not invoke a stronger model merely because a role exists.
 
 Task contract v2 carries structured upfront authority. Handoffs without `contractVersion` (or with v1) are legacy-compatible: execution may continue under their existing valid approval/context provenance, but publication and each correction stay human-gated. They do not inherit v2 automatic correction authority.
+
+For ChipIn FE/BE/KB, resolve `scripts/workspace/chipin-admission-route.mjs` before selecting an executable handoff, even without a PR. Follow `global/core.md` for the shared immutable preflight and trusted consumer; routing alone never authorizes execution.
