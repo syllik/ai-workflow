@@ -433,3 +433,52 @@ test('checkout-defined clean filters never run when tracked files are stat-dirty
     assert.equal(existsSync(marker), false);
   } finally { f.close(); }
 });
+
+test('every checkout Git object read including archive forbids lazy fetch', async () => {
+  const f = fixture();
+  try {
+    let out = '', err = '', gitInvocations = 0;
+    const execute = promisify(execFile);
+    const run = async (command, argv, opts) => {
+      if (command === 'git') {
+        gitInvocations++;
+        assert.equal(opts.env?.GIT_NO_LAZY_FETCH, '1');
+        assert.equal(opts.env?.GIT_NO_REPLACE_OBJECTS, '1');
+      }
+      return execute(command, argv, opts);
+    };
+    const code = await runChipInAdmission([
+      '--issue', 'ChipIn-one/chipin-frontend#153', '--phase', 'executor',
+      '--expected-revision', REV, '--shared-source-sha', f.sha,
+      '--shared-checkout', f.checkout
+    ], { ...f.dependencies, run, stdout: { write: x => { out += x; } },
+      stderr: { write: x => { err += x; } } });
+    assert.equal(code, 0, err);
+    assert.equal(JSON.parse(out).status, 'INTAKE_COMPLETE');
+    assert.ok(gitInvocations >= 6, 'must cover both tree/index reads and archive');
+  } finally { f.close(); }
+});
+
+test('missing promisor blob fails closed without invoking external object helper', async () => {
+  const f = fixture();
+  try {
+    const marker = path.join(f.root, 'lazy-helper-ran');
+    const helper = path.join(f.root, 'lazy-helper.sh');
+    writeFileSync(helper, '#!/bin/sh\necho executed > "' + marker + '"\nexit 9\n', { mode: 0o755 });
+    const staged = f.git('ls-files', '--stage', 'automation/issue-admission-preflight.mjs');
+    const oid = staged.match(/\b[a-f0-9]{40}\b/u)?.[0];
+    assert.ok(oid, staged);
+    const loose = path.join(f.checkout, '.git', 'objects', oid.slice(0, 2), oid.slice(2));
+    assert.equal(existsSync(loose), true);
+    f.git('config', 'core.repositoryformatversion', '1');
+    f.git('config', 'extensions.partialclone', 'malicious');
+    f.git('config', 'remote.malicious.promisor', 'true');
+    f.git('config', 'remote.malicious.url', 'ext::' + helper);
+    f.git('config', 'protocol.ext.allow', 'always');
+    rmSync(loose);
+    const { code, result } = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(code, 2, JSON.stringify(result));
+    assert.equal(result.diagnostic.code, 'UNTRUSTED_CHECKOUT');
+    assert.equal(existsSync(marker), false);
+  } finally { f.close(); }
+});

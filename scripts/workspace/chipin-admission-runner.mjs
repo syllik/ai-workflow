@@ -140,7 +140,7 @@ async function trustedCheckout(root, sha, { run = execFile } = {}) {
     // Suppress repository/global configuration capable of executing helper commands.
     const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
       !/^(?:GIT_|GH_|GITHUB_TOKEN$|SSH_ASKPASS$)/u.test(key)));
-    Object.assign(gitEnv, { GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1',
+    Object.assign(gitEnv, { GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0' });
     async function git(...args) {
       const { stdout } = await run('git', ['--no-replace-objects', '-c', 'core.fsmonitor=false',
@@ -176,7 +176,7 @@ async function trustedSnapshot(root, sha, { run = execFile } = {}) {
         '-C', checkout, 'archive', '--format=tar', sha],
       { env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
         !/^(?:GIT_|GH_|GITHUB_TOKEN$|SSH_ASKPASS$)/u.test(key))),
-        GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1',
+        GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_CONFIG_NOSYSTEM: '1',
         GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
         timeout: 10_000, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
     if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('ARCHIVE_UNAVAILABLE');
