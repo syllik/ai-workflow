@@ -2,10 +2,12 @@
 // exclusively in the pinned ChipIn-one/.github implementation.
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import { realpath, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveChipInAdmissionRoute } from './chipin-admission-route.mjs';
+import { evidenceOptions } from './chipin-admission-evidence.mjs';
 
 const execFile = promisify(execFileCallback);
 const SHA40 = /^[a-f0-9]{40}$/u;
@@ -14,7 +16,8 @@ const PHASES = new Set(['initial-bind', 'planning', 'executor', 'publisher', 're
 const CODES = new Set(['AUTH_UNAVAILABLE', 'PERMISSION_DENIED', 'SCHEMA_UNREADABLE',
   'PROJECT_UNREADABLE', 'NATIVE_ISSUE_UNREADABLE', 'STALE_REVISION', 'STALE_RECEIPT',
   'RETRY_EXHAUSTED', 'ADMISSION_BLOCKED', 'INVALID_RECEIPT', 'UNTRUSTED_EVIDENCE',
-  'UNTRUSTED_SOURCE', 'UNTRUSTED_RUN', 'UNTRUSTED_ARTIFACT', 'REPLAY', 'TRUST_CONTEXT_MISSING']);
+  'UNTRUSTED_SOURCE', 'UNTRUSTED_RUN', 'UNTRUSTED_ARTIFACT', 'REPLAY', 'TRUST_CONTEXT_MISSING',
+  'REPLAY_REGISTRY_UNAVAILABLE', 'REPLAY_REGISTRY_UNTRUSTED', 'READ_ONLY_VIOLATION']);
 const ORIGIN = /^((https:\/\/github\.com\/)|(git@github\.com:))ChipIn-one\/\.github(?:\.git)?\/?$/iu;
 const BRANCH = '/repos/ChipIn-one/.github/branches/master';
 
@@ -25,7 +28,8 @@ function failure(code, capability, remedy) {
 
 function parseArgs(argv) {
   const allowed = new Set(['issue', 'phase', 'expected-revision', 'shared-source-sha',
-    'shared-checkout', 'owner', 'manifest', 'binding-output', 'transport']);
+    'shared-checkout', 'owner', 'manifest', 'binding-output', 'transport',
+    'evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer', 'evidence-replay-dir']);
   const values = {};
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i]?.startsWith('--') ? argv[i].slice(2) : '';
@@ -36,7 +40,12 @@ function parseArgs(argv) {
   }
   if (!values.issue || !PHASES.has(values.phase) || !SHA40.test(values['shared-source-sha'] ?? '') ||
       !['direct', 'trusted-evidence'].includes(values.transport ?? 'direct') ||
-      (values.transport !== 'trusted-evidence' && !values['shared-checkout']) ||
+      !values['shared-checkout'] ||
+      (values.transport === 'trusted-evidence' ?
+        !['evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer',
+          'evidence-replay-dir'].every(key => Boolean(values[key])) :
+        ['evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer',
+          'evidence-replay-dir'].some(key => Object.hasOwn(values, key))) ||
       (values.phase === 'initial-bind' ? Boolean(values['expected-revision']) || !values['binding-output'] :
         !SHA256.test(values['expected-revision'] ?? '') || Boolean(values['binding-output'])) ||
       (values.transport === 'trusted-evidence' && values.phase === 'initial-bind')) {
@@ -113,6 +122,32 @@ async function trustedCheckout(root, sha, { run = execFile } = {}) {
   } catch { return null; }
 }
 
+/**
+ * Export exactly the authenticated shared commit to a private snapshot.
+ * Git archive reads immutable commit objects, never mutable checkout files.
+ * Both direct preflight and verified consumer execute only snapshot bytes.
+ */
+async function trustedSnapshot(root, sha, { run = execFile } = {}) {
+  const checkout = await trustedCheckout(root, sha, { run });
+  if (!checkout) return null;
+  const snapshot = await mkdtemp(path.join(tmpdir(), 'chipin-admission-'));
+  try {
+    const { stdout: archive } = await run('git',
+      ['-C', checkout, 'archive', '--format=tar', sha],
+      { timeout: 10_000, maxBuffer: 32 * 1024 * 1024 });
+    if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('ARCHIVE_UNAVAILABLE');
+    const tarPath = path.join(snapshot, 'source.tar');
+    await writeFile(tarPath, archive, { flag: 'wx', mode: 0o600 });
+    await run('tar', ['-xf', tarPath, '-C', snapshot, '--no-same-owner', '--no-same-permissions'],
+      { timeout: 10_000, maxBuffer: 1_048_576 });
+    await unlink(tarPath);
+    return snapshot;
+  } catch {
+    await rm(snapshot, { recursive: true, force: true });
+    return null;
+  }
+}
+
 /** Output is a fresh canonical receipt, never an authorization to implement/publish. */
 export async function runChipInAdmission(argv, dependencies = {}) {
   const stdout = dependencies.stdout ?? process.stdout;
@@ -134,10 +169,6 @@ export async function runChipInAdmission(argv, dependencies = {}) {
   } catch { return emit(failure('WORKSPACE_UNAVAILABLE', 'canonical workspace.yaml', 'Supply an existing canonical workspace manifest.')); }
 
   const evidence = args.transport === 'trusted-evidence';
-  if (evidence && typeof dependencies.consumeTrustedEvidence !== 'function') {
-    return emit(failure('EVIDENCE_UNAVAILABLE', 'authenticated trusted artifact consumer',
-      'Use a separately authorized producer/consumer with authenticated artifact read and durable replay; Executor cannot dispatch.'));
-  }
   const route = await resolveChipInAdmissionRoute({
     manifest, issue: args.issue, selectedOwner: args.owner ?? null,
     phase: args.phase, expectedRevision: args['expected-revision'] ?? null,
@@ -149,11 +180,19 @@ export async function runChipInAdmission(argv, dependencies = {}) {
   });
   if (route.status !== 'PENDING_VERIFICATION') return emit(route);
 
+  const snapshot = await trustedSnapshot(args['shared-checkout'], route.shared.sourceSha, { run });
+  if (!snapshot) return emit(failure('UNTRUSTED_CHECKOUT', 'immutable trusted .github commit snapshot',
+    'Require the exact authenticated master commit and clean canonical checkout to materialize trusted code.'));
+
   if (evidence) {
     try {
-      // The trusted caller must invoke the shared consumeAdmissionArtifact(), not
-      // return a copy of a receipt. CLI has no such capability by default.
-      const verified = await dependencies.consumeTrustedEvidence(route.requiredBinding, route.shared);
+      // Shared verifier, NOT an injected receipt-producing callback. All run,
+      // artifact, digest, source, full-revision and replay checks remain in .github.
+      const { consumeAdmissionArtifact } = await import(pathToFileURL(path.join(snapshot,
+        'automation/issue-admission-consumer.mjs')).href);
+      const verified = await consumeAdmissionArtifact(evidenceOptions({
+        args, env, run, fetchImpl: dependencies.fetchImpl, sourceSha: route.shared.sourceSha
+      }));
       if (verified?.receipt?.contractVersion !== 'chipin-issue-admission/v1' ||
           verified.receipt.status !== 'INTAKE_COMPLETE' || verified.receipt.issue !== args.issue ||
           !Array.isArray(verified.receipt.blockers) || verified.receipt.blockers.length !== 0 ||
@@ -166,30 +205,29 @@ export async function runChipInAdmission(argv, dependencies = {}) {
           !Number.isFinite(Date.parse(verified.receipt.checkedAt)) ||
           Date.now() - Date.parse(verified.receipt.checkedAt) >= 120_000 ||
           Date.parse(verified.receipt.checkedAt) > Date.now()) {
-        return emit(failure('INVALID_RECEIPT', 'verified trusted evidence', 'Require a fresh shared consumer result for the approved exact revision.'));
+        return emit(failure('INVALID_RECEIPT', 'verified trusted evidence',
+          'Require a fresh shared consumer result for the approved exact revision.'));
       }
       return emit({ status: 'INTAKE_COMPLETE', issue: args.issue, phase: args.phase,
         revision: verified.receipt.revision, integrationBranch: route.integrationBranch,
         transport: 'trusted-evidence', checkedAt: verified.receipt.checkedAt });
     } catch (cause) {
-      return emit(failure(CODES.has(cause?.code) ? cause.code : 'EVIDENCE_UNAVAILABLE', 'trusted artifact consumer',
-        'Check independently authenticated producer/run/ref/artifact/digest/revision/replay bindings.'));
+      return emit(failure(CODES.has(cause?.code) ? cause.code : 'EVIDENCE_UNAVAILABLE',
+        'shared trusted artifact consumer',
+        'Check authenticated producer/run/ref/artifact/digest/revision/replay bindings.'));
+    } finally {
+      await rm(snapshot, { recursive: true, force: true });
     }
   }
 
-  // Immediate origin/HEAD/worktree pin before executing any shared code.
-  const checkout = await trustedCheckout(args['shared-checkout'], route.shared.sourceSha, { run });
-  if (!checkout) return emit(failure('UNTRUSTED_CHECKOUT', 'exact clean trusted .github checkout',
-    'Require ChipIn-one/.github origin, clean tracked tree and HEAD matching authenticated master SHA.'));
   let receipt;
   try {
     const { stdout: output } = await run(process.execPath, [route.entrypoint, ...route.args], {
-      cwd: checkout, env, timeout: 45_000, maxBuffer: 1_048_576
+      cwd: snapshot, env, timeout: 45_000, maxBuffer: 1_048_576
     });
     receipt = JSON.parse(output);
-    // Import only from the checkout verified immediately above. The shared
-    // validator, not this router, defines the receipt contract and freshness.
-    const { assertCanonicalReceipt } = await import(pathToFileURL(path.join(checkout,
+    // Import from the same immutable shared snapshot used by the subprocess.
+    const { assertCanonicalReceipt } = await import(pathToFileURL(path.join(snapshot,
       'automation/issue-admission-evidence.mjs')).href);
     assertCanonicalReceipt(receipt, { issue: args.issue,
       revision: args.phase === 'initial-bind' ? receipt.revision : args['expected-revision'] });
@@ -205,6 +243,8 @@ export async function runChipInAdmission(argv, dependencies = {}) {
     }
     return emit(failure(code, 'shared immutable canonical preflight',
     'Investigate redacted shared preflight blockers; do not accept pending routes or repair Issue metadata.'));
+  } finally {
+    await rm(snapshot, { recursive: true, force: true });
   }
   if (!SHA256.test(receipt.revision ?? '')) {
     return emit(failure('INVALID_RECEIPT', 'full canonical revision', 'Canonical read must provide exact 64-hex revision.'));

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
@@ -46,6 +47,29 @@ export function assertCanonicalReceipt(receipt, { issue, revision }) {
     Date.now() - Date.parse(receipt.checkedAt) >= 120000) {
     throw Object.assign(new Error('invalid'), { code: 'INVALID_RECEIPT' });
   }
+}
+`);
+  // Test stand-in: production imports the actual shared consumer from a
+  // pinned immutable Git archive, never from an injected receipt callback.
+  writeFileSync(path.join(checkout, 'automation/issue-admission-consumer.mjs'), `
+export async function consumeAdmissionArtifact(options) {
+  const branch = await options.api.request('/repos/ChipIn-one/.github/branches/master');
+  if (branch?.commit?.sha !== options.expectedSourceSha ||
+      typeof options.downloadZip !== 'function') {
+    throw Object.assign(new Error('source'), { code: 'UNTRUSTED_SOURCE' });
+  }
+  const unique = 'ChipIn-one/.github/' + options.runId + '/1/' + options.expectedRequestId;
+  if (!await options.recordConsumed(unique)) {
+    throw Object.assign(new Error('replayed'), { code: 'REPLAY' });
+  }
+  return {
+    receipt: { contractVersion: 'chipin-issue-admission/v1', status: 'INTAKE_COMPLETE',
+      issue: options.expectedIssue, revision: options.expectedRevision,
+      checkedAt: new Date().toISOString(), blockers: [] },
+    revision: options.expectedRevision, sourceSha: options.expectedSourceSha,
+    requestId: options.expectedRequestId, runId: options.runId,
+    attempt: 1, artifactId: options.artifactId
+  };
 }
 `);
   const gh = path.join(root, 'bin', 'gh');
@@ -157,43 +181,60 @@ test('denied gh, expired receipt, KB owner and trusted-evidence absence fail clo
     delete f.env.FIXTURE_EXPIRED;
     assert.equal((await f.invoke('executor', expected, 'ChipIn-one/chipin-knowledge-base#5')).result.diagnostic.code, 'OWNER_REQUIRED');
     const { result } = await f.invoke('executor', [...expected, '--transport', 'trusted-evidence']);
-    assert.equal(result.diagnostic.code, 'EVIDENCE_UNAVAILABLE');
+    assert.equal(result.diagnostic.code, 'INVALID_ARGUMENTS');
   } finally { f.close(); }
 });
 
-test('trusted evidence consumes prebound complete provenance and rejects unverified copies', async () => {
+test('real CLI trusted-evidence path invokes pinned shared consumer and records replay', () => {
   const f = fixture();
   try {
-    const deps = { ...f.dependencies, consumeTrustedEvidence: async (binding, source) => {
-      assert.equal(binding.revision, REV);
-      assert.equal(binding.issue, 'ChipIn-one/chipin-frontend#153');
-      assert.equal(source.sourceSha, f.sha);
-      return { receipt: { contractVersion: 'chipin-issue-admission/v1', status: 'INTAKE_COMPLETE',
-        issue: binding.issue, revision: REV, checkedAt: new Date().toISOString(), blockers: [] },
-        revision: REV, sourceSha: f.sha, requestId: 'test-request-id-123456',
-        runId: 101, attempt: 1, artifactId: 202 };
-    } };
-    let output = '', error = '';
-    deps.stdout = { write: v => { output += v; } };
-    deps.stderr = { write: v => { error += v; } };
-    const args = ['--issue', 'ChipIn-one/chipin-frontend#153', '--phase', 'reviewer',
-      '--shared-source-sha', f.sha, '--expected-revision', REV, '--transport', 'trusted-evidence'];
-    assert.equal(await runChipInAdmission(args, deps), 0);
-    assert.equal(JSON.parse(output).transport, 'trusted-evidence');
-    deps.consumeTrustedEvidence = async () => ({ receipt: { status: 'INTAKE_COMPLETE', issue: 'ChipIn-one/chipin-frontend#153', revision: REV } });
-    assert.equal(await runChipInAdmission(args, deps), 2);
-    assert.equal(JSON.parse(error).diagnostic.code, 'INVALID_RECEIPT');
-  } finally { f.close(); }
-});
-
-test('scripts/workspace/cli.mjs admission command invokes the runtime outside resolver unit tests', () => {
-  const f = fixture();
-  try {
+    const replay = path.join(f.root, 'replay');
+    mkdirSync(replay, { mode: 0o700 });
     const root = path.resolve(new URL('..', import.meta.url).pathname);
-    const command = ['scripts/workspace/cli.mjs', 'admission', '--issue', 'ChipIn-one/chipin-frontend#153',
-      '--phase', 'executor', '--expected-revision', REV, '--shared-source-sha', f.sha,
-      '--shared-checkout', f.checkout, '--manifest', path.join(root, 'workspace.yaml')];
-    const output = execFileSync(process.execPath, command, { cwd: root, env: f.env, encoding: 'utf8' });
-    assert.equal(JSON.parse(output).status, 'INTAKE_COMPLETE');
+    const args = ['scripts/workspace/cli.mjs', 'admission',
+      '--issue', 'ChipIn-one/chipin-frontend#153', '--phase', 'reviewer',
+      '--expected-revision', REV, '--shared-source-sha', f.sha,
+      '--shared-checkout', f.checkout, '--manifest', path.join(root, 'workspace.yaml'),
+      '--transport', 'trusted-evidence',
+      '--evidence-run-id', '101', '--evidence-artifact-id', '202',
+      '--evidence-request-id', 'request-id-test-123456',
+      '--evidence-producer', 'trusted-bot', '--evidence-replay-dir', replay];
+    const stdout = execFileSync(process.execPath, args, {
+      cwd: root, env: f.env, encoding: 'utf8'
+    });
+    assert.equal(JSON.parse(stdout).status, 'INTAKE_COMPLETE');
+    assert.equal(JSON.parse(stdout).transport, 'trusted-evidence');
+    assert.equal(readdirSync(replay).length, 1);
+    assert.throws(() => execFileSync(process.execPath, args, {
+      cwd: root, env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+    }), /Command failed/u);
+  } finally { f.close(); }
+});
+
+test('checkout mutation after archive extraction cannot change executed preflight', async () => {
+  const f = fixture();
+  try {
+    let out = '', err = '';
+    const realRun = promisify(execFile);
+    const execute = async (binary, args, opts) => {
+      const result = await realRun(binary, args, opts);
+      if (binary === 'tar') {
+        // Mutate the original checkout after snapshot extraction, before Node runs.
+        writeFileSync(path.join(f.checkout, 'automation/issue-admission-preflight.mjs'),
+          'process.stdout.write(JSON.stringify({status:"INTAKE_COMPLETE",forged:true}));\\n');
+      }
+      return result;
+    };
+    const code = await runChipInAdmission(['--issue', 'ChipIn-one/chipin-frontend#153',
+      '--phase', 'executor', '--expected-revision', REV,
+      '--shared-source-sha', f.sha, '--shared-checkout', f.checkout],
+      { ...f.dependencies, run: execute,
+        stdout: { write: value => { out += value; } },
+        stderr: { write: value => { err += value; } } });
+    assert.equal(code, 0, err);
+    const value = JSON.parse(out);
+    assert.equal(value.status, 'INTAKE_COMPLETE');
+    assert.equal(value.canonicalStatus, 'INTAKE_COMPLETE');
+    assert.equal(Object.hasOwn(value, 'forged'), false);
   } finally { f.close(); }
 });
