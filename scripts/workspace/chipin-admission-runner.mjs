@@ -88,8 +88,8 @@ function makeBranchRead({ env, run = execFile, fetchImpl = fetch }) {
       }
     }
     try {
-      const { stdout } = await run('gh', ['api', BRANCH, '--method', 'GET'], {
-        env, timeout: 20_000, maxBuffer: 1_048_576
+      const { stdout } = await run('gh', ['api', BRANCH, '--method', 'GET', '--hostname', 'github.com'], {
+        env: { ...env, GH_HOST: 'github.com' }, timeout: 20_000, maxBuffer: 1_048_576
       });
       return JSON.parse(stdout);
     } catch (cause) {
@@ -103,9 +103,16 @@ async function trustedCheckout(root, sha, { run = execFile } = {}) {
   if (!root || !SHA40.test(sha ?? '')) return null;
   try {
     const directory = await realpath(path.resolve(root));
+    // These local reads never need admission credentials or checkout hooks.
+    // Suppress repository/global configuration capable of executing helper commands.
+    const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+      !/^(?:GIT_|GH_|GITHUB_TOKEN$|SSH_ASKPASS$)/u.test(key)));
+    Object.assign(gitEnv, { GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null', GIT_TERMINAL_PROMPT: '0' });
     async function git(...args) {
-      const { stdout } = await run('git', ['--no-replace-objects', '-C', directory, ...args], {
-        timeout: 5000, maxBuffer: 1_048_576
+      const { stdout } = await run('git', ['--no-replace-objects', '-c', 'core.fsmonitor=false',
+        '-c', 'core.hooksPath=/dev/null', '-C', directory, ...args], {
+        env: gitEnv, timeout: 5000, maxBuffer: 1_048_576
       });
       return stdout.trim();
     }
@@ -133,8 +140,13 @@ async function trustedSnapshot(root, sha, { run = execFile } = {}) {
   const snapshot = await mkdtemp(path.join(tmpdir(), 'chipin-admission-'));
   try {
     const { stdout: archive } = await run('git',
-      ['--no-replace-objects', '-C', checkout, 'archive', '--format=tar', sha],
-      { timeout: 10_000, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
+      ['--no-replace-objects', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null',
+        '-C', checkout, 'archive', '--format=tar', sha],
+      { env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+        !/^(?:GIT_|GH_|GITHUB_TOKEN$|SSH_ASKPASS$)/u.test(key))),
+        GIT_NO_REPLACE_OBJECTS: '1', GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+        timeout: 10_000, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
     if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('ARCHIVE_UNAVAILABLE');
     const tarPath = path.join(snapshot, 'source.tar');
     await writeFile(tarPath, archive, { flag: 'wx', mode: 0o600 });
@@ -223,7 +235,7 @@ export async function runChipInAdmission(argv, dependencies = {}) {
   let receipt;
   try {
     const { stdout: output } = await run(process.execPath, [route.entrypoint, ...route.args], {
-      cwd: snapshot, env, timeout: 45_000, maxBuffer: 1_048_576
+      cwd: snapshot, env: { ...env, GH_HOST: 'github.com' }, timeout: 45_000, maxBuffer: 1_048_576
     });
     receipt = JSON.parse(output);
     // Import from the same immutable shared snapshot used by the subprocess.

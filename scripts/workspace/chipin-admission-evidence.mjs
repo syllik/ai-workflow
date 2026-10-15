@@ -61,8 +61,8 @@ export function evidenceOptions({ args, env, run = execute, fetchImpl = fetch, s
       }
     }
     try {
-      const { stdout } = await run('gh', ['api', url, '--method', 'GET'], {
-        env, timeout: 20_000, maxBuffer: binary ? MAX_ZIP + 1024 : 4 * 1024 * 1024,
+      const { stdout } = await run('gh', ['api', url, '--method', 'GET', '--hostname', 'github.com'], {
+        env: { ...env, GH_HOST: 'github.com' }, timeout: 20_000, maxBuffer: binary ? MAX_ZIP + 1024 : 4 * 1024 * 1024,
         encoding: binary ? 'buffer' : 'utf8'
       });
       if (binary) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
@@ -80,7 +80,9 @@ if (process.env.FIXTURE_GH_ERROR) {
   process.exit(1);
 }
 if (process.argv[2] !== 'api' || process.argv[3] !== '/repos/ChipIn-one/.github/branches/master' ||
-    process.argv[4] !== '--method' || process.argv[5] !== 'GET') process.exit(2);
+    process.argv[4] !== '--method' || process.argv[5] !== 'GET' ||
+    process.argv[6] !== '--hostname' || process.argv[7] !== 'github.com' ||
+    process.env.GH_HOST !== 'github.com') process.exit(2);
 process.stdout.write(JSON.stringify({ name: 'master', commit: { sha: process.env.FIXTURE_SHA } }));
 `, { mode: 0o755 });
   const git = (...args) => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
@@ -283,5 +285,29 @@ test('Git replace refs cannot redirect the authenticated commit snapshot to othe
     assert.equal(result.status, 'INTAKE_COMPLETE');
     assert.equal(result.canonicalStatus, 'INTAKE_COMPLETE');
     assert.equal(Object.hasOwn(result, 'forged'), false);
+  } finally { f.close(); }
+});
+
+test('forces github.com even if inherited GH_HOST targets another host', async () => {
+  const f = fixture();
+  try {
+    f.env.GH_HOST = 'host.invalid';
+    const { code, result } = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(code, 0, JSON.stringify(result));
+    assert.equal(result.status, 'INTAKE_COMPLETE');
+  } finally { f.close(); }
+});
+
+test('checkout local fsmonitor never runs during admission status verification', async () => {
+  const f = fixture();
+  try {
+    const marker = path.join(f.root, 'fsmonitor-ran');
+    const script = path.join(f.root, 'hook.sh');
+    writeFileSync(script, '#!/bin/sh\\necho executed > "' + marker + '"\\n', { mode: 0o755 });
+    f.git('config', '--local', 'core.fsmonitor', script);
+    const { code, result } = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(code, 0, JSON.stringify(result));
+    assert.equal(result.status, 'INTAKE_COMPLETE');
+    assert.equal(existsSync(marker), false);
   } finally { f.close(); }
 });
