@@ -32,6 +32,28 @@ describe('workflow documentation', () => {
     assert.doesNotMatch(policy, /Sol is the planner|Luna is the executor|Codex is the reviewer/iu);
   });
 
+  test('active bootstrap and reusable prompts avoid mandatory provider-to-role mapping', () => {
+    const readme = text('README.md');
+    const research = text('prompts/research.md');
+    const calibration = text('prompts/youtube-zen-source-calibration.md');
+    assert.doesNotMatch(readme, /\b(?:Sol|Luna)\b|GPT-5\.6|Luna xhigh/iu);
+    assert.doesNotMatch(research, /GPT-\d|\b(?:Sol|Luna)\b/iu);
+    assert.doesNotMatch(calibration, /GPT-\d|\b(?:Sol|Luna)\b/iu);
+    assert.match(readme, /provider-independent/iu);
+    const reviewGuide = readme.split('## Как проходит code review')[1]?.split('## Структура')[0];
+    assert.ok(reviewGuide, 'README must document the independent review lifecycle');
+    assert.match(reviewGuide, /Если выбран адаптер GitHub Codex Code Review/u);
+    assert.match(reviewGuide, /поддерживаемая интеграция, не обязательный поставщик роли/u);
+    assert.match(reviewGuide, /@codex review/u);
+    assert.doesNotMatch(reviewGuide, /(?:Codex|@codex review).{0,120}(?:default|mandatory|required|единственн)|(?:default|mandatory|required|единственн).{0,120}(?:Codex|@codex review)/iu);
+    assert.match(readme, /Merge выполняет только человек/u);
+    assert.match(research, /Planner or Architect/u);
+    assert.match(calibration, /provider-independent/iu);
+    const context = text('.ai/context.md');
+    assert.match(context, /GitHub Codex review are optional adapters, not exclusive role owners/iu);
+    assert.doesNotMatch(context, /Luna executor boundaries/iu);
+  });
+
   test('keeps human-only plans outside Executor instructions', () => {
     const forbidden = reusableAgentFiles.flatMap((filePath) => text(filePath).split('\n')
       .filter((line) => /(?:plan\.md|human-only plan)/iu.test(line)
