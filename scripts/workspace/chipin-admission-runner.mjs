@@ -134,7 +134,7 @@ async function trustedSnapshot(root, sha, { run = execFile } = {}) {
   try {
     const { stdout: archive } = await run('git',
       ['-C', checkout, 'archive', '--format=tar', sha],
-      { timeout: 10_000, maxBuffer: 32 * 1024 * 1024 });
+      { timeout: 10_000, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
     if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('ARCHIVE_UNAVAILABLE');
     const tarPath = path.join(snapshot, 'source.tar');
     await writeFile(tarPath, archive, { flag: 'wx', mode: 0o600 });
