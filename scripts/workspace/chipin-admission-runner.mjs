@@ -104,7 +104,7 @@ async function trustedCheckout(root, sha, { run = execFile } = {}) {
   try {
     const directory = await realpath(path.resolve(root));
     async function git(...args) {
-      const { stdout } = await run('git', ['-C', directory, ...args], {
+      const { stdout } = await run('git', ['--no-replace-objects', '-C', directory, ...args], {
         timeout: 5000, maxBuffer: 1_048_576
       });
       return stdout.trim();
@@ -133,7 +133,7 @@ async function trustedSnapshot(root, sha, { run = execFile } = {}) {
   const snapshot = await mkdtemp(path.join(tmpdir(), 'chipin-admission-'));
   try {
     const { stdout: archive } = await run('git',
-      ['-C', checkout, 'archive', '--format=tar', sha],
+      ['--no-replace-objects', '-C', checkout, 'archive', '--format=tar', sha],
       { timeout: 10_000, maxBuffer: 32 * 1024 * 1024, encoding: 'buffer' });
     if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('ARCHIVE_UNAVAILABLE');
     const tarPath = path.join(snapshot, 'source.tar');

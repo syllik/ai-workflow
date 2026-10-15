@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
+import { evidenceOptions } from '../scripts/workspace/chipin-admission-evidence.mjs';
 
 const REV = 'a'.repeat(64);
 const manifest = {
@@ -236,5 +237,51 @@ test('checkout mutation after archive extraction cannot change executed prefligh
     assert.equal(value.status, 'INTAKE_COMPLETE');
     assert.equal(value.canonicalStatus, 'INTAKE_COMPLETE');
     assert.equal(Object.hasOwn(value, 'forged'), false);
+  } finally { f.close(); }
+});
+
+test('authenticated gh artifact ZIP preserves raw bytes and decodes JSON metadata separately', async () => {
+  const seen = [];
+  const raw = Buffer.from([0x50, 0x4b, 0x00, 0xff, 0xfe, 0x80, 0x01, 0x7f]);
+  const args = {
+    issue: 'ChipIn-one/chipin-frontend#153',
+    'expected-revision': REV, 'evidence-run-id': '101',
+    'evidence-artifact-id': '202', 'evidence-request-id': 'request-id-test-123456',
+    'evidence-producer': 'trusted-bot', 'evidence-replay-dir': '/tmp/fixture-registry'
+  };
+  const options = evidenceOptions({ args, env: {},
+    sourceSha: 'a'.repeat(40),
+    run: async (command, argv, opts) => {
+      assert.equal(command, 'gh');
+      seen.push({ url: argv[1], encoding: opts.encoding });
+      return { stdout: argv[1].endsWith('/zip') ? raw :
+        JSON.stringify({ name: 'master', commit: { sha: 'a'.repeat(40) } }) };
+    }
+  });
+  const zip = await options.downloadZip(202);
+  assert.ok(Buffer.isBuffer(zip));
+  assert.deepEqual(zip, raw);
+  const branch = await options.api.request('/repos/ChipIn-one/.github/branches/master');
+  assert.equal(branch.commit.sha, 'a'.repeat(40));
+  assert.deepEqual(seen.map(x => x.encoding), ['buffer', 'utf8']);
+  await assert.rejects(options.api.request('/repos/ChipIn-one/chipin-frontend/issues/153'),
+    { code: 'READ_ONLY_VIOLATION' });
+});
+
+test('Git replace refs cannot redirect the authenticated commit snapshot to other source bytes', async () => {
+  const f = fixture();
+  try {
+    writeFileSync(path.join(f.checkout, 'automation/issue-admission-preflight.mjs'),
+      'process.stdout.write(JSON.stringify({status:"INTAKE_COMPLETE", forged:true}));\\n');
+    f.git('add', '.');
+    f.git('commit', '-qm', 'forged replacement');
+    const substituted = f.git('rev-parse', 'HEAD');
+    f.git('reset', '--hard', f.sha);
+    f.git('replace', f.sha, substituted);
+    const { code, result } = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(code, 0, JSON.stringify(result));
+    assert.equal(result.status, 'INTAKE_COMPLETE');
+    assert.equal(result.canonicalStatus, 'INTAKE_COMPLETE');
+    assert.equal(Object.hasOwn(result, 'forged'), false);
   } finally { f.close(); }
 });

@@ -62,10 +62,12 @@ export function evidenceOptions({ args, env, run = execute, fetchImpl = fetch, s
     }
     try {
       const { stdout } = await run('gh', ['api', url, '--method', 'GET'], {
-        env, timeout: 20_000, maxBuffer: binary ? MAX_ZIP + 1024 : 4 * 1024 * 1024
+        env, timeout: 20_000, maxBuffer: binary ? MAX_ZIP + 1024 : 4 * 1024 * 1024,
+        encoding: binary ? 'buffer' : 'utf8'
       });
       if (binary) {
-        const bytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout, 'binary');
+        if (!Buffer.isBuffer(stdout)) throw blocked('TRANSPORT_ERROR');
+        const bytes = stdout;
         if (bytes.length > MAX_ZIP) throw blocked('UNTRUSTED_ARTIFACT');
         return bytes;
       }
