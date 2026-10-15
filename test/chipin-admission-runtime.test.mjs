@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, utimesSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -408,4 +408,28 @@ test('registry recovery re-syncs existing ancestors after a previous fsync failu
   assert.ok(flushed.includes(registry));
   assert.ok(flushed.includes(path.dirname(registry)));
   assert.ok(flushed.includes(path.dirname(path.dirname(registry))));
+});
+
+test('checkout-defined clean filters never run when tracked files are stat-dirty', async () => {
+  const f = fixture();
+  try {
+    const marker = path.join(f.root, 'clean-filter-ran');
+    const filter = path.join(f.root, 'clean-filter.sh');
+    writeFileSync(filter, '#!/bin/sh\necho executed > "' + marker + '"\ncat\n', { mode: 0o755 });
+    f.git('config', '--local', 'filter.untrusted.clean', filter);
+    writeFileSync(path.join(f.checkout, '.gitattributes'),
+      'automation/issue-admission-preflight.mjs filter=untrusted\n');
+    const tracked = path.join(f.checkout, 'automation/issue-admission-preflight.mjs');
+    const touched = new Date(Date.now() - 60_000);
+    utimesSync(tracked, touched, touched);
+    const allowed = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(allowed.code, 0, JSON.stringify(allowed.result));
+    assert.equal(allowed.result.status, 'INTAKE_COMPLETE');
+    assert.equal(existsSync(marker), false);
+    // Real tracked byte drift still blocks; no Git clean filter is invoked.
+    writeFileSync(tracked, 'process.stdout.write("forged")');
+    const blocked = await f.invoke('executor', ['--expected-revision', REV]);
+    assert.equal(blocked.result.diagnostic.code, 'UNTRUSTED_CHECKOUT');
+    assert.equal(existsSync(marker), false);
+  } finally { f.close(); }
 });

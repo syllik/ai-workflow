@@ -2,7 +2,8 @@
 // exclusively in the pinned ChipIn-one/.github implementation.
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { lstat, readFile, readlink, mkdtemp, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -100,6 +101,37 @@ function makeBranchRead({ env, run = execFile, fetchImpl = fetch }) {
   } };
 }
 
+/** Compare tracked checkout bytes to the authenticated commit without calling
+ * git status/diff: these can execute checkout-defined clean filter commands.
+ * Executable source remains pinned to the separately archived commit object. */
+async function unchangedTrackedFiles(directory, sha, git) {
+  const tree = (await git('ls-tree', '-r', '-z', '--full-tree', sha)).split('\0').filter(Boolean);
+  const index = (await git('ls-files', '--stage', '-z')).split('\0').filter(Boolean);
+  if (tree.length === 0 || tree.length !== index.length) return false;
+  const staged = new Map();
+  for (const row of index) {
+    const matched = /^(100644|100755|120000) ([a-f0-9]{40}) 0\t([^\0]+)$/u.exec(row);
+    if (!matched || staged.has(matched[3])) return false;
+    staged.set(matched[3], { mode: matched[1], oid: matched[2] });
+  }
+  for (const row of tree) {
+    const matched = /^(100644|100755|120000) blob ([a-f0-9]{40})\t([^\0]+)$/u.exec(row);
+    if (!matched) return false;
+    const [, mode, oid, name] = matched;
+    const item = staged.get(name);
+    if (!item || item.mode !== mode || item.oid !== oid) return false;
+    const absolute = path.resolve(directory, name);
+    if (!absolute.startsWith(directory + path.sep)) return false;
+    const meta = await lstat(absolute);
+    if (mode === '120000' ? !meta.isSymbolicLink() : !meta.isFile()) return false;
+    if (mode !== '120000' && (Boolean(meta.mode & 0o111) !== (mode === '100755'))) return false;
+    const bytes = mode === '120000' ? Buffer.from(await readlink(absolute)) : await readFile(absolute);
+    const header = Buffer.from('blob ' + bytes.length + '\0');
+    if (createHash('sha1').update(header).update(bytes).digest('hex') !== oid) return false;
+  }
+  return true;
+}
+
 async function trustedCheckout(root, sha, { run = execFile } = {}) {
   if (!root || !SHA40.test(sha ?? '')) return null;
   try {
@@ -121,11 +153,10 @@ async function trustedCheckout(root, sha, { run = execFile } = {}) {
     const origin = await git('config', '--get', 'remote.origin.url');
     const tracked = await git('ls-files', '--error-unmatch', 'automation/issue-admission-preflight.mjs',
       'automation/issue-admission-evidence.mjs');
-    const changes = await git('status', '--porcelain', '--untracked-files=all');
-    // HEAD is deliberately the final check before the trusted subprocess launch.
     const head = await git('rev-parse', '--verify', 'HEAD^{commit}');
-    if (path.resolve(top) !== directory || !ORIGIN.test(origin) || head !== sha || changes !== '' ||
+    if (path.resolve(top) !== directory || !ORIGIN.test(origin) || head !== sha ||
         !tracked.includes('automation/issue-admission-preflight.mjs')) return null;
+    if (!await unchangedTrackedFiles(directory, sha, git)) return null;
     return directory;
   } catch { return null; }
 }
@@ -206,7 +237,7 @@ export async function runChipInAdmission(argv, dependencies = {}) {
 
   const snapshot = await trustedSnapshot(args['shared-checkout'], route.shared.sourceSha, { run });
   if (!snapshot) return emit(failure('UNTRUSTED_CHECKOUT', 'immutable trusted .github commit snapshot',
-    'Require the exact authenticated master commit and clean canonical checkout to materialize trusted code.'));
+    'Require exact authenticated master commit, origin and matching tracked checkout bytes without executing Git worktree filters.'));
 
   if (evidence) {
     try {
