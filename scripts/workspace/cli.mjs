@@ -133,7 +133,7 @@ function run(args, dependencies = {}) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.argv[2] === 'admission') {
-    runChipInAdmission(process.argv.slice(3), { loadManifest })
+    runChipInAdmission(process.argv.slice(3))
       .then(code => { process.exitCode = code; })
       .catch(() => {
         process.stderr.write('{"status":"BLOCKED","diagnostic":{"code":"ADMISSION_RUNNER_FAILED"}}\n');

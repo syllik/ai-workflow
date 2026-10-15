@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveChipInAdmissionRoute } from './chipin-admission-route.mjs';
 import { evidenceOptions } from './chipin-admission-evidence.mjs';
+import { loadCanonicalChipInWorkspace } from './chipin-admission-workspace.mjs';
 
 const execFile = promisify(execFileCallback);
 const SHA40 = /^[a-f0-9]{40}$/u;
@@ -28,7 +29,7 @@ function failure(code, capability, remedy) {
 
 function parseArgs(argv) {
   const allowed = new Set(['issue', 'phase', 'expected-revision', 'shared-source-sha',
-    'shared-checkout', 'owner', 'manifest', 'binding-output', 'transport',
+    'shared-checkout', 'owner', 'binding-output', 'transport',
     'evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer', 'evidence-replay-dir']);
   const values = {};
   for (let i = 0; i < argv.length; i += 2) {
@@ -175,10 +176,21 @@ export async function runChipInAdmission(argv, dependencies = {}) {
   catch { return emit(failure('INVALID_ARGUMENTS', 'admission CLI arguments',
     'Specify --issue, --phase, --shared-source-sha and either --shared-checkout (direct) or trusted-evidence; initial-bind requires --binding-output.')); }
   let manifest;
+  let policySourceSha = null;
   try {
-    if (typeof dependencies.loadManifest !== 'function') throw new Error('missing loader');
-    manifest = dependencies.loadManifest(path.resolve(args.manifest ?? 'workspace.yaml'));
-  } catch { return emit(failure('WORKSPACE_UNAVAILABLE', 'canonical workspace.yaml', 'Supply an existing canonical workspace manifest.')); }
+    // An injected loader is available only to direct unit fixtures; the real CLI
+    // always reads the authenticated canonical master workspace via GitHub.
+    const source = typeof dependencies.loadCanonicalManifest === 'function'
+      ? await dependencies.loadCanonicalManifest()
+      : await loadCanonicalChipInWorkspace({ env, run, fetchImpl: dependencies.fetchImpl });
+    manifest = source.manifest;
+    policySourceSha = source.policySourceSha ?? null;
+  } catch (cause) {
+    const code = ['AUTH_UNAVAILABLE', 'PERMISSION_DENIED'].includes(cause?.code)
+      ? cause.code : 'WORKSPACE_UNAVAILABLE';
+    return emit(failure(code, 'authenticated canonical ai-workflow workspace.yaml',
+      'Read syllik/ai-workflow master workspace.yaml using existing authorized GitHub credentials.'));
+  }
 
   const evidence = args.transport === 'trusted-evidence';
   const route = await resolveChipInAdmissionRoute({
@@ -267,7 +279,7 @@ export async function runChipInAdmission(argv, dependencies = {}) {
       // reviewed/approved revision. Human approval is a separate explicit gate.
       await writeFile(path.resolve(args['binding-output']), JSON.stringify({
         issue: args.issue, revision: receipt.revision, checkedAt: receipt.checkedAt,
-        trustedSourceSha: route.shared.sourceSha, status: 'AWAITING_HUMAN_APPROVAL'
+        trustedSourceSha: route.shared.sourceSha, policySourceSha, status: 'AWAITING_HUMAN_APPROVAL'
       }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     } catch {
       return emit(failure('BINDING_WRITE_BLOCKED', 'new immutable revision-binding record',
@@ -278,5 +290,5 @@ export async function runChipInAdmission(argv, dependencies = {}) {
     canonicalStatus: 'INTAKE_COMPLETE', phase: args.phase, issue: args.issue,
     revision: receipt.revision, checkedAt: receipt.checkedAt,
     repository: route.repository, integrationBranch: route.integrationBranch,
-    transport: route.transport, sharedSourceSha: route.shared.sourceSha });
+    transport: route.transport, sharedSourceSha: route.shared.sourceSha, policySourceSha });
 }

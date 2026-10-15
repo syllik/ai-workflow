@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
 import { evidenceOptions } from '../scripts/workspace/chipin-admission-evidence.mjs';
+import { loadCanonicalChipInWorkspace } from '../scripts/workspace/chipin-admission-workspace.mjs';
 
 const REV = 'a'.repeat(64);
 const manifest = {
@@ -79,11 +80,23 @@ if (process.env.FIXTURE_GH_ERROR) {
   process.stderr.write('HTTP ' + process.env.FIXTURE_GH_ERROR);
   process.exit(1);
 }
-if (process.argv[2] !== 'api' || process.argv[3] !== '/repos/ChipIn-one/.github/branches/master' ||
-    process.argv[4] !== '--method' || process.argv[5] !== 'GET' ||
-    process.argv[6] !== '--hostname' || process.argv[7] !== 'github.com' ||
-    process.env.GH_HOST !== 'github.com') process.exit(2);
-process.stdout.write(JSON.stringify({ name: 'master', commit: { sha: process.env.FIXTURE_SHA } }));
+if (process.argv[2] !== 'api' || process.argv[4] !== '--method' ||
+    process.argv[5] !== 'GET' || process.argv[6] !== '--hostname' ||
+    process.argv[7] !== 'github.com' || process.env.GH_HOST !== 'github.com') process.exit(2);
+const endpoint = process.argv[3];
+if (endpoint === '/repos/ChipIn-one/.github/branches/master') {
+  process.stdout.write(JSON.stringify({ name: 'master', commit: { sha: process.env.FIXTURE_SHA } }));
+} else if (endpoint === '/repos/syllik/ai-workflow/branches/master') {
+  process.stdout.write(JSON.stringify({ name: 'master', commit: { sha: process.env.FIXTURE_POLICY_SHA } }));
+} else if (endpoint === '/repos/syllik/ai-workflow/contents/workspace.yaml?ref=' + process.env.FIXTURE_POLICY_SHA) {
+  const content = process.env.FIXTURE_WORKSPACE_BASE64;
+  const bytes = Buffer.from(content, 'base64');
+  const sha = require('node:crypto').createHash('sha1').update('blob ' + bytes.length + '\\0').update(bytes).digest('hex');
+  process.stdout.write(JSON.stringify({ name: 'workspace.yaml', path: 'workspace.yaml',
+    encoding: 'base64', content, size: bytes.length, sha }));
+} else {
+  process.exit(2);
+}
 `, { mode: 0o755 });
   const git = (...args) => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
   git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.com');
@@ -91,10 +104,12 @@ process.stdout.write(JSON.stringify({ name: 'master', commit: { sha: process.env
   git('add', '.'); git('commit', '-qm', 'fixture');
   const sha = git('rev-parse', 'HEAD');
   const env = { ...process.env, PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`,
-    FIXTURE_SHA: sha, FIXTURE_REVISION: REV };
+    FIXTURE_SHA: sha, FIXTURE_REVISION: REV,
+    FIXTURE_POLICY_SHA: 'b'.repeat(40),
+    FIXTURE_WORKSPACE_BASE64: readFileSync(path.join(path.resolve(new URL('..', import.meta.url).pathname), 'workspace.yaml')).toString('base64') };
   delete env.GITHUB_TOKEN; delete env.GH_TOKEN;
   let out = '', err = '';
-  const dependencies = { env, loadManifest: () => manifest,
+  const dependencies = { env, loadCanonicalManifest: () => ({ manifest }),
     stdout: { write: value => { out += value; } },
     stderr: { write: value => { err += value; } } };
   const invoke = async (phase, extra = [], issue = 'ChipIn-one/chipin-frontend#153') => {
@@ -163,12 +178,12 @@ test('wrong SHA, dirty checkout, absent checkout, and wrong origin block before 
     f.git('remote', 'set-url', 'origin', 'https://github.com/evil/repo.git');
     assert.equal((await f.invoke('executor', extra)).result.diagnostic.code, 'UNTRUSTED_CHECKOUT');
     f.git('remote', 'set-url', 'origin', 'https://github.com/ChipIn-one/.github.git');
-    const old = f.dependencies.loadManifest;
+    const old = f.dependencies.loadCanonicalManifest;
     assert.equal((await runChipInAdmission(['--issue', 'ChipIn-one/chipin-frontend#1',
       '--phase', 'executor', '--shared-source-sha', f.sha, '--expected-revision', REV,
       '--shared-checkout', path.join(f.root, 'missing')], { ...f.dependencies,
       stdout: { write: () => {} }, stderr: { write: () => {} } })), 2);
-    f.dependencies.loadManifest = old;
+    f.dependencies.loadCanonicalManifest = old;
   } finally { f.close(); }
 });
 
@@ -197,7 +212,7 @@ test('real CLI trusted-evidence path invokes pinned shared consumer and records 
     const args = ['scripts/workspace/cli.mjs', 'admission',
       '--issue', 'ChipIn-one/chipin-frontend#153', '--phase', 'reviewer',
       '--expected-revision', REV, '--shared-source-sha', f.sha,
-      '--shared-checkout', f.checkout, '--manifest', path.join(root, 'workspace.yaml'),
+      '--shared-checkout', f.checkout,
       '--transport', 'trusted-evidence',
       '--evidence-run-id', '101', '--evidence-artifact-id', '202',
       '--evidence-request-id', 'request-id-test-123456',
@@ -309,5 +324,43 @@ test('checkout local fsmonitor never runs during admission status verification',
     assert.equal(code, 0, JSON.stringify(result));
     assert.equal(result.status, 'INTAKE_COMPLETE');
     assert.equal(existsSync(marker), false);
+  } finally { f.close(); }
+});
+
+test('actual CLI ignores forged workspace locations and reads canonical master metadata', () => {
+  const f = fixture();
+  try {
+    const root = path.resolve(new URL('..', import.meta.url).pathname);
+    const forgedPath = path.join(f.root, 'forged-workspace.yaml');
+    writeFileSync(forgedPath, 'projects:\n  - repository: ChipIn-one/chipin-frontend\n    status: active\n    integrationBranch: malicious\n');
+    const args = ['scripts/workspace/cli.mjs', 'admission', '--issue', 'ChipIn-one/chipin-frontend#153',
+      '--phase', 'executor', '--expected-revision', REV, '--shared-source-sha', f.sha,
+      '--shared-checkout', f.checkout];
+    const good = JSON.parse(execFileSync(process.execPath, args, {
+      cwd: root, env: f.env, encoding: 'utf8'
+    }));
+    assert.equal(good.status, 'INTAKE_COMPLETE');
+    assert.equal(good.integrationBranch, 'dev');
+    assert.equal(good.policySourceSha, f.env.FIXTURE_POLICY_SHA);
+    assert.throws(() => execFileSync(process.execPath, [...args, '--manifest', forgedPath], {
+      cwd: root, env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+    }), /Command failed/u);
+    f.env.FIXTURE_WORKSPACE_BASE64 = Buffer.from(readFileSync(forgedPath)).toString('base64');
+    let error;
+    try { execFileSync(process.execPath, args, { cwd: root, env: f.env, encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (cause) { error = JSON.parse(cause.stderr.toString()); }
+    assert.equal(error?.diagnostic?.code, 'WORKSPACE_UNAVAILABLE');
+  } finally { f.close(); }
+});
+
+test('canonical workspace reader fails closed on denied reads and malformed branch SHA', async () => {
+  const f = fixture();
+  try {
+    f.env.FIXTURE_GH_ERROR = '403';
+    await assert.rejects(loadCanonicalChipInWorkspace({ env: f.env }), { code: 'PERMISSION_DENIED' });
+    delete f.env.FIXTURE_GH_ERROR;
+    f.env.FIXTURE_POLICY_SHA = 'invalid';
+    await assert.rejects(loadCanonicalChipInWorkspace({ env: f.env }), { code: 'WORKSPACE_UNAVAILABLE' });
   } finally { f.close(); }
 });
