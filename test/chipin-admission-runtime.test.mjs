@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
-import { canonicalReplayDirectory, evidenceOptions } from '../scripts/workspace/chipin-admission-evidence.mjs';
+import { canonicalReplayDirectory, evidenceOptions, syncReplayDirectory } from '../scripts/workspace/chipin-admission-evidence.mjs';
 import { loadCanonicalChipInWorkspace } from '../scripts/workspace/chipin-admission-workspace.mjs';
 
 const REV = 'a'.repeat(64);
@@ -375,4 +375,22 @@ test('canonical workspace reader fails closed on denied reads and malformed bran
     f.env.FIXTURE_POLICY_SHA = 'invalid';
     await assert.rejects(loadCanonicalChipInWorkspace({ env: f.env }), { code: 'WORKSPACE_UNAVAILABLE' });
   } finally { f.close(); }
+});
+
+test('replay directory sync flushes and closes the directory handle', async () => {
+  const calls = [];
+  await syncReplayDirectory('/trusted/replay', async (directory, mode) => {
+    calls.push(['open', directory, mode]);
+    return {
+      sync: async () => { calls.push(['fsync']); },
+      close: async () => { calls.push(['close']); }
+    };
+  });
+  assert.deepEqual(calls, [['open', '/trusted/replay', 'r'], ['fsync'], ['close']]);
+  const failed = [];
+  await assert.rejects(syncReplayDirectory('/trusted/replay', async () => ({
+    sync: async () => { failed.push('fsync'); throw new Error('disk unavailable'); },
+    close: async () => { failed.push('close'); }
+  })), /disk unavailable/u);
+  assert.deepEqual(failed, ['fsync', 'close']);
 });

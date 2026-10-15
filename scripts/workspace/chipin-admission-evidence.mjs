@@ -19,14 +19,25 @@ export function canonicalReplayDirectory() {
   return path.join(userInfo().homedir, ...REPLAY_COMPONENTS);
 }
 
+/** Flush directory entries as well as marker bytes; fail closed on unsupported fsync. */
+export async function syncReplayDirectory(directory, openDirectory = open) {
+  const handle = await openDirectory(directory, 'r');
+  try { await handle.sync(); }
+  finally { await handle.close(); }
+}
+
 async function openTrustedRegistry() {
   let directory;
   try { directory = await realpath(userInfo().homedir); }
   catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
   for (const [index, name] of REPLAY_COMPONENTS.entries()) {
+    const parent = directory;
     directory = path.join(directory, name);
-    try { await mkdir(directory, { mode: 0o700 }); }
-    catch (cause) {
+    let created = false;
+    try {
+      await mkdir(directory, { mode: 0o700 });
+      created = true;
+    } catch (cause) {
       if (cause?.code !== 'EEXIST') throw blocked('REPLAY_REGISTRY_UNAVAILABLE');
     }
     let meta;
@@ -36,6 +47,13 @@ async function openTrustedRegistry() {
         (meta.mode & (index >= 2 ? 0o077 : 0o022)) !== 0 ||
         (process.getuid && meta.uid !== process.getuid())) {
       throw blocked('REPLAY_REGISTRY_UNTRUSTED');
+    }
+    if (created) {
+      try {
+        // Persist the parent's new child entry and the new directory inode.
+        await syncReplayDirectory(directory);
+        await syncReplayDirectory(parent);
+      } catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
     }
   }
   return directory;
@@ -124,10 +142,13 @@ export function evidenceOptions({ args, env, run = execute, fetchImpl = fetch, s
     try {
       await file.writeFile(key + '\n');
       await file.sync();
-      return true;
     } finally {
       await file.close();
     }
+    // fsync of the file alone does not make its new directory entry durable.
+    try { await syncReplayDirectory(directory); }
+    catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
+    return true;
   }
 
   const runId = Number(args['evidence-run-id']);
