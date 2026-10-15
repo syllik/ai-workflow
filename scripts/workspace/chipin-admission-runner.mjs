@@ -30,7 +30,7 @@ function failure(code, capability, remedy) {
 function parseArgs(argv) {
   const allowed = new Set(['issue', 'phase', 'expected-revision', 'shared-source-sha',
     'shared-checkout', 'owner', 'binding-output', 'transport',
-    'evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer', 'evidence-replay-dir']);
+    'evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer']);
   const values = {};
   for (let i = 0; i < argv.length; i += 2) {
     const k = argv[i]?.startsWith('--') ? argv[i].slice(2) : '';
@@ -44,9 +44,9 @@ function parseArgs(argv) {
       !values['shared-checkout'] ||
       (values.transport === 'trusted-evidence' ?
         !['evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer',
-          'evidence-replay-dir'].every(key => Boolean(values[key])) :
+          ].every(key => Boolean(values[key])) :
         ['evidence-run-id', 'evidence-artifact-id', 'evidence-request-id', 'evidence-producer',
-          'evidence-replay-dir'].some(key => Object.hasOwn(values, key))) ||
+          ].some(key => Object.hasOwn(values, key))) ||
       (values.phase === 'initial-bind' ? Boolean(values['expected-revision']) || !values['binding-output'] :
         !SHA256.test(values['expected-revision'] ?? '') || Boolean(values['binding-output'])) ||
       (values.transport === 'trusted-evidence' && values.phase === 'initial-bind')) {

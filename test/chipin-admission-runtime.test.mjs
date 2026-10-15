@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
-import { evidenceOptions } from '../scripts/workspace/chipin-admission-evidence.mjs';
+import { canonicalReplayDirectory, evidenceOptions } from '../scripts/workspace/chipin-admission-evidence.mjs';
 import { loadCanonicalChipInWorkspace } from '../scripts/workspace/chipin-admission-workspace.mjs';
 
 const REV = 'a'.repeat(64);
@@ -203,32 +204,43 @@ test('denied gh, expired receipt, KB owner and trusted-evidence absence fail clo
   } finally { f.close(); }
 });
 
-test('real CLI trusted-evidence path invokes pinned shared consumer and records replay', () => {
+test('real CLI uses one stable durable replay registry across phases and HOME overrides', () => {
   const f = fixture();
+  const requestId = 'request-id-' + randomUUID().replace(/-/gu, '');
+  const unique = 'ChipIn-one/.github/101/1/' + requestId;
+  const marker = path.join(canonicalReplayDirectory(), createHash('sha256').update(unique).digest('hex'));
   try {
-    const replay = path.join(f.root, 'replay');
-    mkdirSync(replay, { mode: 0o700 });
     const root = path.resolve(new URL('..', import.meta.url).pathname);
     const args = ['scripts/workspace/cli.mjs', 'admission',
       '--issue', 'ChipIn-one/chipin-frontend#153', '--phase', 'reviewer',
       '--expected-revision', REV, '--shared-source-sha', f.sha,
-      '--shared-checkout', f.checkout,
-      '--transport', 'trusted-evidence',
+      '--shared-checkout', f.checkout, '--transport', 'trusted-evidence',
       '--evidence-run-id', '101', '--evidence-artifact-id', '202',
-      '--evidence-request-id', 'request-id-test-123456',
-      '--evidence-producer', 'trusted-bot', '--evidence-replay-dir', replay];
+      '--evidence-request-id', requestId, '--evidence-producer', 'trusted-bot'];
+    f.env.HOME = path.join(f.root, 'home-override-1');
     const stdout = execFileSync(process.execPath, args, {
       cwd: root, env: f.env, encoding: 'utf8'
     });
     assert.equal(JSON.parse(stdout).status, 'INTAKE_COMPLETE');
     assert.equal(JSON.parse(stdout).transport, 'trusted-evidence');
-    assert.equal(readdirSync(replay).length, 1);
-    assert.throws(() => execFileSync(process.execPath, args, {
+    assert.equal(existsSync(marker), true);
+    f.env.HOME = path.join(f.root, 'home-override-2');
+    const changedPhase = [...args];
+    changedPhase[changedPhase.indexOf('--phase') + 1] = 'executor';
+    let blocked;
+    try { execFileSync(process.execPath, changedPhase, {
       cwd: root, env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
-    }), /Command failed/u);
-  } finally { f.close(); }
+    }); } catch (cause) { blocked = JSON.parse(cause.stderr.toString()); }
+    assert.equal(blocked?.diagnostic?.code, 'REPLAY');
+    assert.throws(() => execFileSync(process.execPath,
+      [...args, '--evidence-replay-dir', path.join(f.root, 'fresh')], {
+        cwd: root, env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+      }), /Command failed/u);
+  } finally {
+    rmSync(marker, { force: true });
+    f.close();
+  }
 });
-
 test('checkout mutation after archive extraction cannot change executed preflight', async () => {
   const f = fixture();
   try {
@@ -264,7 +276,7 @@ test('authenticated gh artifact ZIP preserves raw bytes and decodes JSON metadat
     issue: 'ChipIn-one/chipin-frontend#153',
     'expected-revision': REV, 'evidence-run-id': '101',
     'evidence-artifact-id': '202', 'evidence-request-id': 'request-id-test-123456',
-    'evidence-producer': 'trusted-bot', 'evidence-replay-dir': '/tmp/fixture-registry'
+    'evidence-producer': 'trusted-bot'
   };
   const options = evidenceOptions({ args, env: {},
     sourceSha: 'a'.repeat(40),

@@ -2,7 +2,8 @@
 // from the authenticated immutable ChipIn-one/.github commit by the runner.
 import { execFile as callback } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, open } from 'node:fs/promises';
+import { lstat, mkdir, open, realpath } from 'node:fs/promises';
+import { userInfo } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -11,6 +12,34 @@ const ROOT = '/repos/ChipIn-one/.github';
 const MAX_ZIP = 2 * 1024 * 1024;
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{15,127}$/u;
 const SHA = /^[a-f0-9]{40}$/u;
+const REPLAY_COMPONENTS = ['.local', 'state', 'ai-workflow', 'admission-replay'];
+
+/** Stable per-OS-principal state; never a CLI flag, HOME or task-provided path. */
+export function canonicalReplayDirectory() {
+  return path.join(userInfo().homedir, ...REPLAY_COMPONENTS);
+}
+
+async function openTrustedRegistry() {
+  let directory;
+  try { directory = await realpath(userInfo().homedir); }
+  catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
+  for (const [index, name] of REPLAY_COMPONENTS.entries()) {
+    directory = path.join(directory, name);
+    try { await mkdir(directory, { mode: 0o700 }); }
+    catch (cause) {
+      if (cause?.code !== 'EEXIST') throw blocked('REPLAY_REGISTRY_UNAVAILABLE');
+    }
+    let meta;
+    try { meta = await lstat(directory); }
+    catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
+    if (!meta.isDirectory() || meta.isSymbolicLink() ||
+        (meta.mode & (index >= 2 ? 0o077 : 0o022)) !== 0 ||
+        (process.getuid && meta.uid !== process.getuid())) {
+      throw blocked('REPLAY_REGISTRY_UNTRUSTED');
+    }
+  }
+  return directory;
+}
 
 function blocked(code) {
   return Object.assign(new Error(code), { code });
@@ -36,7 +65,7 @@ export function evidenceOptions({ args, env, run = execute, fetchImpl = fetch, s
       !/^[a-z\d](?:[a-z\d-]{0,37})$/iu.test(args['evidence-producer'] ?? '') ||
       !/^[1-9]\d*$/u.test(args['evidence-run-id'] ?? '') ||
       !/^[1-9]\d*$/u.test(args['evidence-artifact-id'] ?? '') ||
-      !args['evidence-replay-dir']) throw blocked('TRUST_CONTEXT_MISSING');
+      Object.hasOwn(args, 'evidence-replay-dir')) throw blocked('TRUST_CONTEXT_MISSING');
 
   async function apiRead(url, binary = false) {
     if (binary ? !/^\/repos\/ChipIn-one\/\.github\/actions\/artifacts\/[1-9]\d*\/zip$/u.test(url)
@@ -83,12 +112,7 @@ export function evidenceOptions({ args, env, run = execute, fetchImpl = fetch, s
   // the durable, cross-process replay boundary: never overwrite a consumed ID.
   async function recordConsumed(key) {
     if (!/^ChipIn-one\/\.github\/[1-9]\d*\/[1-9]\d*\/[a-zA-Z0-9_-]+$/u.test(key)) return false;
-    const directory = path.resolve(args['evidence-replay-dir']);
-    const meta = await lstat(directory);
-    if (!meta.isDirectory() || meta.isSymbolicLink() ||
-        (meta.mode & 0o077) !== 0 || (process.getuid && meta.uid !== process.getuid())) {
-      throw blocked('REPLAY_REGISTRY_UNTRUSTED');
-    }
+    const directory = await openTrustedRegistry();
     const filename = createHash('sha256').update(key).digest('hex');
     let file;
     try {
