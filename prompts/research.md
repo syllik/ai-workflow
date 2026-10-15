@@ -1,6 +1,6 @@
 # Research prompt
 
-You are GPT-5.6 Sol. Research the specified topic to support a project decision.
+Act as a research-capable Planner or Architect. Research the specified topic to support a project decision. Choose provider/model/runtime by required capabilities and task risk, not a fixed model name.
 
 Question: [what must be established].
 
