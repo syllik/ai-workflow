@@ -26,17 +26,16 @@ export async function syncReplayDirectory(directory, openDirectory = open) {
   finally { await handle.close(); }
 }
 
-async function openTrustedRegistry() {
+/** Each attempt, including recovery after a failed fsync, persists both entries. */
+export async function openTrustedRegistry(syncDirectory = syncReplayDirectory) {
   let directory;
   try { directory = await realpath(userInfo().homedir); }
   catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
   for (const [index, name] of REPLAY_COMPONENTS.entries()) {
     const parent = directory;
     directory = path.join(directory, name);
-    let created = false;
     try {
       await mkdir(directory, { mode: 0o700 });
-      created = true;
     } catch (cause) {
       if (cause?.code !== 'EEXIST') throw blocked('REPLAY_REGISTRY_UNAVAILABLE');
     }
@@ -48,13 +47,12 @@ async function openTrustedRegistry() {
         (process.getuid && meta.uid !== process.getuid())) {
       throw blocked('REPLAY_REGISTRY_UNTRUSTED');
     }
-    if (created) {
-      try {
-        // Persist the parent's new child entry and the new directory inode.
-        await syncReplayDirectory(directory);
-        await syncReplayDirectory(parent);
-      } catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
-    }
+    try {
+      // Must re-sync existing directories: a previous creation can have
+      // failed before fsync and left an entry not yet crash-durable.
+      await syncDirectory(directory);
+      await syncDirectory(parent);
+    } catch { throw blocked('REPLAY_REGISTRY_UNAVAILABLE'); }
   }
   return directory;
 }

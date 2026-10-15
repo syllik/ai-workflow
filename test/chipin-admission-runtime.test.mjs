@@ -7,7 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { runChipInAdmission } from '../scripts/workspace/chipin-admission-runner.mjs';
-import { canonicalReplayDirectory, evidenceOptions, syncReplayDirectory } from '../scripts/workspace/chipin-admission-evidence.mjs';
+import { canonicalReplayDirectory, evidenceOptions, openTrustedRegistry, syncReplayDirectory } from '../scripts/workspace/chipin-admission-evidence.mjs';
 import { loadCanonicalChipInWorkspace } from '../scripts/workspace/chipin-admission-workspace.mjs';
 
 const REV = 'a'.repeat(64);
@@ -393,4 +393,19 @@ test('replay directory sync flushes and closes the directory handle', async () =
     close: async () => { failed.push('close'); }
   })), /disk unavailable/u);
   assert.deepEqual(failed, ['fsync', 'close']);
+});
+
+test('registry recovery re-syncs existing ancestors after a previous fsync failure', async () => {
+  const flushed = [];
+  await assert.rejects(openTrustedRegistry(async () => {
+    throw new Error('simulated interrupted fsync');
+  }), { code: 'REPLAY_REGISTRY_UNAVAILABLE' });
+  const registry = await openTrustedRegistry(async directory => {
+    flushed.push(directory);
+    await syncReplayDirectory(directory);
+  });
+  assert.equal(registry, canonicalReplayDirectory());
+  assert.ok(flushed.includes(registry));
+  assert.ok(flushed.includes(path.dirname(registry)));
+  assert.ok(flushed.includes(path.dirname(path.dirname(registry))));
 });
