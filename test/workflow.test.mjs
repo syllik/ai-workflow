@@ -32,6 +32,21 @@ describe('workflow documentation', () => {
     assert.doesNotMatch(policy, /Sol is the planner|Luna is the executor|Codex is the reviewer/iu);
   });
 
+  test('active bootstrap and reusable prompts avoid mandatory provider-to-role mapping', () => {
+    const readme = text('README.md');
+    const research = text('prompts/research.md');
+    const calibration = text('prompts/youtube-zen-source-calibration.md');
+    assert.doesNotMatch(readme, /\b(?:Sol|Luna)\b|GPT-5\.6|Luna xhigh/iu);
+    assert.doesNotMatch(research, /GPT-\d|\b(?:Sol|Luna)\b/iu);
+    assert.doesNotMatch(calibration, /GPT-\d|\b(?:Sol|Luna)\b/iu);
+    assert.match(readme, /provider-independent/iu);
+    assert.match(readme, /@codex review/u);
+    assert.match(readme, /Merge выполняет только человек/u);
+    assert.match(research, /Planner or Architect/u);
+    assert.match(calibration, /provider-independent/iu);
+    assert.doesNotMatch(text('.ai/context.md'), /Luna executor boundaries/iu);
+  });
+
   test('keeps human-only plans outside Executor instructions', () => {
     const forbidden = reusableAgentFiles.flatMap((filePath) => text(filePath).split('\n')
       .filter((line) => /(?:plan\.md|human-only plan)/iu.test(line)
