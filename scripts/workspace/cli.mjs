@@ -5,6 +5,7 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateActivationBaseManifest, validateManifest } from './manifest.mjs';
 import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, planWorkspace } from './operations.mjs';
+import { runChipInAdmission } from './chipin-admission-runner.mjs';
 
 const USAGE = 'Usage: node scripts/workspace/cli.mjs check [--root <path>] [--manifest <path>] [--manifest-only] [--activation-base <git-ref>] | plan --root <path> [--manifest <path>] | apply --root <path> [--manifest <path>]';
 
@@ -130,6 +131,17 @@ function run(args, dependencies = {}) {
   return 2;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exitCode = run(process.argv.slice(2));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv[2] === 'admission') {
+    runChipInAdmission(process.argv.slice(3))
+      .then(code => { process.exitCode = code; })
+      .catch(() => {
+        process.stderr.write('{"status":"BLOCKED","diagnostic":{"code":"ADMISSION_RUNNER_FAILED"}}\n');
+        process.exitCode = 2;
+      });
+  } else {
+    process.exitCode = run(process.argv.slice(2));
+  }
+}
 
 export { parseArgs, run };

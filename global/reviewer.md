@@ -14,3 +14,5 @@ Reviewer is independent and read-only. Provider/model is selected by capability 
 - If findings are disputed or the correction budget is exhausted, consolidate the disagreement/evidence and escalate to a human. Only a human merges.
 
 - For ChipIn FE/BE/KB Issue-backed review, require fresh positive native `INTAKE_COMPLETE` read-back bound to exact task identity/revision in addition to current-head CI and publisher provenance. Queued connector results or stale Issue evidence block initiation; Reviewer must not repair the Issue itself.
+
+At ChipIn review initiation (and new-head review after an authorized correction), independently recheck the exact native Issue/full revision with the shared .github preflight or authenticated `consumeAdmissionArtifact()` route resolved by `scripts/workspace/chipin-admission-route.mjs`. Evidence must be originally <120s old and include current Project #5 read-back; a changed Project item/Status without Issue `updated_at` changes invalidates earlier evidence. Reject copied/stale receipts; never dispatch privileged Actions or mutate intake.
