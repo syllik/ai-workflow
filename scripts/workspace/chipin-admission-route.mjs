@@ -5,6 +5,7 @@ const SHA40 = /^[a-f0-9]{40}$/u;
 const SHARED_REPOSITORY = 'ChipIn-one/.github';
 const PREFLIGHT = 'automation/issue-admission-preflight.mjs';
 const CONSUMER = 'automation/issue-admission-consumer.mjs';
+const PHASES = new Set(['initial-bind', 'planning', 'executor', 'publisher', 'reviewer', 'correction']);
 
 function blocked(code, capability, remedy) {
   return { status: 'BLOCKED', diagnostic: { code, principal: 'existing-authorized-principal',
@@ -12,19 +13,20 @@ function blocked(code, capability, remedy) {
 }
 
 /**
- * Resolve one task-scoped route from an already-loaded canonical workspace record.
- * This returns no authorization. Only the shared reader or verified consumer can
- * supply a fresh INTAKE_COMPLETE result, checked again at every boundary.
- * Capabilities are observed by a trusted caller, never inferred from Issue JSON.
+ * This is a route, not authorization. Only an explicit initial-bind phase may
+ * discover the canonical revision; every other handoff must pin the approved
+ * full revision and obtain a NEW shared canonical read-back.
  */
 export async function resolveChipInAdmissionRoute({ manifest, issue, selectedOwner = null,
-  expectedRevision = null, sharedSourceSha, authenticatedGitHubRead, capabilities = {} } = {}) {
+  phase = 'executor', expectedRevision = null, sharedSourceSha, authenticatedGitHubRead, capabilities = {} } = {}) {
   const match = ISSUE.exec(issue ?? '');
   if (!match) return blocked('INVALID_ISSUE', 'exact ChipIn Issue identity', 'Supply one explicit FE/BE/KB Issue; do not discover repositories.');
-  if (!SHA40.test(sharedSourceSha ?? '')) return blocked('UNTRUSTED_SOURCE', 'pinned shared master SHA', 'Resolve the current ChipIn-one/.github master explicitly.');
-  if (expectedRevision !== null && !SHA256.test(expectedRevision)) {
-    return blocked('INVALID_REVISION', 'full canonical revision', 'Supply the exact 64-character canonical revision or start a new canonical read.');
+  if (!PHASES.has(phase)) return blocked('INVALID_PHASE', 'explicit admission handoff phase', 'Choose initial-bind, planning, executor, publisher, reviewer or correction.');
+  if (phase === 'initial-bind' ? expectedRevision !== null : !SHA256.test(expectedRevision ?? '')) {
+    return blocked('INVALID_REVISION', 'approved full canonical revision',
+      'Only initial-bind may omit the revision; each later handoff requires a human-approved 64-hex pin.');
   }
+  if (!SHA40.test(sharedSourceSha ?? '')) return blocked('UNTRUSTED_SOURCE', 'pinned shared master SHA', 'Resolve the current ChipIn-one/.github master explicitly.');
   if (match[1] !== 'ChipIn-one/chipin-knowledge-base' && selectedOwner !== null) {
     return blocked('OWNER_OVERRIDE_FORBIDDEN', 'fixed FE/BE native owner', 'FE uses syllik and BE uses olegbal; only KB accepts --owner.');
   }
@@ -43,12 +45,9 @@ export async function resolveChipInAdmissionRoute({ manifest, issue, selectedOwn
   if (!Array.isArray(lifecycle) || lifecycle.length !== 1 || lifecycle[0].integrationBranch !== record.integrationBranch) {
     return blocked('BRANCH_MISMATCH', 'declared integrationBranch', 'Resolve branch from the same workspace.yaml record and lifecycle mapping.');
   }
-  // The caller must inject an existing *authenticated* read-only API adapter.
-  // Never trust task-provided source SHAs without a live GET of the fixed branch
-  // endpoint. The adapter is supplied by the trusted orchestrator, not an Issue.
   if (!authenticatedGitHubRead || typeof authenticatedGitHubRead.request !== 'function') {
     return blocked('AUTH_UNAVAILABLE', 'authenticated shared master ref read',
-      'Supply an already-approved GitHub GET transport for the shared master branch.');
+      'Use the existing approved credential or authorized gh api read-only transport.');
   }
   let current;
   try {
@@ -57,27 +56,25 @@ export async function resolveChipInAdmissionRoute({ manifest, issue, selectedOwn
     const code = ['AUTH_UNAVAILABLE', 'PERMISSION_DENIED', 'TRANSPORT_ERROR'].includes(cause?.code)
       ? cause.code : 'SHARED_REF_UNREADABLE';
     return blocked(code, 'authenticated shared master ref read',
-      'Check existing GitHub read transport for ChipIn-one/.github master; never extract gh credentials.');
+      'Check existing GitHub read access for ChipIn-one/.github master; do not extract gh credentials.');
   }
   if (current?.name !== 'master' || !SHA40.test(current?.commit?.sha ?? '')) {
     return blocked('SHARED_REF_UNREADABLE', 'authenticated shared master ref read',
-      'Require current master branch metadata with an exact commit SHA from GitHub.');
+      'Require authenticated current master branch metadata with an exact commit SHA.');
   }
   if (current.commit.sha !== sharedSourceSha) {
     return blocked('STALE_TRUSTED_SOURCE', 'shared preflight source SHA',
       'Refresh current authenticated ChipIn-one/.github/master and re-pin before admission.');
   }
   const base = {
-    status: 'PENDING_VERIFICATION', issue, repository: record.repository,
+    status: 'PENDING_VERIFICATION', phase, issue, repository: record.repository,
     integrationBranch: record.integrationBranch, contextDependencies: record.contextDependencies ?? [],
     shared: { repository: SHARED_REPOSITORY, integrationBranch: 'master', sourceSha: sharedSourceSha }
   };
-  // Transport preference is implemented in the shared preflight itself. Neither
-  // route nor the presence of a token/gh session represents Issue admission.
   if (capabilities.approvedCredential === true || capabilities.authenticatedGh === true) {
     const args = ['--issue', issue];
     if (match[1] === 'ChipIn-one/chipin-knowledge-base') args.push('--owner', selectedOwner);
-    if (expectedRevision) args.push('--expected-revision', expectedRevision);
+    if (phase !== 'initial-bind') args.push('--expected-revision', expectedRevision);
     return { ...base, transport: capabilities.approvedCredential ? 'approved-credential' : 'authenticated-gh',
       entrypoint: PREFLIGHT, args, verification: 'chipin-issue-admission/v1' };
   }
@@ -85,7 +82,7 @@ export async function resolveChipInAdmissionRoute({ manifest, issue, selectedOwn
       capabilities.durableReplayRegistry === true) {
     if (!SHA256.test(expectedRevision ?? '')) {
       return blocked('INVALID_REVISION', 'prebound full canonical revision',
-        'Connector-only verified evidence requires a previously pinned 64-hex canonical revision.');
+        'Connector-only verified evidence requires a previously approved 64-hex revision.');
     }
     return { ...base, transport: 'trusted-evidence', entrypoint: CONSUMER,
       verification: 'consumeAdmissionArtifact',

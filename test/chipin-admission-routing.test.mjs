@@ -21,7 +21,7 @@ const authenticatedGitHubRead = {
   }
 };
 const config = (override = {}) => ({
-  manifest, issue: 'ChipIn-one/chipin-frontend#153', sharedSourceSha: SHA, authenticatedGitHubRead, ...override
+  manifest, issue: 'ChipIn-one/chipin-frontend#153', sharedSourceSha: SHA, expectedRevision: REV, authenticatedGitHubRead, ...override
 });
 
 const blocked = (value, code) => {
@@ -143,4 +143,17 @@ describe('shared ChipIn preflight routing (not admission)', () => {
     assert.equal(Object.hasOwn(result, 'receipt'), false);
     assert.equal(Object.hasOwn(result, 'approved'), false);
   });
+});
+
+test('initial bind is explicit, and every later phase rejects missing revision', async () => {
+  const capabilities = { authenticatedGh: true };
+  const binding = await route(config({ phase: 'initial-bind', expectedRevision: null, capabilities }));
+  assert.equal(binding.status, 'PENDING_VERIFICATION');
+  assert.deepEqual(binding.args, ['--issue', 'ChipIn-one/chipin-frontend#153']);
+  for (const phase of ['planning', 'executor', 'publisher', 'reviewer', 'correction']) {
+    blocked(await route(config({ phase, expectedRevision: null, capabilities })), 'INVALID_REVISION');
+    blocked(await route(config({ phase, expectedRevision: 'x'.repeat(64), capabilities })), 'INVALID_REVISION');
+  }
+  blocked(await route(config({ phase: 'initial-bind', expectedRevision: REV, capabilities })), 'INVALID_REVISION');
+  blocked(await route(config({ phase: 'other', capabilities })), 'INVALID_PHASE');
 });
