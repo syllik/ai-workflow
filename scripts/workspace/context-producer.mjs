@@ -6,7 +6,7 @@ import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
-const SUPPORTED_SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency']);
+const SUPPORTED_SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency', 'reference']);
 const CANONICAL_POLICY_REPOSITORY = 'syllik/ai-workflow';
 const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
 const CANONICAL_HANDOFF_ROLE = 'executor';
@@ -245,6 +245,18 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, r
       }
     }
   }
+  // Only the target's exact normative PRODUCT contract may be reference-only.
+  // Required policy, role, AGENTS, context and declared dependencies remain inline.
+  const references = expectedSources.filter((source) => source.kind === 'reference');
+  if (references.length > 1 || references.some((source) =>
+    source.path !== 'docs/PRODUCT.md'
+    || normalizeRepository(source.repository) !== normalizeRepository(targetAgents[0]?.repository)
+    || source.revisionSha !== headSha
+  )) {
+    findings.push(finding('CONTEXT_CANONICAL_REFERENCE_INVALID', 'canonical.reference', {
+      actualCount: references.length
+    }));
+  }
 }
 
 function validateRequiredContextDependencies(sources, dependencies, policySha, input, findings, integrationBranchResolver) {
@@ -441,6 +453,12 @@ function renderSection(source) {
   return `=== ${source.kind} ${source.repository}@${source.revisionSha}:${source.path} ===\n${source.content}\n`;
 }
 
+function renderReferenceSection(source) {
+  // The receipt counts against the execution budget. The entire source remains
+  // Git-hydrated, authenticated, hashed and independently readable.
+  return `=== verified Git reference ${source.repository}@${source.revisionSha}:${source.path} blob=${source.blobSha} sha256=${sha256(source.content)} bytes=${utf8Bytes(source.content)} (read full source at pinned SHA before decisions) ===\n`;
+}
+
 export function buildTaskContextPackage(input = {}, options = {}) {
   const findings = [];
   const sourceLoader = typeof options.sourceLoader === 'function' ? options.sourceLoader : gitSourceLoader;
@@ -605,8 +623,16 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   if (uniqueStrings(requirementIds)) {
+    // A referenced PRODUCT is the sole authority for declared requirement IDs.
+    // Never satisfy one from an unrelated inline mention if its PRODUCT row is missing.
+    const productReference = sources.find((source) => source.kind === 'reference');
     for (const requirementId of requirementIds) {
-      if (!sources.some(({ content }) => content.includes(requirementId))) {
+      const found = productReference
+        ? productReference.content.split('\n').some((line) =>
+          /^\|\s*([A-Z]+-\d{3})\s*\|/u.exec(line)?.[1] === requirementId
+        )
+        : sources.some(({ content }) => content.includes(requirementId));
+      if (!found) {
         findings.push(finding('CONTEXT_REQUIREMENT_UNAVAILABLE', `requirementIds.${requirementId}`));
       }
     }
@@ -616,7 +642,9 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   if (typeof acceptanceText === 'string' && acceptanceText.length > 0) {
     sections.push(`=== acceptance ===\n${acceptanceText}\n`);
   }
-  sections.push(...sources.map(renderSection));
+  sections.push(...sources.map((source) =>
+    source.kind === 'reference' ? renderReferenceSection(source) : renderSection(source)
+  ));
   const assembledContext = sections.join('\n');
   const measured = checkAssembledExecutionContext([assembledContext]);
   findings.push(...measured.findings);
@@ -640,7 +668,8 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       revisionSha: source.revisionSha,
       blobSha: source.blobSha,
       sha256: sha256(source.content),
-      bytes: utf8Bytes(source.content)
+      bytes: utf8Bytes(source.content),
+      assembly: source.kind === 'reference' ? 'verified-reference' : 'inline'
     })),
     assembledContextSha256: sha256(assembledContext),
     assembledContextBudgetBytes: measured.maxBytes,
