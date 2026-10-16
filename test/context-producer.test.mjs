@@ -765,3 +765,76 @@ test('counts multibyte context as UTF-8 bytes rather than characters', () => {
   assert.equal(result.manifest.acceptance.bytes, 4);
   assert.equal(result.handoffProvenance.assembledContextActualBytes, Buffer.byteLength(result.assembledContext, 'utf8'));
 });
+
+test('allows oversized pinned PRODUCT as a verified reference within the unchanged byte cap', () => {
+  const value = input();
+  const product = '| HIST-001 | Convert history | source | acceptance |\n' + 'x'.repeat(40000);
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: product
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha});
+  value.requirementIds.push('HIST-001');
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.handoffProvenance.assembledContextBudgetBytes, 32768);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+  assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').bytes, Buffer.byteLength(product));
+  assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').assembly, 'verified-reference');
+  assert.equal(result.assembledContext.includes(product), false);
+  assert.match(result.assembledContext, /verified Git reference/);
+});
+
+test('rejects reference in place of mandatory instructions, arbitrary docs, stale SHA', () => {
+  for (const change of [{path: 'AGENTS.md'}, {path: 'docs/OTHER.md'}, {revisionSha: baseSha}]) {
+    const value = input();
+    const reference = {
+      kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+      path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+      content: '| HIST-001 | provenance |\n', ...change
+    };
+    value.sources.push(reference);
+    value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: reference.revisionSha});
+    const result = build(value);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some((f) => f.code === 'CONTEXT_CANONICAL_REFERENCE_INVALID'), true);
+  }
+});
+
+test('reference requires exact expected identity and source integrity; IDs match actual PRODUCT rows', () => {
+  const value = input();
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| HIST-001 | Original |\n'
+  };
+  value.sources.push(reference);
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+  value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: headSha});
+  const mismatched = build(value, {sourceLoader: (source) => source.kind === 'reference'
+    ? { content: '| HIST-001 | Modified |\n', blobSha: testBlobSha('| HIST-001 | Modified |\n') }
+    : testSourceLoader(source)});
+  assert.equal(mismatched.passed, false);
+  assert.equal(mismatched.findings.some((f) => f.code === 'CONTEXT_SOURCE_CONTENT_MISMATCH'), true);
+  value.requirementIds.push('HIST-002');
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
+  reference.content += 'HIST-002 appears in a non-row comment.\n';
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
+});
+
+test('does not allow mandatory instruction overflow even with a PRODUCT reference', () => {
+  const value = input();
+  sourceByPath(value, 'AGENTS.md').content = 'x'.repeat(40000);
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| HIST-001 | provenance |\n'
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: headSha});
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some((f) => f.code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
+});
