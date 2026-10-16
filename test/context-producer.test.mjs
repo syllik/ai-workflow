@@ -768,7 +768,7 @@ test('counts multibyte context as UTF-8 bytes rather than characters', () => {
 
 test('allows oversized pinned PRODUCT as a verified reference within the unchanged byte cap', () => {
   const value = input();
-  const product = '| HIST-001 | Convert history | source | acceptance |\n' + 'x'.repeat(40000);
+  const product = '| DSH-001 | Normative ID row |\n| HIST-001 | Convert history | source | acceptance |\n' + 'x'.repeat(40000);
   const reference = {
     kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
     path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
