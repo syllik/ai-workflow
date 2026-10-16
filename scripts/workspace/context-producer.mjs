@@ -623,12 +623,16 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   if (uniqueStrings(requirementIds)) {
+    // A referenced PRODUCT is the sole authority for declared requirement IDs.
+    // Never satisfy one from an unrelated inline mention if its PRODUCT row is missing.
+    const productReference = sources.find((source) => source.kind === 'reference');
     for (const requirementId of requirementIds) {
-      if (!sources.some((source) => source.kind === 'reference'
-        ? source.content.split('\n').some((line) =>
+      const found = productReference
+        ? productReference.content.split('\n').some((line) =>
           /^\|\s*([A-Z]+-\d{3})\s*\|/u.exec(line)?.[1] === requirementId
         )
-        : source.content.includes(requirementId))) {
+        : sources.some(({ content }) => content.includes(requirementId));
+      if (!found) {
         findings.push(finding('CONTEXT_REQUIREMENT_UNAVAILABLE', `requirementIds.${requirementId}`));
       }
     }

@@ -838,3 +838,36 @@ test('does not allow mandatory instruction overflow even with a PRODUCT referenc
   assert.equal(result.passed, false);
   assert.equal(result.findings.some((f) => f.code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
 });
+
+test('PRODUCT reference owns requirement IDs even when missing rows appear in AGENTS or dependencies', () => {
+  const value = input();
+  // A loose scan would incorrectly accept HIST-002 from this inline AGENTS mention.
+  sourceByPath(value, 'AGENTS.md').content += '\nHIST-002 is referenced in prose.\n';
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| HIST-001 | Valid row |\nA note mentions HIST-002 without its table row.\n'
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({ kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha });
+  value.requirementIds.push('HIST-002');
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'
+    && f.path === 'requirementIds.HIST-002'), true);
+});
+
+test('PRODUCT reference rejects missing IDs in AGENTS but allows all IDs when PRODUCT rows are present', () => {
+  const value = input();
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| DSH-001 | Real row |\n| HIST-002 | Real row |\n'
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({ kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha });
+  value.requirementIds.push('HIST-002');
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
