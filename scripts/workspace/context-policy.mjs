@@ -101,6 +101,13 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
       // Consuming only a receipt cannot substitute for the full normative source.
       if (source.consumption?.fullSource !== true || source.consumption?.sourceSha256 !== source.sha256) findings.push(finding('INCOMPLETE_SOURCE_CONSUMPTION', `sources.${index}.consumption`));
     }
+    // A string's substring .includes() is not an exact requirement/acceptance match.
+    // COVERED receipts must supply unique arrays; optional claims in other states must also be well-typed.
+    for (const field of ['coveredRequirements', 'coveredAcceptance']) {
+      if ((source.state === 'COVERED' || Object.hasOwn(source, field)) && !uniqueStrings(source[field])) {
+        findings.push(finding('INVALID_CONTEXT_COVERAGE_CLAIMS', `sources.${index}.${field}`));
+      }
+    }
   }
   for (const key of expected.keys()) if (!sourcesById.has(key)) findings.push(finding('MISSING_EXPECTED_SOURCE', `sources.${key}`));
   for (const key of mandatorySourceIds) {
@@ -109,8 +116,8 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
     else if (!['CONSUMED', 'COVERED'].includes(source.state) || source.consumption?.fullSource !== true) findings.push(finding('MANDATORY_SOURCE_NOT_CONSUMED', `sources.${key}`));
   }
   if (!uniqueStrings(requirementIds) || !uniqueStrings(acceptanceIds) || !uniqueStrings(declaredDependencies)) findings.push(finding('INVALID_COVERAGE_IDENTITIES', 'coverage'));
-  for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && s.coveredRequirements?.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
-  for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && s.coveredAcceptance?.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
+  for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && uniqueStrings(s.coveredRequirements) && s.coveredRequirements.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
+  for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && uniqueStrings(s.coveredAcceptance) && s.coveredAcceptance.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
   return findings;
 }
 
@@ -156,6 +163,27 @@ export function assessRuntime(runtime = null) {
   return { status: 'MEASURED', decision: 'CONTINUE', remainingTokens: runtime.capacityTokens - runtime.usedTokens - runtime.reserveTokens, findings: [] };
 }
 
+// Checkpoint values must be useful and safe, not merely present. The trusted caller
+// independently revalidates authority and pinned Git sources on resume.
+function validateCheckpointPayload(payload) {
+  const findings = [];
+  const required = ['contractVersion', 'contextPolicyVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'approval', 'allowedPaths', 'sources', 'requirementCoverage', 'completedWork', 'pendingWork', 'validationEvidence'];
+  for (const key of required) if (!Object.hasOwn(payload, key)) findings.push(finding('INCOMPLETE_CHECKPOINT', `checkpoint.payload.${key}`));
+  const invalid = key => findings.push(finding('INVALID_CHECKPOINT_PAYLOAD', `checkpoint.payload.${key}`));
+  if (![1, 2].includes(payload.contractVersion)) invalid('contractVersion');
+  if (![1, 2].includes(payload.contextPolicyVersion) || (payload.contextPolicyVersion === 2 && payload.contractVersion !== 2)) invalid('contextPolicyVersion');
+  for (const key of ['policySha', 'baseSha', 'headSha']) if (typeof payload[key] !== 'string' || !SHA40.test(payload[key])) invalid(key);
+  if (typeof payload.repository !== 'string' || !REPO.test(payload.repository)) invalid('repository');
+  if (!isRecord(payload.approval) || typeof payload.approval.reference !== 'string' || !payload.approval.reference.trim()) invalid('approval');
+  const validAllowedPath = p => typeof p === 'string' && (p === '**' || /^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+(?:\/\*\*)?$/u.test(p)) && !p.split('/').some(x => x === '.' || x === '..');
+  if (!Array.isArray(payload.allowedPaths) || payload.allowedPaths.length === 0 || !payload.allowedPaths.every(validAllowedPath) || new Set(payload.allowedPaths).size !== payload.allowedPaths.length) invalid('allowedPaths');
+  const validSource = source => isRecord(source) && SOURCE_KINDS.has(source.kind) && typeof source.repository === 'string' && REPO.test(source.repository) && typeof source.path === 'string' && source.path.length > 0 && !source.path.split('/').some(x => x === '' || x === '.' || x === '..') && typeof source.revisionSha === 'string' && SHA40.test(source.revisionSha) && typeof source.blobSha === 'string' && SHA40.test(source.blobSha) && typeof source.sha256 === 'string' && SHA64.test(source.sha256);
+  if (!Array.isArray(payload.sources) || payload.sources.length === 0 || !payload.sources.every(validSource) || new Set((Array.isArray(payload.sources) ? payload.sources.filter(validSource) : []).map(sourceId)).size !== (Array.isArray(payload.sources) ? payload.sources.length : 0)) invalid('sources');
+  for (const key of ['requirementCoverage', 'completedWork', 'pendingWork']) if (!uniqueStrings(payload[key])) invalid(key);
+  if (!Array.isArray(payload.validationEvidence) || !payload.validationEvidence.every(x => typeof x === 'string' ? !!x.trim() : isRecord(x) && Object.keys(x).length > 0)) invalid('validationEvidence');
+  return findings;
+}
+
 // Security boundary: checkpoint must be authenticated by trusted storage/secret held outside agent context.
 export function signContextCheckpoint(payload, trustedSecret) {
   if (!isRecord(payload) || typeof trustedSecret !== 'string' || trustedSecret.length < 32) throw new Error('Trusted checkpoint secret required');
@@ -169,8 +197,10 @@ export function verifyContextCheckpoint(checkpoint, trustedSecret, current) {
   const { payload } = checkpoint;
   const mac = createHmac('sha256', trustedSecret).update(JSON.stringify(payload)).digest();
   if (!timingSafeEqual(mac, Buffer.from(checkpoint.mac, 'hex'))) findings.push(finding('FORGED_CHECKPOINT', 'checkpoint.mac'));
-  for (const key of ['contractVersion', 'contextPolicyVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'approval', 'allowedPaths', 'sources', 'requirementCoverage', 'completedWork', 'pendingWork', 'validationEvidence']) if (!(key in payload)) findings.push(finding('INCOMPLETE_CHECKPOINT', `checkpoint.payload.${key}`));
+  findings.push(...validateCheckpointPayload(payload));
   for (const field of ['contractVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) if (payload[field] !== current?.[field]) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
+  // Approval, allowed scope, sources and coverage cannot silently change at resume.
+  for (const field of ['approval', 'allowedPaths', 'sources', 'requirementCoverage']) if (JSON.stringify(payload[field]) !== JSON.stringify(current?.[field])) findings.push(finding('CHECKPOINT_AUTHORITY_DRIFT', `current.${field}`));
   // The caller must revalidate the authority, exact scope, source manifests and all mandatory normative files.
   if (current?.freshAuthorityValidated !== true || current?.allMandatorySourcesRehydrated !== true || current?.coverageRevalidated !== true) findings.push(finding('CHECKPOINT_REVALIDATION_REQUIRED', 'current'));
   return { valid: findings.length === 0, findings };

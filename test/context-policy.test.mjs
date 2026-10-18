@@ -210,3 +210,52 @@ test('non-string trusted repository identity fails closed', () => {
   }));
   assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
 });
+
+// Codex second-review findings on commit d9b93a6; first additional owner-authorized correction batch.
+test('coverage requires unique arrays and never uses substring membership', () => {
+  const malformed = source({ coveredRequirements: 'REQ-10', coveredAcceptance: 'ACC-10' });
+  const findings = verifyCoverage(coverage({ sources: [malformed] }));
+  assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_CLAIMS'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('coverage rejects duplicate or absent claims even when receipt state is COVERED', () => {
+  for (const bad of [source({ coveredRequirements: ['REQ-1', 'REQ-1'] }), source({ coveredAcceptance: ['ACC-1', 'ACC-1'] }), source({ coveredAcceptance: undefined })]) {
+    const findings = verifyCoverage(coverage({ sources: [bad] }));
+    assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_CLAIMS'));
+  }
+});
+
+test('signed checkpoint rejects malformed required values even when current mirrors them', () => {
+  const invalid = [
+    { contractVersion: null }, { contextPolicyVersion: null }, { policySha: null },
+    { baseSha: '0'.repeat(39) }, { headSha: 123 }, { repository: null },
+    { approval: { reference: '' } }, { approval: null },
+    { allowedPaths: null }, { allowedPaths: ['../escape'] },
+    { sources: null }, { sources: [null] }, { requirementCoverage: null },
+    { completedWork: null }, { pendingWork: null }, { validationEvidence: null }
+  ];
+  for (const overrides of invalid) {
+    const payload = { ...checkpointPayload(), ...overrides };
+    const ckpt = signContextCheckpoint(payload, secret);
+    const result = verifyContextCheckpoint(ckpt, secret, checkpointRuntime(payload));
+    assert.equal(result.valid, false, JSON.stringify(overrides));
+    assert.ok(has(result.findings, 'INVALID_CHECKPOINT_PAYLOAD'), JSON.stringify(overrides));
+  }
+});
+
+test('checkpoint resume binds approval, scope, manifest and coverage', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { approval: { reference: 'different-approval' } },
+    { allowedPaths: ['**'] },
+    { sources: [source({ blobSha: 'c'.repeat(40) })] },
+    { requirementCoverage: ['REQ-2'] }
+  ]) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, ...changed }));
+    assert.equal(result.valid, false);
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'));
+  }
+});
