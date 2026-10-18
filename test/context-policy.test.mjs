@@ -414,3 +414,84 @@ test('trusted coverage requires the independently attested Git blob and expected
   assert.ok(has(tampered, 'CONTEXT_HASH_MISMATCH'));
   assert.ok(has(tampered, 'UNCOVERED_REQUIREMENT'));
 });
+
+// Codex review finding on dc92d2a; second of three owner-authorized batches.
+test('unapproved source never reaches the trusted Git loader', () => {
+  const rejected = source({ repository: 'attacker/foreign', path: 'injected.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({ sources: [rejected] }), s => {
+    called.push(s.repository);
+    return trustedSource(s);
+  });
+  assert.deepEqual(called, []);
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+});
+
+test('undeclared dependency cannot cause a Git-object read', () => {
+  const dependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({
+    sources: [dependency], expectedSources: [dependency], declaredDependencies: []
+  }), s => { called.push(s.repository); return trustedSource(s); });
+  assert.deepEqual(called, []);
+  assert.ok(has(findings, 'UNDECLARED_CONTEXT_DEPENDENCY'));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+});
+
+test('kind impersonation and manifest hash drift cannot invoke the Git loader', () => {
+  for (const tampered of [source({ kind: 'reference' }), source({ blobSha: 'c'.repeat(40) }), source({ sha256: 'c'.repeat(64) })]) {
+    const called = [];
+    const findings = validateContextCoverage(coverage({ sources: [tampered] }), s => {
+      called.push(s.path);
+      return trustedSource(s);
+    });
+    assert.deepEqual(called, []);
+    assert.ok(has(findings, tampered.kind === 'reference' ? 'CONTEXT_SOURCE_KIND_MISMATCH' : 'CONTEXT_SOURCE_MANIFEST_MISMATCH'));
+    assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  }
+});
+
+test('malformed and ambiguous authorization inputs never trigger Git lookups', () => {
+  const cases = [
+    { expectedSources: [source(), source()] },
+    { expectedSources: [source({ blobSha: 'not-a-sha' })] },
+    { declaredDependencies: ['invalid'] },
+    { declaredDependencies: ['vendor/foreign', 'not-a-repo'] },
+    { sources: [source(), source()] }
+  ];
+  for (const overrides of cases) {
+    const called = [];
+    const findings = validateContextCoverage(coverage(overrides), s => {
+      called.push(s.path);
+      return trustedSource(s);
+    });
+    assert.ok(findings.length > 0, JSON.stringify(overrides));
+    // Duplicate source records permit at most the first authorized read;
+    // invalid manifests and declarations permit none.
+    assert.equal(called.length, Object.hasOwn(overrides, 'sources') ? 1 : 0, JSON.stringify(overrides));
+  }
+});
+
+test('mixed receipts invoke trusted Git loader only for authorized sources', () => {
+  const unapproved = source({ repository: 'attacker/foreign', path: 'bad.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({ sources: [source(), unapproved] }), s => {
+    called.push(s.repository);
+    return trustedSource(s);
+  });
+  assert.deepEqual(called, ['syllik/ai-workflow']);
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+  assert.ok(!has(findings, 'UNCOVERED_REQUIREMENT'));
+});
+
+test('declared expected dependency is allowed to reach the Git loader', () => {
+  const dependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md', coveredRequirements: [], coveredAcceptance: [] });
+  const called = [];
+  const findings = validateContextCoverage(coverage({
+    sources: [source(), dependency], expectedSources: [source(), dependency], declaredDependencies: ['vendor/foreign']
+  }), s => { called.push(s.repository); return trustedSource(s); });
+  assert.deepEqual(called, ['syllik/ai-workflow', 'vendor/foreign']);
+  assert.deepEqual(findings, []);
+});

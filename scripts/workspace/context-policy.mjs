@@ -70,14 +70,20 @@ export function validateContextCoverage(envelope = {}, verifySource) {
   // was covered. Only independent evidence from the trusted runner can do that.
   const trustedEvidenceById = new Map();
   const expected = new Map();
+  const duplicateExpectedIds = new Set();
+  // Dependency declarations and the manifest are trusted authorization inputs.
+  // A malformed declaration cannot authorize any Git-object lookup.
+  const validDeclaredDependencies = uniqueStrings(declaredDependencies) && declaredDependencies.every(repo => REPO.test(repo));
   for (const [index, entry] of expectedSources.entries()) {
-    if (!isRecord(entry) || !SOURCE_KINDS.has(entry.kind) || !REPO.test(entry.repository ?? '') || !SHA40.test(entry.revisionSha ?? '') || typeof entry.path !== 'string' || !entry.path || entry.path.includes('..')) {
+    if (!isRecord(entry) || !SOURCE_KINDS.has(entry.kind) || !REPO.test(entry.repository ?? '') || !SHA40.test(entry.revisionSha ?? '') || typeof entry.path !== 'string' || !entry.path || entry.path.includes('..') || (Object.hasOwn(entry, 'blobSha') && !SHA40.test(entry.blobSha ?? '')) || (Object.hasOwn(entry, 'sha256') && !SHA64.test(entry.sha256 ?? ''))) {
       findings.push(finding('INVALID_EXPECTED_SOURCE', `expectedSources.${index}`));
       continue;
     }
     const key = sourceId(entry);
-    if (expected.has(key)) findings.push(finding('DUPLICATE_EXPECTED_SOURCE', `expectedSources.${index}`));
-    expected.set(key, entry);
+    if (expected.has(key)) {
+      findings.push(finding('DUPLICATE_EXPECTED_SOURCE', `expectedSources.${index}`));
+      duplicateExpectedIds.add(key);
+    } else expected.set(key, entry);
     // Dependency authority comes from the trusted expected manifest, never source self-labeling.
     if (entry.kind === 'dependency' && !declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(entry.repository))) {
       findings.push(finding('UNDECLARED_CONTEXT_DEPENDENCY', `expectedSources.${index}`));
@@ -86,15 +92,23 @@ export function validateContextCoverage(envelope = {}, verifySource) {
   for (const [index, source] of sources.entries()) {
     const key = isRecord(source) ? sourceId(source) : '';
     if (!isRecord(source) || !REPO.test(source.repository ?? '') || !SHA40.test(source.revisionSha ?? '') || !SHA40.test(source.blobSha ?? '') || !SHA64.test(source.sha256 ?? '') || typeof source.path !== 'string' || !source.path || source.path.includes('..') || !SOURCE_STATES.has(source.state) || !SOURCE_KINDS.has(source.kind)) { findings.push(finding('INVALID_CONTEXT_SOURCE', `sources.${index}`)); continue; }
-    if (sourcesById.has(key)) findings.push(finding('DUPLICATE_CONTEXT_SOURCE', `sources.${index}`));
+    const duplicateSource = sourcesById.has(key);
+    if (duplicateSource) findings.push(finding('DUPLICATE_CONTEXT_SOURCE', `sources.${index}`));
     sourcesById.set(key, source);
     const expectedEntry = expected.get(key);
     if (!expectedEntry) findings.push(finding('UNEXPECTED_CONTEXT_SOURCE', `sources.${index}`));
     else if (source.kind !== expectedEntry.kind) findings.push(finding('CONTEXT_SOURCE_KIND_MISMATCH', `sources.${index}.kind`));
-    // Expected source provenance MUST be independently attested from a trusted Git-object reader.
-    // Never accept self-reported verifiedByGit flags as proof.
+    const manifestHashMatches = expectedEntry &&
+      (!Object.hasOwn(expectedEntry, 'blobSha') || expectedEntry.blobSha === source.blobSha) &&
+      (!Object.hasOwn(expectedEntry, 'sha256') || expectedEntry.sha256 === source.sha256);
+    if (expectedEntry && !manifestHashMatches) findings.push(finding('CONTEXT_SOURCE_MANIFEST_MISMATCH', `sources.${index}`));
+    const dependencyAllowed = expectedEntry?.kind !== 'dependency' || declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(source.repository));
+    // Authorization is a precondition to ANY call to the trusted Git-object loader.
+    // A receipt cannot expand the manifest, impersonate a kind, or introduce a dependency.
+    const sourceAuthorized = !!expectedEntry && expectedEntry.kind === source.kind && manifestHashMatches
+      && !duplicateSource && !duplicateExpectedIds.has(key) && validDeclaredDependencies && dependencyAllowed;
     let trusted;
-    if (typeof verifySource === 'function') {
+    if (sourceAuthorized && typeof verifySource === 'function') {
       try { trusted = verifySource(source); } catch { trusted = null; }
     }
     let gitVerified = false;
@@ -125,9 +139,7 @@ export function validateContextCoverage(envelope = {}, verifySource) {
       && source.coveredRequirements.every(id => trusted.coveredRequirements.includes(id))
       && source.coveredAcceptance.every(id => trusted.coveredAcceptance.includes(id));
     if (source.state === 'COVERED' && !attestedClaims) findings.push(finding('UNVERIFIED_SOURCE_COVERAGE', `sources.${index}`));
-    const dependencyAllowed = expectedEntry?.kind !== 'dependency' || declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(source.repository));
-    const consumed = claimsConsumption && receiptConsumption && trustedConsumption
-      && expectedEntry?.kind === source.kind && dependencyAllowed;
+    const consumed = claimsConsumption && receiptConsumption && trustedConsumption && sourceAuthorized;
     trustedEvidenceById.set(key, { consumed, covered: consumed && attestedClaims });
   }
   for (const key of expected.keys()) if (!sourcesById.has(key)) findings.push(finding('MISSING_EXPECTED_SOURCE', `sources.${key}`));
@@ -136,7 +148,7 @@ export function validateContextCoverage(envelope = {}, verifySource) {
     if (!source) findings.push(finding('MISSING_MANDATORY_SOURCE', `sources.${key}`));
     else if (!trustedEvidenceById.get(key)?.consumed) findings.push(finding('MANDATORY_SOURCE_NOT_CONSUMED', `sources.${key}`));
   }
-  if (!uniqueStrings(requirementIds) || !uniqueStrings(acceptanceIds) || !uniqueStrings(declaredDependencies)) findings.push(finding('INVALID_COVERAGE_IDENTITIES', 'coverage'));
+  if (!uniqueStrings(requirementIds) || !uniqueStrings(acceptanceIds) || !validDeclaredDependencies) findings.push(finding('INVALID_COVERAGE_IDENTITIES', 'coverage'));
   for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && trustedEvidenceById.get(sourceId(s))?.covered && s.coveredRequirements.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
   for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && trustedEvidenceById.get(sourceId(s))?.covered && s.coveredAcceptance.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
   return findings;
