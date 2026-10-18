@@ -155,3 +155,58 @@ test('malformed source input returns findings, not a false pass', () => {
   assert.ok(has(findings, 'INVALID_CONTEXT_SOURCE'));
   assert.ok(has(findings, 'MISSING_MANDATORY_SOURCE'));
 });
+
+// Consolidated Codex review findings for PR #63, commit e372db6.
+test('source kind cannot impersonate trusted expected dependency authorization', () => {
+  const expectedDependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md' });
+  const relabeled = { ...expectedDependency, kind: 'policy' };
+  const findings = verifyCoverage(coverage({
+    sources: [source(), relabeled], expectedSources: [source(), expectedDependency], declaredDependencies: []
+  }));
+  assert.ok(has(findings, 'CONTEXT_SOURCE_KIND_MISMATCH'));
+  assert.ok(has(findings, 'UNDECLARED_CONTEXT_DEPENDENCY'));
+});
+
+test('invalid expected source kind fails closed', () => {
+  const findings = verifyCoverage(coverage({ expectedSources: [source({ kind: 'made-up' })] }));
+  assert.ok(has(findings, 'INVALID_EXPECTED_SOURCE'));
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+});
+
+test('checkpoint contract version drift is rejected even with same context policy', () => {
+  const payload = { ...checkpointPayload(), contextPolicyVersion: 1 };
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const findings = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, contractVersion: 1 })).findings;
+  assert.ok(has(findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
+});
+
+test('explicit null context policy version is not an omitted legacy field', () => {
+  const result = resolveContextPolicy({ ...handoff, contextPolicyVersion: null });
+  assert.equal(result.admitted, false);
+  assert.ok(has(result.findings, 'UNSUPPORTED_CONTEXT_POLICY_VERSION'));
+});
+
+test('repository-root documents preserve v1 hard budgets and v2 advisory budgets', () => {
+  const budgets = { 'managed AGENTS block': 3, '.ai/context.md': 3 };
+  for (const path of ['AGENTS.md', '.ai/context.md']) {
+    const v1 = checkDocumentBudget(path, 'four', 1, budgets);
+    const v2 = checkDocumentBudget(path, 'four', 2, budgets);
+    assert.equal(v1.blocked, true, path);
+    assert.equal(v1.findings[0].code, 'BUDGET_EXCEEDED', path);
+    assert.equal(v2.blocked, false, path);
+    assert.equal(v2.findings[0].severity, 'ADVISORY', path);
+  }
+});
+
+test('malformed null policy configuration returns denied findings, not exception', () => {
+  const result = resolveContextPolicy(handoff, null);
+  assert.equal(result.admitted, false);
+  assert.ok(has(result.findings, 'INVALID_CONTEXT_POLICY'));
+});
+
+test('non-string trusted repository identity fails closed', () => {
+  const findings = validateContextCoverage(coverage(), sourceRecord => ({
+    ...trustedSource(sourceRecord), repository: 123
+  }));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+});

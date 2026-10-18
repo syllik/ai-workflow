@@ -14,6 +14,7 @@ const SHA40 = /^[0-9a-f]{40}$/u;
 const SHA64 = /^[0-9a-f]{64}$/u;
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SOURCE_STATES = new Set(['VERIFIED', 'RETRIEVED', 'CONSUMED', 'COVERED']);
+const SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency', 'reference']);
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const finding = (code, path) => ({ code, path });
 const normalizeRepo = value => typeof value === 'string' ? value.toLowerCase() : null;
@@ -36,8 +37,11 @@ export function validateContextPolicyConfig(policy = DEFAULT_CONTEXT_POLICY) {
 export function resolveContextPolicy(handoff, config = DEFAULT_CONTEXT_POLICY, { newTask = false } = {}) {
   const findings = validateContextPolicyConfig(config);
   if (!isRecord(handoff)) return { version: null, admitted: false, findings: [...findings, finding('INVALID_HANDOFF', 'handoff')] };
-  // Missing contextPolicyVersion is always legacy for persisted records; no auto upgrade.
-  const version = handoff.contextPolicyVersion ?? (newTask ? config.defaultNewTaskVersion : CONTEXT_POLICY_V1);
+  if (!isRecord(config)) return { version: null, admitted: false, findings };
+  // Only an absent field is legacy-compatible; explicit null is malformed.
+  const version = Object.hasOwn(handoff, 'contextPolicyVersion')
+    ? handoff.contextPolicyVersion
+    : (newTask ? config.defaultNewTaskVersion : CONTEXT_POLICY_V1);
   if (![1, 2].includes(version) || !config.supportedVersions?.includes(version)) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
   if (handoff.contractVersion !== 2 && version === 2) findings.push(finding('TASK_CONTEXT_VERSION_MISMATCH', 'handoff.contractVersion'));
   if (version === 2 && (!REPO.test(handoff.repository ?? '') || !Array.isArray(config.rolloutAllowlist) || !config.rolloutAllowlist.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)))) findings.push(finding('CONTEXT_V2_NOT_ACTIVATED', 'handoff.repository'));
@@ -60,24 +64,35 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
   const findings = [];
   if (![sources, expectedSources, mandatorySourceIds, requirementIds, acceptanceIds, declaredDependencies].every(Array.isArray)) return [finding('INVALID_CONTEXT_COVERAGE_INPUT', 'coverage')];
   const sourcesById = new Map();
-  const expected = new Set();
+  const expected = new Map();
   for (const [index, entry] of expectedSources.entries()) {
-    if (!isRecord(entry) || !REPO.test(entry.repository ?? '') || !SHA40.test(entry.revisionSha ?? '') || typeof entry.path !== 'string' || !entry.path || entry.path.includes('..')) findings.push(finding('INVALID_EXPECTED_SOURCE', `expectedSources.${index}`));
-    else expected.add(sourceId(entry));
+    if (!isRecord(entry) || !SOURCE_KINDS.has(entry.kind) || !REPO.test(entry.repository ?? '') || !SHA40.test(entry.revisionSha ?? '') || typeof entry.path !== 'string' || !entry.path || entry.path.includes('..')) {
+      findings.push(finding('INVALID_EXPECTED_SOURCE', `expectedSources.${index}`));
+      continue;
+    }
+    const key = sourceId(entry);
+    if (expected.has(key)) findings.push(finding('DUPLICATE_EXPECTED_SOURCE', `expectedSources.${index}`));
+    expected.set(key, entry);
+    // Dependency authority comes from the trusted expected manifest, never source self-labeling.
+    if (entry.kind === 'dependency' && !declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(entry.repository))) {
+      findings.push(finding('UNDECLARED_CONTEXT_DEPENDENCY', `expectedSources.${index}`));
+    }
   }
   for (const [index, source] of sources.entries()) {
     const key = isRecord(source) ? sourceId(source) : '';
-    if (!isRecord(source) || !REPO.test(source.repository ?? '') || !SHA40.test(source.revisionSha ?? '') || !SHA40.test(source.blobSha ?? '') || !SHA64.test(source.sha256 ?? '') || typeof source.path !== 'string' || !source.path || source.path.includes('..') || !SOURCE_STATES.has(source.state)) { findings.push(finding('INVALID_CONTEXT_SOURCE', `sources.${index}`)); continue; }
+    if (!isRecord(source) || !REPO.test(source.repository ?? '') || !SHA40.test(source.revisionSha ?? '') || !SHA40.test(source.blobSha ?? '') || !SHA64.test(source.sha256 ?? '') || typeof source.path !== 'string' || !source.path || source.path.includes('..') || !SOURCE_STATES.has(source.state) || !SOURCE_KINDS.has(source.kind)) { findings.push(finding('INVALID_CONTEXT_SOURCE', `sources.${index}`)); continue; }
     if (sourcesById.has(key)) findings.push(finding('DUPLICATE_CONTEXT_SOURCE', `sources.${index}`));
     sourcesById.set(key, source);
-    if (!expected.has(key)) findings.push(finding('UNEXPECTED_CONTEXT_SOURCE', `sources.${index}`));
+    const expectedEntry = expected.get(key);
+    if (!expectedEntry) findings.push(finding('UNEXPECTED_CONTEXT_SOURCE', `sources.${index}`));
+    else if (source.kind !== expectedEntry.kind) findings.push(finding('CONTEXT_SOURCE_KIND_MISMATCH', `sources.${index}.kind`));
     // Expected source provenance MUST be independently attested from a trusted Git-object reader.
     // Never accept self-reported verifiedByGit flags as proof.
     let trusted;
     if (typeof verifySource === 'function') {
       try { trusted = verifySource(source); } catch { trusted = null; }
     }
-    if (!isRecord(trusted) || trusted.repository?.toLowerCase() !== source.repository.toLowerCase() || trusted.path !== source.path || trusted.revisionSha !== source.revisionSha || trusted.blobSha !== source.blobSha || typeof trusted.content !== 'string') {
+    if (!isRecord(trusted) || normalizeRepo(trusted.repository) !== normalizeRepo(source.repository) || trusted.path !== source.path || trusted.revisionSha !== source.revisionSha || trusted.blobSha !== source.blobSha || typeof trusted.content !== 'string') {
       findings.push(finding('UNVERIFIED_GIT_SOURCE', `sources.${index}`));
     } else if (digest(trusted.content) !== source.sha256 || (typeof source.content === 'string' && source.content !== trusted.content)) {
       findings.push(finding('CONTEXT_HASH_MISMATCH', `sources.${index}.sha256`));
@@ -87,7 +102,7 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
       if (source.consumption?.fullSource !== true || source.consumption?.sourceSha256 !== source.sha256) findings.push(finding('INCOMPLETE_SOURCE_CONSUMPTION', `sources.${index}.consumption`));
     }
   }
-  for (const key of expected) if (!sourcesById.has(key)) findings.push(finding('MISSING_EXPECTED_SOURCE', `sources.${key}`));
+  for (const key of expected.keys()) if (!sourcesById.has(key)) findings.push(finding('MISSING_EXPECTED_SOURCE', `sources.${key}`));
   for (const key of mandatorySourceIds) {
     const source = sourcesById.get(key);
     if (!source) findings.push(finding('MISSING_MANDATORY_SOURCE', `sources.${key}`));
@@ -96,7 +111,6 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
   if (!uniqueStrings(requirementIds) || !uniqueStrings(acceptanceIds) || !uniqueStrings(declaredDependencies)) findings.push(finding('INVALID_COVERAGE_IDENTITIES', 'coverage'));
   for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && s.coveredRequirements?.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
   for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && s.coveredAcceptance?.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
-  for (const source of sources) if (source?.kind === 'dependency' && !declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(source.repository))) findings.push(finding('UNDECLARED_CONTEXT_DEPENDENCY', `sources.${sourceId(source)}`));
   return findings;
 }
 
@@ -107,8 +121,8 @@ export function classifyDocumentBudget(filePath, version, budgets) {
   const key = path === 'AI.md' || path.endsWith('/AI.md') ? 'AI.md'
     : path === 'FLOW.md' || path.endsWith('/FLOW.md') ? 'FLOW.md'
     : path.startsWith('global/') ? 'global role file'
-    : path.endsWith('/AGENTS.md') ? 'managed AGENTS block'
-    : path.endsWith('/.ai/context.md') ? '.ai/context.md'
+    : path === 'AGENTS.md' || path.endsWith('/AGENTS.md') ? 'managed AGENTS block'
+    : path === '.ai/context.md' || path.endsWith('/.ai/context.md') ? '.ai/context.md'
     : path.endsWith('/decisions.md') ? 'one decision record'
     : path.endsWith('/prompt.md') ? 'prompt.md'
     : path.endsWith('/state.md') ? 'state.md'
@@ -156,7 +170,7 @@ export function verifyContextCheckpoint(checkpoint, trustedSecret, current) {
   const mac = createHmac('sha256', trustedSecret).update(JSON.stringify(payload)).digest();
   if (!timingSafeEqual(mac, Buffer.from(checkpoint.mac, 'hex'))) findings.push(finding('FORGED_CHECKPOINT', 'checkpoint.mac'));
   for (const key of ['contractVersion', 'contextPolicyVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'approval', 'allowedPaths', 'sources', 'requirementCoverage', 'completedWork', 'pendingWork', 'validationEvidence']) if (!(key in payload)) findings.push(finding('INCOMPLETE_CHECKPOINT', `checkpoint.payload.${key}`));
-  for (const field of ['policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) if (payload[field] !== current?.[field]) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
+  for (const field of ['contractVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) if (payload[field] !== current?.[field]) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
   // The caller must revalidate the authority, exact scope, source manifests and all mandatory normative files.
   if (current?.freshAuthorityValidated !== true || current?.allMandatorySourcesRehydrated !== true || current?.coverageRevalidated !== true) findings.push(finding('CHECKPOINT_REVALIDATION_REQUIRED', 'current'));
   return { valid: findings.length === 0, findings };
