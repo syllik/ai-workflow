@@ -307,3 +307,45 @@ test('semantic checkpoint comparison still rejects changed and duplicated author
     assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
   }
 });
+
+
+// Codex fourth-review finding on 737fcaf; first of two newly authorized correction batches.
+test('checkpoint resume accepts GitHub repository casing differences in top-level and source manifest', () => {
+  const payload = checkpointPayload();
+  payload.sources = [source(), source({ repository: 'ChipIn-one/chipin-frontend', path: 'AGENTS.md' })];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const current = checkpointRuntime({
+    ...payload,
+    repository: 'SYLLIK/LIFE-OPS-BOT',
+    sources: payload.sources.map(entry => ({ ...entry, repository: entry.repository.toUpperCase() })).reverse()
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('checkpoint resume continues to reject changed GitHub repository identities and malformed repositories', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const repository of ['syllik/different-repo', 123, null, 'invalid']) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, repository }));
+    assert.equal(result.valid, false, String(repository));
+    assert.ok(has(result.findings, 'CHECKPOINT_REPOSITORY_DRIFT'), String(repository));
+  }
+});
+
+test('source repository casing alone is normalized but SHA, path and identity drift remain blocked', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { repository: 'syllik/unapproved-repo' },
+    { repository: null },
+    { revisionSha: 'f'.repeat(40) },
+    { blobSha: 'f'.repeat(40) },
+    { sha256: 'e'.repeat(64) },
+    { path: 'DIFFERENT.md' }
+  ]) {
+    const current = checkpointRuntime({ ...payload, sources: [source({ ...changed, repository: Object.hasOwn(changed, 'repository') ? changed.repository : 'SYLLIK/AI-WORKFLOW' })] });
+    const result = verifyContextCheckpoint(checkpoint, secret, current);
+    assert.equal(result.valid, false, JSON.stringify(changed));
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
+  }
+});

@@ -196,7 +196,14 @@ function canonicalCheckpointValue(value) {
 function equivalentCheckpointAuthority(field, checkpointValue, currentValue) {
   if (field !== 'approval' && (!Array.isArray(checkpointValue) || !Array.isArray(currentValue))) return false;
   if (field === 'approval' && (!isRecord(checkpointValue) || !isRecord(currentValue))) return false;
-  const normalize = value => JSON.stringify(canonicalCheckpointValue(value));
+  const normalize = value => {
+    // GitHub repository identities are case-insensitive. Normalize only the
+    // source identity field; paths, SHAs, and other evidence remain exact.
+    const normalized = field === 'sources' && isRecord(value) && typeof value.repository === 'string'
+      ? { ...value, repository: normalizeRepo(value.repository) }
+      : value;
+    return JSON.stringify(canonicalCheckpointValue(normalized));
+  };
   if (field === 'approval') return normalize(checkpointValue) === normalize(currentValue);
   // Each array is a multiset: stable object-key order and collection order are
   // irrelevant, but a missing, duplicate, or changed entry remains a change.
@@ -219,7 +226,12 @@ export function verifyContextCheckpoint(checkpoint, trustedSecret, current) {
   const mac = createHmac('sha256', trustedSecret).update(JSON.stringify(payload)).digest();
   if (!timingSafeEqual(mac, Buffer.from(checkpoint.mac, 'hex'))) findings.push(finding('FORGED_CHECKPOINT', 'checkpoint.mac'));
   findings.push(...validateCheckpointPayload(payload));
-  for (const field of ['contractVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) if (payload[field] !== current?.[field]) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
+  for (const field of ['contractVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) {
+    const matches = field === 'repository'
+      ? typeof current?.repository === 'string' && REPO.test(current.repository) && normalizeRepo(payload.repository) === normalizeRepo(current.repository)
+      : payload[field] === current?.[field];
+    if (!matches) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
+  }
   // Approval, allowed scope, sources and coverage cannot silently change at resume.
   for (const field of ['approval', 'allowedPaths', 'sources', 'requirementCoverage']) if (!equivalentCheckpointAuthority(field, payload[field], current?.[field])) findings.push(finding('CHECKPOINT_AUTHORITY_DRIFT', `current.${field}`));
   // The caller must revalidate the authority, exact scope, source manifests and all mandatory normative files.
