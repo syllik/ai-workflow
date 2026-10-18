@@ -259,3 +259,51 @@ test('checkpoint resume binds approval, scope, manifest and coverage', () => {
     assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'));
   }
 });
+
+// Codex third-review finding on e0d0af8; second owner-authorized extra correction batch.
+test('checkpoint scope, coverage and source manifests ignore collection order', () => {
+  const payload = checkpointPayload();
+  payload.allowedPaths = ['FLOW.md', 'AI.md'];
+  payload.requirementCoverage = ['REQ-1', 'REQ-2'];
+  payload.sources = [source(), source({ path: 'AI.md' })];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const current = checkpointRuntime({
+    ...payload,
+    allowedPaths: [...payload.allowedPaths].reverse(),
+    requirementCoverage: [...payload.requirementCoverage].reverse(),
+    sources: [...payload.sources].reverse()
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('checkpoint approval and source record property key order are semantic, not authority drift', () => {
+  const payload = checkpointPayload();
+  payload.approval = { reference: 'owner-record', publicationAllowed: false, nested: { role: 'executor', batches: 1 } };
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const reverseKeys = object => Object.fromEntries(Object.entries(object).reverse());
+  const current = checkpointRuntime({
+    ...payload,
+    approval: { nested: reverseKeys(payload.approval.nested), publicationAllowed: false, reference: 'owner-record' },
+    sources: payload.sources.map(reverseKeys)
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('semantic checkpoint comparison still rejects changed and duplicated authority', () => {
+  const payload = checkpointPayload();
+  payload.allowedPaths = ['FLOW.md', 'AI.md'];
+  payload.sources = [source(), source({ path: 'AI.md' })];
+  payload.requirementCoverage = ['REQ-1', 'REQ-2'];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { allowedPaths: ['AI.md', 'DIFFERENT.md'] },
+    { allowedPaths: ['AI.md', 'AI.md'] },
+    { sources: [source({ path: 'AI.md' }), source({ path: 'AI.md' })] },
+    { requirementCoverage: ['REQ-2', 'REQ-2'] },
+    { approval: { reference: 'another-approval' } }
+  ]) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, ...changed }));
+    assert.equal(result.valid, false, JSON.stringify(changed));
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
+  }
+});

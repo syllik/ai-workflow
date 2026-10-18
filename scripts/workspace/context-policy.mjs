@@ -184,6 +184,27 @@ function validateCheckpointPayload(payload) {
   return findings;
 }
 
+// Checkpoint scope/coverage and Git source manifests are sets, not execution-ordered logs.
+// Canonicalize object keys recursively, and sort only top-level set-valued fields;
+// work logs and nested arrays keep their order. Duplicate entries are not collapsed.
+function canonicalCheckpointValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalCheckpointValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalCheckpointValue(value[key])]));
+}
+
+function equivalentCheckpointAuthority(field, checkpointValue, currentValue) {
+  if (field !== 'approval' && (!Array.isArray(checkpointValue) || !Array.isArray(currentValue))) return false;
+  if (field === 'approval' && (!isRecord(checkpointValue) || !isRecord(currentValue))) return false;
+  const normalize = value => JSON.stringify(canonicalCheckpointValue(value));
+  if (field === 'approval') return normalize(checkpointValue) === normalize(currentValue);
+  // Each array is a multiset: stable object-key order and collection order are
+  // irrelevant, but a missing, duplicate, or changed entry remains a change.
+  const a = checkpointValue.map(normalize).sort();
+  const b = currentValue.map(normalize).sort();
+  return a.length === b.length && a.every((entry, index) => entry === b[index]);
+}
+
 // Security boundary: checkpoint must be authenticated by trusted storage/secret held outside agent context.
 export function signContextCheckpoint(payload, trustedSecret) {
   if (!isRecord(payload) || typeof trustedSecret !== 'string' || trustedSecret.length < 32) throw new Error('Trusted checkpoint secret required');
@@ -200,7 +221,7 @@ export function verifyContextCheckpoint(checkpoint, trustedSecret, current) {
   findings.push(...validateCheckpointPayload(payload));
   for (const field of ['contractVersion', 'policySha', 'baseSha', 'headSha', 'repository', 'contextPolicyVersion']) if (payload[field] !== current?.[field]) findings.push(finding('CHECKPOINT_REPOSITORY_DRIFT', `current.${field}`));
   // Approval, allowed scope, sources and coverage cannot silently change at resume.
-  for (const field of ['approval', 'allowedPaths', 'sources', 'requirementCoverage']) if (JSON.stringify(payload[field]) !== JSON.stringify(current?.[field])) findings.push(finding('CHECKPOINT_AUTHORITY_DRIFT', `current.${field}`));
+  for (const field of ['approval', 'allowedPaths', 'sources', 'requirementCoverage']) if (!equivalentCheckpointAuthority(field, payload[field], current?.[field])) findings.push(finding('CHECKPOINT_AUTHORITY_DRIFT', `current.${field}`));
   // The caller must revalidate the authority, exact scope, source manifests and all mandatory normative files.
   if (current?.freshAuthorityValidated !== true || current?.allMandatorySourcesRehydrated !== true || current?.coverageRevalidated !== true) findings.push(finding('CHECKPOINT_REVALIDATION_REQUIRED', 'current'));
   return { valid: findings.length === 0, findings };
