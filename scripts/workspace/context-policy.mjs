@@ -42,7 +42,7 @@ export function resolveContextPolicy(handoff, config = DEFAULT_CONTEXT_POLICY, {
   const version = Object.hasOwn(handoff, 'contextPolicyVersion')
     ? handoff.contextPolicyVersion
     : (newTask ? config.defaultNewTaskVersion : CONTEXT_POLICY_V1);
-  if (![1, 2].includes(version) || !config.supportedVersions?.includes(version)) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
+  if (![1, 2].includes(version) || (!Array.isArray(config.supportedVersions) || !config.supportedVersions.includes(version))) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
   if (handoff.contractVersion !== 2 && version === 2) findings.push(finding('TASK_CONTEXT_VERSION_MISMATCH', 'handoff.contractVersion'));
   if (version === 2 && (!REPO.test(handoff.repository ?? '') || !Array.isArray(config.rolloutAllowlist) || !config.rolloutAllowlist.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)))) findings.push(finding('CONTEXT_V2_NOT_ACTIVATED', 'handoff.repository'));
   if (Array.isArray(config.excludedRepositories) && config.excludedRepositories.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)) && version === 2) findings.push(finding('EXCLUDED_REPOSITORY', 'handoff.repository'));
@@ -60,10 +60,15 @@ export function evaluateContextBytes(version, assembledContext) {
 
 // The caller's Git-object loader must independently attest repository identity, commit, blob SHA and content.
 // A source receipt alone cannot set CONSUMED or COVERED.
-export function validateContextCoverage({ sources, expectedSources, mandatorySourceIds, requirementIds, acceptanceIds = [], declaredDependencies = [] } = {}, verifySource) {
+export function validateContextCoverage(envelope = {}, verifySource) {
+  if (!isRecord(envelope)) return [finding('INVALID_CONTEXT_COVERAGE_INPUT', 'coverage')];
+  const { sources, expectedSources, mandatorySourceIds, requirementIds, acceptanceIds = [], declaredDependencies = [] } = envelope;
   const findings = [];
   if (![sources, expectedSources, mandatorySourceIds, requirementIds, acceptanceIds, declaredDependencies].every(Array.isArray)) return [finding('INVALID_CONTEXT_COVERAGE_INPUT', 'coverage')];
   const sourcesById = new Map();
+  // A Git blob attests content identity, NOT that it was read or that a requirement
+  // was covered. Only independent evidence from the trusted runner can do that.
+  const trustedEvidenceById = new Map();
   const expected = new Map();
   for (const [index, entry] of expectedSources.entries()) {
     if (!isRecord(entry) || !SOURCE_KINDS.has(entry.kind) || !REPO.test(entry.repository ?? '') || !SHA40.test(entry.revisionSha ?? '') || typeof entry.path !== 'string' || !entry.path || entry.path.includes('..')) {
@@ -92,15 +97,21 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
     if (typeof verifySource === 'function') {
       try { trusted = verifySource(source); } catch { trusted = null; }
     }
+    let gitVerified = false;
     if (!isRecord(trusted) || normalizeRepo(trusted.repository) !== normalizeRepo(source.repository) || trusted.path !== source.path || trusted.revisionSha !== source.revisionSha || trusted.blobSha !== source.blobSha || typeof trusted.content !== 'string') {
       findings.push(finding('UNVERIFIED_GIT_SOURCE', `sources.${index}`));
     } else if (digest(trusted.content) !== source.sha256 || (typeof source.content === 'string' && source.content !== trusted.content)) {
       findings.push(finding('CONTEXT_HASH_MISMATCH', `sources.${index}.sha256`));
+    } else {
+      gitVerified = true;
     }
-    if (source.state === 'CONSUMED' || source.state === 'COVERED') {
-      // Consuming only a receipt cannot substitute for the full normative source.
-      if (source.consumption?.fullSource !== true || source.consumption?.sourceSha256 !== source.sha256) findings.push(finding('INCOMPLETE_SOURCE_CONSUMPTION', `sources.${index}.consumption`));
-    }
+    const claimsConsumption = source.state === 'CONSUMED' || source.state === 'COVERED';
+    const receiptConsumption = source.consumption?.fullSource === true && source.consumption?.sourceSha256 === source.sha256;
+    // The independent verifier must attest a full read bound to this exact content
+    // hash; receipt-supplied consumption flags never establish it on their own.
+    const trustedConsumption = gitVerified && trusted.consumption?.fullSource === true && trusted.consumption?.sourceSha256 === source.sha256;
+    if (claimsConsumption && !receiptConsumption) findings.push(finding('INCOMPLETE_SOURCE_CONSUMPTION', `sources.${index}.consumption`));
+    if (claimsConsumption && !trustedConsumption) findings.push(finding('UNVERIFIED_SOURCE_CONSUMPTION', `sources.${index}.consumption`));
     // A string's substring .includes() is not an exact requirement/acceptance match.
     // COVERED receipts must supply unique arrays; optional claims in other states must also be well-typed.
     for (const field of ['coveredRequirements', 'coveredAcceptance']) {
@@ -108,16 +119,26 @@ export function validateContextCoverage({ sources, expectedSources, mandatorySou
         findings.push(finding('INVALID_CONTEXT_COVERAGE_CLAIMS', `sources.${index}.${field}`));
       }
     }
+    const attestedClaims = source.state === 'COVERED'
+      && uniqueStrings(trusted?.coveredRequirements) && uniqueStrings(trusted?.coveredAcceptance)
+      && uniqueStrings(source.coveredRequirements) && uniqueStrings(source.coveredAcceptance)
+      && source.coveredRequirements.every(id => trusted.coveredRequirements.includes(id))
+      && source.coveredAcceptance.every(id => trusted.coveredAcceptance.includes(id));
+    if (source.state === 'COVERED' && !attestedClaims) findings.push(finding('UNVERIFIED_SOURCE_COVERAGE', `sources.${index}`));
+    const dependencyAllowed = expectedEntry?.kind !== 'dependency' || declaredDependencies.some(repo => normalizeRepo(repo) === normalizeRepo(source.repository));
+    const consumed = claimsConsumption && receiptConsumption && trustedConsumption
+      && expectedEntry?.kind === source.kind && dependencyAllowed;
+    trustedEvidenceById.set(key, { consumed, covered: consumed && attestedClaims });
   }
   for (const key of expected.keys()) if (!sourcesById.has(key)) findings.push(finding('MISSING_EXPECTED_SOURCE', `sources.${key}`));
   for (const key of mandatorySourceIds) {
     const source = sourcesById.get(key);
     if (!source) findings.push(finding('MISSING_MANDATORY_SOURCE', `sources.${key}`));
-    else if (!['CONSUMED', 'COVERED'].includes(source.state) || source.consumption?.fullSource !== true) findings.push(finding('MANDATORY_SOURCE_NOT_CONSUMED', `sources.${key}`));
+    else if (!trustedEvidenceById.get(key)?.consumed) findings.push(finding('MANDATORY_SOURCE_NOT_CONSUMED', `sources.${key}`));
   }
   if (!uniqueStrings(requirementIds) || !uniqueStrings(acceptanceIds) || !uniqueStrings(declaredDependencies)) findings.push(finding('INVALID_COVERAGE_IDENTITIES', 'coverage'));
-  for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && uniqueStrings(s.coveredRequirements) && s.coveredRequirements.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
-  for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && s.consumption?.fullSource === true && s.consumption?.sourceSha256 === s.sha256 && uniqueStrings(s.coveredAcceptance) && s.coveredAcceptance.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
+  for (const id of requirementIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && trustedEvidenceById.get(sourceId(s))?.covered && s.coveredRequirements.includes(id))) findings.push(finding('UNCOVERED_REQUIREMENT', `requirements.${id}`));
+  for (const id of acceptanceIds) if (!sources.some(s => isRecord(s) && s.state === 'COVERED' && trustedEvidenceById.get(sourceId(s))?.covered && s.coveredAcceptance.includes(id))) findings.push(finding('UNCOVERED_ACCEPTANCE', `acceptance.${id}`));
   return findings;
 }
 

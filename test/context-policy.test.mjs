@@ -16,7 +16,13 @@ const source = (overrides = {}) => ({
   coveredRequirements: ['REQ-1'], coveredAcceptance: ['ACC-1'], ...overrides
 });
 const id = 'syllik/ai-workflow@' + sha40 + ':FLOW.md';
-const trustedSource = s => ({ repository: s.repository, path: s.path, revisionSha: s.revisionSha, blobSha: s.blobSha, content: 'entire-source' });
+// Trusted runner evidence is independent from untrusted source receipt claims.
+// Never derive these fields from s.consumption or s.covered*.
+const trustedSource = s => ({
+  repository: s.repository, path: s.path, revisionSha: s.revisionSha, blobSha: s.blobSha, content: 'entire-source',
+  consumption: { fullSource: true, sourceSha256: sha64('entire-source') },
+  coveredRequirements: ['REQ-1'], coveredAcceptance: ['ACC-1']
+});
 const verifyCoverage = data => validateContextCoverage(data, trustedSource);
 const coverage = (overrides = {}) => ({ sources: [source()], expectedSources: [source()], mandatorySourceIds: [id], requirementIds: ['REQ-1'], acceptanceIds: ['ACC-1'], declaredDependencies: [], ...overrides });
 const handoff = { contractVersion: 2, repository: 'syllik/life-ops-bot' };
@@ -348,4 +354,63 @@ test('source repository casing alone is normalized but SHA, path and identity dr
     assert.equal(result.valid, false, JSON.stringify(changed));
     assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
   }
+});
+
+// Codex fifth-review findings on f391cf5; first of three owner-authorized batches.
+test('malformed supportedVersions fails closed without throwing', () => {
+  for (const bad of [3, null, {}, '1,2']) {
+    const result = resolveContextPolicy(handoff, { ...DEFAULT_CONTEXT_POLICY, supportedVersions: bad });
+    assert.equal(result.admitted, false);
+    assert.ok(has(result.findings, 'INVALID_CONTEXT_VERSIONS'));
+  }
+});
+
+test('null and invalid context coverage envelope fails closed without throwing', () => {
+  for (const bad of [null, 0, [], 'invalid']) {
+    const findings = validateContextCoverage(bad, trustedSource);
+    assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_INPUT'));
+  }
+});
+
+test('verified Git blob without independently attested full consumption cannot authorize coverage', () => {
+  const claims = coverage();
+  const gitOnly = s => ({ repository: s.repository, path: s.path, revisionSha: s.revisionSha, blobSha: s.blobSha, content: 'entire-source' });
+  const findings = validateContextCoverage(claims, gitOnly);
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_CONSUMPTION'));
+  assert.ok(has(findings, 'MANDATORY_SOURCE_NOT_CONSUMED'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('a self-reported coverage claim cannot exceed trusted requirement or acceptance evidence', () => {
+  const claimed = source({ coveredRequirements: ['REQ-FAKE'], coveredAcceptance: ['ACC-FAKE'] });
+  const findings = verifyCoverage(coverage({
+    sources: [claimed], requirementIds: ['REQ-FAKE'], acceptanceIds: ['ACC-FAKE']
+  }));
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_COVERAGE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('trusted consumption without independently attested coverage does not establish coverage', () => {
+  const gitWithReadOnly = s => {
+    const { coveredRequirements, coveredAcceptance, ...evidence } = trustedSource(s);
+    return evidence;
+  };
+  const findings = validateContextCoverage(coverage(), gitWithReadOnly);
+  assert.ok(!has(findings, 'UNVERIFIED_SOURCE_CONSUMPTION'));
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_COVERAGE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('trusted coverage requires the independently attested Git blob and expected source kind', () => {
+  const wrongKind = source({ kind: 'reference' });
+  const findings = verifyCoverage(coverage({ sources: [wrongKind] }));
+  assert.ok(has(findings, 'CONTEXT_SOURCE_KIND_MISMATCH'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+  const tampered = verifyCoverage(coverage({ sources: [source({ content: 'tampered' })] }));
+  assert.ok(has(tampered, 'CONTEXT_HASH_MISMATCH'));
+  assert.ok(has(tampered, 'UNCOVERED_REQUIREMENT'));
 });
