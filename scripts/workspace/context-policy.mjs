@@ -29,7 +29,7 @@ export function validateContextPolicyConfig(policy = DEFAULT_CONTEXT_POLICY) {
   if (!Array.isArray(policy.supportedVersions) || policy.supportedVersions.length !== 2 || policy.supportedVersions[0] !== 1 || policy.supportedVersions[1] !== 2) errors.push(finding('INVALID_CONTEXT_VERSIONS', 'contextPolicy.supportedVersions'));
   if (![1, 2].includes(policy.defaultNewTaskVersion)) errors.push(finding('INVALID_DEFAULT_CONTEXT_VERSION', 'contextPolicy.defaultNewTaskVersion'));
   if (!uniqueStrings(policy.rolloutAllowlist) || !policy.rolloutAllowlist.every(s => REPO.test(s))) errors.push(finding('INVALID_ROLLOUT_ALLOWLIST', 'contextPolicy.rolloutAllowlist'));
-  if (!uniqueStrings(policy.excludedRepositories) || !policy.excludedRepositories.every(s => REPO.test(s)) || !policy.excludedRepositories.some(s => normalizeRepo(s) === 'syllik/zero-touch-dca')) errors.push(finding('MISSING_REQUIRED_EXCLUSION', 'contextPolicy.excludedRepositories'));
+  if (!uniqueStrings(policy.excludedRepositories) || !policy.excludedRepositories.every(s => REPO.test(s))) errors.push(finding('INVALID_EXCLUDED_REPOSITORIES', 'contextPolicy.excludedRepositories'));
   if (Array.isArray(policy.rolloutAllowlist) && Array.isArray(policy.excludedRepositories) && policy.rolloutAllowlist.some(s => policy.excludedRepositories.some(e => normalizeRepo(s) === normalizeRepo(e)))) errors.push(finding('EXCLUDED_REPOSITORY_IN_ALLOWLIST', 'contextPolicy.rolloutAllowlist'));
   return errors;
 }
