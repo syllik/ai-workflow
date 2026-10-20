@@ -34,14 +34,51 @@ export function validateContextPolicyConfig(policy = DEFAULT_CONTEXT_POLICY) {
   return errors;
 }
 
+// Version whose length-budget semantics apply to a repository's documents and new tasks.
+export function contextPolicyVersionForRepository(config, repository) {
+  if (!isRecord(config) || typeof repository !== 'string' || !REPO.test(repository)) return CONTEXT_POLICY_V1;
+  const listed = list => Array.isArray(list) && list.some(r => normalizeRepo(r) === normalizeRepo(repository));
+  return listed(config.rolloutAllowlist) && !listed(config.excludedRepositories) ? CONTEXT_POLICY_V2 : CONTEXT_POLICY_V1;
+}
+
+// Canonical identity of an activation config, so a caller-supplied policy can be
+// compared with the one pinned in workspace.yaml at policySha.
+export function canonicalContextPolicy(policy) {
+  if (!isRecord(policy)) return null;
+  const sortedRepos = list => Array.isArray(list) ? list.map(r => String(r).toLowerCase()).sort() : list;
+  return JSON.stringify({
+    supportedVersions: policy.supportedVersions,
+    defaultNewTaskVersion: policy.defaultNewTaskVersion,
+    rolloutAllowlist: sortedRepos(policy.rolloutAllowlist),
+    excludedRepositories: sortedRepos(policy.excludedRepositories)
+  });
+}
+
+// Binds context evidence to one approval and its exact scope.
+export function approvalScopeDigest(approval) {
+  if (!isRecord(approval)) return null;
+  const allowedPaths = Array.isArray(approval.allowedPaths) ? [...approval.allowedPaths].map(String).sort() : null;
+  return digest(JSON.stringify({
+    reference: approval.reference ?? null,
+    allowedPaths,
+    publication: approval.publication ?? null,
+    maxCorrectionBatches: approval.maxCorrectionBatches ?? null
+  }));
+}
+
 export function resolveContextPolicy(handoff, config = DEFAULT_CONTEXT_POLICY, { newTask = false } = {}) {
   const findings = validateContextPolicyConfig(config);
   if (!isRecord(handoff)) return { version: null, admitted: false, findings: [...findings, finding('INVALID_HANDOFF', 'handoff')] };
   if (!isRecord(config)) return { version: null, admitted: false, findings };
   // Only an absent field is legacy-compatible; explicit null is malformed.
+  // A new task defaults to v2 only where v2 is actually activated for it;
+  // everywhere else (v1 contract, not allowlisted, excluded) it falls back to v1.
   const version = Object.hasOwn(handoff, 'contextPolicyVersion')
     ? handoff.contextPolicyVersion
-    : (newTask ? config.defaultNewTaskVersion : CONTEXT_POLICY_V1);
+    : (newTask && config.defaultNewTaskVersion === CONTEXT_POLICY_V2 && handoff.contractVersion === 2
+      && contextPolicyVersionForRepository(config, handoff.repository) === CONTEXT_POLICY_V2
+      ? CONTEXT_POLICY_V2
+      : CONTEXT_POLICY_V1);
   if (![1, 2].includes(version) || (!Array.isArray(config.supportedVersions) || !config.supportedVersions.includes(version))) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
   if (handoff.contractVersion !== 2 && version === 2) findings.push(finding('TASK_CONTEXT_VERSION_MISMATCH', 'handoff.contractVersion'));
   if (version === 2 && (!REPO.test(handoff.repository ?? '') || !Array.isArray(config.rolloutAllowlist) || !config.rolloutAllowlist.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)))) findings.push(finding('CONTEXT_V2_NOT_ACTIVATED', 'handoff.repository'));

@@ -499,3 +499,18 @@ test('declared expected dependency is allowed to reach the Git loader', () => {
   assert.deepEqual(called, ['syllik/ai-workflow', 'vendor/foreign']);
   assert.deepEqual(findings, []);
 });
+test('new tasks fall back to v1 unless v2 is activated for that repository and contract', () => {
+  const policy = { ...activation, defaultNewTaskVersion: 2 };
+  const { contextPolicyVersion: _v, ...base } = handoff;
+  const v2Task = { ...base, contractVersion: 2, repository: 'syllik/life-ops-bot' };
+  assert.equal(resolveContextPolicy(v2Task, policy, { newTask: true }).version, 2);
+  for (const variant of [
+    { ...v2Task, contractVersion: 1 },
+    { ...v2Task, repository: 'syllik/not-allowlisted' },
+    { ...v2Task, repository: undefined }
+  ]) {
+    const resolved = resolveContextPolicy(variant, policy, { newTask: true });
+    assert.equal(resolved.version, 1);
+    assert.equal(resolved.admitted, true);
+  }
+});
