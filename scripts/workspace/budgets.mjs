@@ -70,13 +70,28 @@ function exceeded(filePath, text, budgets) {
   };
 }
 
-export function checkBudget(input, budgets = BUDGETS) {
+// Context Policy v2 makes document length advisory except the AI.md/FLOW.md
+// entrypoints; v1 (the default) keeps every length budget HARD.
+function isEntrypoint(filePath) {
+  return ['AI.md', 'FLOW.md'].some((name) => filePath === name || filePath.endsWith(`/${name}`));
+}
+
+export function checkBudget(input, budgets = BUDGETS, { contextPolicyVersion = 1 } = {}) {
   if (Array.isArray(input)) return checkBudgets(input, budgets);
   if (!input || typeof input !== 'object') return [{ code: 'INVALID_BUDGET_INPUT', path: 'budget' }];
   const path = input.path ?? input.name;
   if (typeof path !== 'string') return [{ code: 'INVALID_BUDGET_INPUT', path: 'budget.path' }];
   const finding = exceeded(path, input.text ?? input.content ?? '', budgets);
-  return finding ? [finding] : [];
+  if (!finding) return [];
+  if (contextPolicyVersion === 2) return [{ ...finding, severity: isEntrypoint(path) ? 'HARD' : 'ADVISORY' }];
+  return [finding];
+}
+
+export function splitAdvisoryBudgetFindings(findings) {
+  return {
+    blocking: findings.filter((entry) => entry.severity !== 'ADVISORY'),
+    advisory: findings.filter((entry) => entry.severity === 'ADVISORY')
+  };
 }
 
 export function checkBudgets(entries, budgets = BUDGETS) {
