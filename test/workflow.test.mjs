@@ -42,15 +42,13 @@ describe('workflow documentation', () => {
     assert.match(readme, /provider-independent/iu);
     const reviewGuide = readme.split('## Как проходит code review')[1]?.split('## Структура')[0];
     assert.ok(reviewGuide, 'README must document the independent review lifecycle');
-    assert.match(reviewGuide, /Если выбран адаптер GitHub Codex Code Review/u);
-    assert.match(reviewGuide, /поддерживаемая интеграция, не обязательный поставщик роли/u);
-    assert.match(reviewGuide, /@codex review/u);
+    assert.doesNotMatch(reviewGuide, /codex/iu);
     assert.doesNotMatch(reviewGuide, /(?:Codex|@codex review).{0,120}(?:default|mandatory|required|единственн)|(?:default|mandatory|required|единственн).{0,120}(?:Codex|@codex review)/iu);
     assert.match(readme, /Merge выполняет только человек/u);
     assert.match(research, /Planner or Architect/u);
     assert.match(calibration, /provider-independent/iu);
     const context = text('.ai/context.md');
-    assert.match(context, /GitHub Codex review are optional adapters, not exclusive role owners/iu);
+    assert.doesNotMatch(context, /codex/iu);
     assert.doesNotMatch(context, /Luna executor boundaries/iu);
   });
 
