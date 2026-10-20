@@ -168,3 +168,62 @@ test('a live lock reports CHECKPOINT_LOCKED and a crashed writer lock is reclaim
   const reclaimed = await store.save(checkpointId, payload(), { sequence: 1 });
   assert.equal(reclaimed.valid, true);
 });
+
+const headFile = (directory) => path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.head`);
+
+test('a write interrupted before the head update is rolled forward, not treated as rollback', async () => {
+  const { directory, store } = await makeStore();
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const headAtOne = await readFile(headFile(directory), 'utf8');
+  assert.equal((await store.save(checkpointId, payload({ pendingWork: ['after crash'] }), { sequence: 2 })).valid, true);
+  await writeFile(headFile(directory), headAtOne, { mode: 0o600 });
+  const loaded = await store.loadLatest(checkpointId, { current: current({ pendingWork: ['after crash'] }) });
+  assert.equal(loaded.valid, true, JSON.stringify(loaded.findings));
+  assert.equal(loaded.sequence, 2);
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 3 })).valid, true);
+});
+
+test('a crash on the very first save does not wedge the checkpoint', async () => {
+  const { directory, store } = await makeStore();
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const { unlink } = await import('node:fs/promises');
+  await unlink(headFile(directory));
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 2 })).valid, true);
+});
+
+test('concurrent writers reclaiming one stale lock never both succeed', async () => {
+  for (let run = 0; run < 10; run += 1) {
+    const { directory, store } = await makeStore();
+    const lockPath = path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.lock`);
+    await writeFile(lockPath, `2147483646:${Date.now() - 3600000}`, { mode: 0o600 });
+    const results = await Promise.all([1, 2, 3, 4].map((sequence) => store.save(checkpointId, payload(), { sequence })));
+    assert.equal(results.filter(({ valid }) => valid).length <= 1, true);
+    const loaded = await store.loadLatest(checkpointId, { current: current() });
+    assert.equal(loaded.findings?.some(({ code }) => code === 'CHECKPOINT_ROLLBACK_DETECTED') ?? false, false);
+  }
+});
+
+test('an empty crash-truncated lock is reclaimed once stale by mtime', async () => {
+  const { directory } = await makeStore();
+  const store = createContextCheckpointStore({ directory, secretProvider: () => secret, staleLockMs: 0 });
+  const lockPath = path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.lock`);
+  await writeFile(lockPath, '', { mode: 0o600 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+});
+
+test('a trusted head store outside the directory defeats replay of an old head file', async () => {
+  const { directory } = await makeStore();
+  const marks = new Map();
+  const headStore = { get: async (id) => marks.get(id) ?? null, set: async (id, sequence) => { marks.set(id, sequence); } };
+  const store = createContextCheckpointStore({ directory, secretProvider: () => secret, headStore });
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const headAtOne = await readFile(headFile(directory), 'utf8');
+  const second = await store.save(checkpointId, payload(), { sequence: 2 });
+  const { unlink } = await import('node:fs/promises');
+  await unlink(second.path);
+  await writeFile(headFile(directory), headAtOne, { mode: 0o600 });
+  const loaded = await store.loadLatest(checkpointId, { current: current() });
+  assert.equal(loaded.valid, false);
+  assert.equal(loaded.findings.some(({ code }) => code === 'CHECKPOINT_ROLLBACK_DETECTED'), true);
+});

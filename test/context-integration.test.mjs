@@ -306,7 +306,7 @@ const e2eHandoffBase = {
   approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 }
 };
 function produceE2E(overrides = {}) {
-  return buildTaskContextPackage({
+  const input = {
     role: 'executor', repository: e2eHandoffBase.repository, taskId: e2eHandoffBase.taskId, approval: e2eHandoffBase.approval,
     contractVersion: 2, contextPolicyVersion: 2, policySha: e2ePolicySha, baseSha: e2eBaseSha, headSha: e2eHeadSha,
     acceptance: { text: 'y'.repeat(33000) }, requirementIds: ['BOT-001'],
@@ -314,7 +314,9 @@ function produceE2E(overrides = {}) {
     dependencies: [],
     sources: e2eFiles.map(({ kind, repository, path: filePath, revisionSha }) => ({ kind, repository, path: filePath, revisionSha, expectedRevisionSha: revisionSha })),
     ...overrides
-  }, { sourceLoader: e2eLoader, integrationBranchResolver: () => { throw new Error('no dependencies'); } });
+  };
+  for (const [key, value] of Object.entries(input)) if (value === undefined) delete input[key];
+  return buildTaskContextPackage(input, { sourceLoader: e2eLoader, integrationBranchResolver: () => { throw new Error('no dependencies'); } });
 }
 function e2eTaskAction(produced, { delivered = produced.manifest.sources } = {}) {
   const deliveries = new Map(delivered.map(s => [`${s.repository.toLowerCase()}@${s.revisionSha}:${s.path}`, s.sha256]));
@@ -396,4 +398,48 @@ test('acceptance 12: a fresh provider-neutral session resumes from a new store i
   const resumed = await recoverContextAdmission({ store: freshSession, checkpointId: 'bot-1', taskAction: e2eTaskAction(produceE2E()) });
   assert.equal(resumed.allowed, true, JSON.stringify(resumed.findings));
   assert.equal(resumed.checkpoint.payload.pendingWork[0], 'step 2');
+});
+
+test('a v2 manifest without the pinned policy cannot let the caller decide activation', () => {
+  const { contextPolicy: _pinned, ...unpinned } = trustedManifest();
+  const result = evaluateContextAdmission({ handoff, contextPolicy: config, trustedManifest: unpinned, receipt: receipt(), sourceVerifier: trustedSource });
+  assert.equal(result.allowed, false);
+  assert.equal(codes(result).includes('TRUSTED_CONTEXT_MANIFEST_POLICY_REQUIRED'), true);
+});
+
+test('manifest and handoff must agree on the context policy version', () => {
+  const v1Handoff = { ...handoff, contextPolicyVersion: 1, assembledContextBudgetBytes: 32768, assembledContextActualBytes: 5 };
+  const result = evaluateContextAdmission({ handoff: v1Handoff, trustedManifest: trustedManifest() });
+  assert.equal(result.allowed, false);
+  assert.equal(codes(result).includes('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH'), true);
+});
+
+test('a new task resolved to v2 by the pinned default carries its version into the handoff', () => {
+  const { contextPolicyVersion: _v, ...unversioned } = e2eHandoffBase;
+  const produced = produceE2E({ contextPolicyVersion: undefined, newTask: true });
+  assert.equal(produced.passed, true, JSON.stringify(produced.findings));
+  assert.equal(produced.handoffProvenance.contextPolicyVersion, 2);
+  const action = e2eTaskAction(produced);
+  const result = evaluateTaskAction({ ...action, handoff: { ...unversioned, ...produced.handoffProvenance } });
+  assert.equal(result.allowed, true, JSON.stringify(result.findings));
+});
+
+test('trusted coverage matches whole requirement IDs only', () => {
+  const content = '| AC-1.2 | covered. Sentence ends with AC-3. Pair R1/R2. Prefix XR9 and R9X.\n';
+  const id = `a/b@${'c'.repeat(40)}:f.md`;
+  const verifier = createTrustedSourceVerifier({
+    loadSource: () => ({ content, blobSha: 'b'.repeat(40) }),
+    deliveries: new Map([[id, createHash('sha256').update(content).digest('hex')]]),
+    requirementIds: ['AC-1', 'AC-1.2', 'AC-3', 'R1', 'R2', 'R9'], acceptanceIds: []
+  });
+  assert.deepEqual(verifier({ repository: 'a/b', revisionSha: 'c'.repeat(40), path: 'f.md' }).coveredRequirements, ['AC-1.2', 'AC-3', 'R1', 'R2']);
+});
+
+test('acceptance 9: a rollback published at a new policySha pauses the pinned v2 handoff', () => {
+  const produced = produceE2E();
+  const pinned = e2eTaskAction(produced);
+  const rolledBackPolicySha = '4'.repeat(40);
+  const resumed = evaluateTaskAction({ ...pinned, runtime: { ...pinned.runtime, currentPolicySha: rolledBackPolicySha } });
+  assert.equal(resumed.allowed, false);
+  assert.equal(resumed.findings.some(({ code }) => /POLICY_SHA/u.test(code)), true);
 });

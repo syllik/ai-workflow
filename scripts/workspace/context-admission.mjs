@@ -99,6 +99,10 @@ function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
   if (manifest.contextPolicyVersion !== 2) {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH', 'trustedManifest.contextPolicyVersion'));
   }
+  // v2 activation must come from the policy the producer pinned from workspace.yaml.
+  if (!isRecord(manifest.contextPolicy)) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_POLICY_REQUIRED', 'trustedManifest.contextPolicy'));
+  }
   for (const field of ['policySha', 'baseSha', 'headSha']) {
     if (manifest[field] !== handoff[field]) findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', `trustedManifest.${field}`));
   }
@@ -192,6 +196,9 @@ export function evaluateContextAdmission({
   }
   const resolved = resolveContextPolicy(handoff, effectivePolicy);
   findings.push(...resolved.findings);
+  if (isRecord(trustedManifest) && trustedManifest.contextPolicyVersion !== resolved.version) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH', 'trustedManifest.contextPolicyVersion'));
+  }
   if (!resolved.admitted || findings.length > 0) return { allowed: false, version: resolved.version, findings };
 
   const version = resolved.version;
@@ -279,7 +286,8 @@ export async function recoverContextAdmission({ store, checkpointId, taskAction 
 const REQUIREMENT_TOKEN_BOUNDARY = '[A-Za-z0-9_-]';
 function containsExactId(content, id) {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return new RegExp(`(?<!${REQUIREMENT_TOKEN_BOUNDARY})${escaped}(?!${REQUIREMENT_TOKEN_BOUNDARY})`, 'u').test(content);
+  // `AC-1` is not covered by `AC-1.2`, but a sentence-ending `AC-1.` still is.
+  return new RegExp(`(?<!${REQUIREMENT_TOKEN_BOUNDARY}|[A-Za-z0-9]\\.)${escaped}(?!${REQUIREMENT_TOKEN_BOUNDARY}|\\.[A-Za-z0-9])`, 'u').test(content);
 }
 
 // Vendor-neutral trusted verifier (D2). `loadSource` is the trusted Git-object

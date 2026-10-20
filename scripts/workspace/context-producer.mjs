@@ -842,6 +842,8 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     findings,
     manifest,
     handoffProvenance: {
+      // A new task may resolve to v2 from the pinned default; the handoff must say so.
+      ...(contextPolicyVersion === 2 ? { contextPolicyVersion } : {}),
       assembledContextBudgetBytes: measured.maxBytes,
       assembledContextActualBytes: measured.actualBytes,
       assembledContextCheck: manifest.assembledContextCheck
