@@ -13,6 +13,6 @@ Role names never imply a provider or model. Select capabilities by risk; do not 
 
 Task contract v2 carries structured upfront authority. Handoffs without `contractVersion` (or with v1) are legacy-compatible: execution may continue under their existing valid approval/context provenance, but publication and each correction stay human-gated. They do not inherit v2 automatic correction authority.
 
-Context Policy v1/unspecified retains the hard 32768-byte UTF-8 aggregate gate. Explicitly allowlisted Task Contract v2 has no global assembled-context cap, but requires trusted source authorization, full consumption, exact coverage, structure and integrity; v2 remains disabled by default.
+Context Policy v1/unspecified retains the hard 32768-byte UTF-8 aggregate gate. Explicitly allowlisted Task Contract v2 has no global assembled-context cap, but requires trusted source authorization, full consumption, exact coverage, structure and integrity; new tasks default to v2 for allowlisted active managed projects.
 
 For ChipIn FE/BE/KB, run the executable `node scripts/workspace/cli.mjs admission` boundary (which invokes `scripts/workspace/chipin-admission-route.mjs`) before selecting an executable handoff, even without a PR. Follow `global/core.md` for the shared immutable preflight and trusted consumer; routing alone never authorizes execution.

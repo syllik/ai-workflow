@@ -52,6 +52,14 @@ describe('manifest', () => {
     assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'), true);
   });
 
+  test('canonical manifest enables Context Policy v2 for every active managed project', () => {
+    const manifest = loadManifest(new URL('../workspace.yaml', import.meta.url).pathname);
+    const allowlist = new Set(manifest.contextPolicy.rolloutAllowlist.map((repository) => repository.toLowerCase()));
+    const managed = manifest.projects.filter(({ access, status }) => access === 'managed' && status === 'active');
+    assert.equal(manifest.contextPolicy.defaultNewTaskVersion, 2);
+    assert.deepEqual(managed.filter(({ repository }) => !allowlist.has(repository.toLowerCase())).map(({ repository }) => repository), []);
+  });
+
   test('historical activation bases do not require the current execution policy', () => {
     const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
     assert.equal(result.valid, true);

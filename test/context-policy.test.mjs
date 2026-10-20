@@ -57,12 +57,15 @@ test('v2 supports >32768 bytes and measures actual UTF-8 bytes', () => {
   assert.equal(r.actualBytes, 60000);
   assert.equal(r.maxBytes, null);
 });
-test('Zero-Touch-DCA explicitly excluded even if someone allowlists it', () => {
-  const p = { ...DEFAULT_CONTEXT_POLICY, rolloutAllowlist: ['syllik/Zero-Touch-DCA'] };
+test('an excluded repository stays blocked even if someone allowlists it', () => {
+  const p = { ...DEFAULT_CONTEXT_POLICY, rolloutAllowlist: ['syllik/Zero-Touch-DCA'], excludedRepositories: ['syllik/Zero-Touch-DCA'] };
   assert.ok(has(validateContextPolicyConfig(p), 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'));
   assert.ok(has(resolveContextPolicy({ ...handoff, repository: 'syllik/Zero-Touch-DCA', contextPolicyVersion: 2 }, p).findings, 'EXCLUDED_REPOSITORY'));
 });
-test('cannot remove Zero-Touch exclusion', () => assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: [] }), 'MISSING_REQUIRED_EXCLUSION')));
+test('exclusions are optional but must be well-formed', () => {
+  assert.deepEqual(validateContextPolicyConfig({ ...activation, excludedRepositories: [] }), []);
+  assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: ['not a repo'] }), 'INVALID_EXCLUDED_REPOSITORIES'));
+});
 test('source coverage happy path', () => assert.deepEqual(verifyCoverage(coverage()), []));
 test('source receipt flag without authoritative Git loader cannot pass', () => assert.ok(has(validateContextCoverage(coverage()), 'UNVERIFIED_GIT_SOURCE')));
 test('mandatory source absent and expected source missing', () => {
