@@ -556,6 +556,19 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   const seenSources = new Set();
   const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
   const targetAgentSource = expectedSources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
+  // Target instructions must belong to the repository the handoff executes in,
+  // even when another repository (for example a fork) shares the pinned commit.
+  const handoffRepository = typeof input.repository === 'string' && input.repository.trim() !== ''
+    ? input.repository.trim()
+    : null;
+  const targetRepositoryMatches = (repository) => handoffRepository === null
+    || normalizeRepository(repository) === normalizeRepository(handoffRepository);
+  if (targetAgentSource !== undefined && !targetRepositoryMatches(targetAgentSource.repository)) {
+    findings.push(finding('CONTEXT_TARGET_REPOSITORY_MISMATCH', 'expectedSources', {
+      expected: handoffRepository,
+      actual: targetAgentSource.repository
+    }));
+  }
   const canonicalSourceAuthorized = (source) => {
     if (source.kind === 'policy') {
       return normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
@@ -569,12 +582,14 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     }
     if (source.kind === 'target') {
       return targetAgentSource !== undefined
+        && targetRepositoryMatches(source.repository)
         && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
         && source.revisionSha === input.headSha;
     }
     if (source.kind === 'reference') {
       return targetAgentSource !== undefined
         && source.path === 'docs/PRODUCT.md'
+        && targetRepositoryMatches(source.repository)
         && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
         && source.revisionSha === input.headSha;
     }
@@ -726,6 +741,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   const manifest = {
     role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
     contextPolicyVersion,
+    repository: handoffRepository,
     policySha: validSha(input.policySha) ? input.policySha : null,
     baseSha: validSha(input.baseSha) ? input.baseSha : null,
     headSha: validSha(input.headSha) ? input.headSha : null,

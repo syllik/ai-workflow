@@ -43,7 +43,7 @@ const assembledContextSha256 = createHash('sha256').update(assembledContext).dig
 const { content: _content, consumption: _consumption, state: _state, coveredRequirements: _req, coveredAcceptance: _acc, ...expectedSource } = source;
 function trustedManifest(overrides = {}) {
   return {
-    contextPolicyVersion: 2, policySha: sha, baseSha, headSha,
+    contextPolicyVersion: 2, repository: handoff.repository, policySha: sha, baseSha, headSha,
     expectedSources: [{ kind: source.kind, repository: source.repository, path: source.path, revisionSha: sha }],
     mandatorySourceIds: [sourceId], requirementIds: ['I0'], acceptanceIds: ['A1'], dependencies: [],
     sources: [expectedSource], assembledContextSha256,
@@ -202,4 +202,25 @@ test('runtime evidence cannot activate Context Policy v2', () => {
   const result = evaluateTaskAction({ handoff, runtime: runtime({ contextPolicy: config }), action: executeAction, contextManifest: trustedManifest() });
   assert.equal(result.allowed, false);
   assert.equal(codes(result).includes('CONTEXT_V2_NOT_ACTIVATED'), true);
+});
+
+test('trusted manifest for another repository cannot admit the handoff', () => {
+  const result = evaluateContextAdmission({ handoff, contextPolicy: config, trustedManifest: trustedManifest({ repository: 'evil/fork' }), receipt: receipt(), sourceVerifier: trustedSource });
+  assert.equal(result.allowed, false);
+  assert.equal(codes(result).includes('TRUSTED_CONTEXT_MANIFEST_DRIFT'), true);
+});
+
+test('v1 receipt runtime blocks are reflected in the admission decision', () => {
+  const v1Handoff = { ...handoff, contextPolicyVersion: 1, assembledContextBudgetBytes: 32768, assembledContextActualBytes: 5 };
+  const v1Receipt = {
+    contextPolicyVersion: 1, assembledContext: 'hello', assembledContextActualBytes: 5,
+    assembledContextBudgetBytes: 32768, assembledContextCheck: 'PASSED',
+    runtime: { status: 'MEASURED', usedTokens: 1, capacityTokens: 2, reserveTokens: 1, reliable: false, trustedAdapter: true }
+  };
+  const unreliable = evaluateContextAdmission({ handoff: v1Handoff, receipt: v1Receipt });
+  assert.equal(codes(unreliable).includes('UNRELIABLE_RUNTIME_METRICS'), true);
+  assert.equal(unreliable.allowed, false);
+  const compaction = evaluateContextAdmission({ handoff: v1Handoff, receipt: { ...v1Receipt, runtime: { status: 'UNMEASURED' }, compactionRequired: true } });
+  assert.equal(codes(compaction).includes('UNSUPPORTED_COMPACTION'), true);
+  assert.equal(compaction.allowed, false);
 });

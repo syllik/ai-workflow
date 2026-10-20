@@ -98,6 +98,9 @@ function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
   for (const field of ['policySha', 'baseSha', 'headSha']) {
     if (manifest[field] !== handoff[field]) findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', `trustedManifest.${field}`));
   }
+  if (!sameRepository(manifest.repository, handoff.repository)) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', 'trustedManifest.repository'));
+  }
   if (manifest.assembledContextCheck !== 'PASSED') {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_NOT_PASSED', 'trustedManifest.assembledContextCheck'));
   }
@@ -176,7 +179,11 @@ export function evaluateContextAdmission({
   if (!isRecord(receipt)) return { allowed: false, version, findings };
 
   validateAggregateReceipt(receipt, handoff, version, findings);
-  if (version === 1) return { allowed: findings.length === 0, version, findings, runtime: evaluateRuntime(receipt, runtime, findings) };
+  if (version === 1) {
+    // Runtime findings must be collected before deriving the decision.
+    const runtimeAssessment = evaluateRuntime(receipt, runtime, findings);
+    return { allowed: findings.length === 0, version, findings, runtime: runtimeAssessment };
+  }
 
   if (typeof receipt.policySha !== 'string' || !SHA40.test(receipt.policySha)
     || typeof receipt.baseSha !== 'string' || !SHA40.test(receipt.baseSha)
