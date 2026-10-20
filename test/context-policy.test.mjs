@@ -62,9 +62,10 @@ test('an excluded repository stays blocked even if someone allowlists it', () =>
   assert.ok(has(validateContextPolicyConfig(p), 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'));
   assert.ok(has(resolveContextPolicy({ ...handoff, repository: 'syllik/Zero-Touch-DCA', contextPolicyVersion: 2 }, p).findings, 'EXCLUDED_REPOSITORY'));
 });
-test('exclusions are optional but must be well-formed', () => {
+test('exclusions are an optional rollback lever but must be well-formed', () => {
   assert.deepEqual(validateContextPolicyConfig({ ...activation, excludedRepositories: [] }), []);
   assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: ['not a repo'] }), 'INVALID_EXCLUDED_REPOSITORIES'));
+  assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: null }), 'INVALID_EXCLUDED_REPOSITORIES'));
 });
 test('source coverage happy path', () => assert.deepEqual(verifyCoverage(coverage()), []));
 test('source receipt flag without authoritative Git loader cannot pass', () => assert.ok(has(validateContextCoverage(coverage()), 'UNVERIFIED_GIT_SOURCE')));

@@ -8,7 +8,7 @@ export const DEFAULT_CONTEXT_POLICY = Object.freeze({
   supportedVersions: Object.freeze([1, 2]),
   defaultNewTaskVersion: 1,
   rolloutAllowlist: Object.freeze([]),
-  excludedRepositories: Object.freeze([])
+  excludedRepositories: Object.freeze(['syllik/Zero-Touch-DCA'])
 });
 const SHA40 = /^[0-9a-f]{40}$/u;
 const SHA64 = /^[0-9a-f]{64}$/u;
