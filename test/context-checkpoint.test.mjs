@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, chmod, readFile, writeFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -116,4 +117,17 @@ test('checkpoint store signs the exact payload used by the shared verifier', asy
   const saved = await store.save(checkpointId, payload(), { sequence: 7 });
   const expected = signContextCheckpoint({ ...payload(), checkpointId, sequence: 7 }, secret);
   assert.deepEqual(JSON.parse(await readFile(saved.path, 'utf8')), expected);
+});
+
+test('a contended save never releases a lock held by another writer', async () => {
+  const { directory, store } = await makeStore();
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const lockPath = path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.lock`);
+  await writeFile(lockPath, '', { mode: 0o600 });
+  const contended = await store.save(checkpointId, payload(), { sequence: 2 });
+  assert.equal(contended.valid, false);
+  assert.equal((await stat(lockPath)).isFile(), true);
+  const blocked = await store.save(checkpointId, payload(), { sequence: 3 });
+  assert.equal(blocked.valid, false);
+  assert.equal((await stat(lockPath)).isFile(), true);
 });

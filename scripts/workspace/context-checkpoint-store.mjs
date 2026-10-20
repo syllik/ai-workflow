@@ -135,8 +135,11 @@ export function createContextCheckpointStore({ directory, secretProvider } = {})
       if (error?.code === 'EEXIST') return storageFailure([finding('CHECKPOINT_REPLAY', 'sequence')]);
       return storageFailure([finding('CHECKPOINT_STORAGE_UNAVAILABLE', 'storage')]);
     } finally {
-      if (lockHandle) await lockHandle.close().catch(() => {});
-      await unlink(lockPath).catch(() => {});
+      // Only the save that acquired the lock may release it.
+      if (lockHandle) {
+        await lockHandle.close().catch(() => {});
+        await unlink(lockPath).catch(() => {});
+      }
     }
   }
 

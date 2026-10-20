@@ -64,8 +64,11 @@ function validateAggregateReceipt(receipt, handoff, version, findings) {
   if (receipt.assembledContextCheck !== 'PASSED') {
     findings.push(finding('CONTEXT_RECEIPT_NOT_PASSED', 'receipt.assembledContextCheck'));
   }
-  if (typeof receipt.assembledContext === 'string'
-    && typeof receipt.assembledContextSha256 === 'string' && SHA64.test(receipt.assembledContextSha256)
+  const validDigest = typeof receipt.assembledContextSha256 === 'string' && SHA64.test(receipt.assembledContextSha256);
+  if (version === 2 && !validDigest) {
+    findings.push(finding('INVALID_CONTEXT_RECEIPT_DIGEST', 'receipt.assembledContextSha256'));
+  }
+  if (typeof receipt.assembledContext === 'string' && validDigest
     && sha256(receipt.assembledContext) !== receipt.assembledContextSha256) {
     findings.push(finding('CONTEXT_RECEIPT_HASH_MISMATCH', 'receipt.assembledContextSha256'));
   }
@@ -80,6 +83,62 @@ function validateAggregateReceipt(receipt, handoff, version, findings) {
       findings.push(finding('CONTEXT_RECEIPT_HANDOFF_MISMATCH', 'receipt.assembledContextCheck'));
     }
   }
+}
+
+// Coverage authority comes from the trusted producer manifest, never from the receipt
+// being evaluated. Producer source hashes bind each expected source to exact content.
+function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
+  if (!isRecord(manifest)) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_REQUIRED', 'trustedManifest'));
+    return null;
+  }
+  if (manifest.contextPolicyVersion !== 2) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH', 'trustedManifest.contextPolicyVersion'));
+  }
+  for (const field of ['policySha', 'baseSha', 'headSha']) {
+    if (manifest[field] !== handoff[field]) findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', `trustedManifest.${field}`));
+  }
+  if (manifest.assembledContextCheck !== 'PASSED') {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_NOT_PASSED', 'trustedManifest.assembledContextCheck'));
+  }
+  if (manifest.assembledContextActualBytes !== handoff.assembledContextActualBytes) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', 'trustedManifest.assembledContextActualBytes'));
+  }
+  if (typeof manifest.assembledContextSha256 !== 'string' || !SHA64.test(manifest.assembledContextSha256)) {
+    findings.push(finding('INVALID_TRUSTED_CONTEXT_DIGEST', 'trustedManifest.assembledContextSha256'));
+  } else if (receipt.assembledContextSha256 !== manifest.assembledContextSha256) {
+    findings.push(finding('CONTEXT_RECEIPT_DIGEST_UNTRUSTED', 'receipt.assembledContextSha256'));
+  }
+
+  const { expectedSources, mandatorySourceIds, requirementIds, acceptanceIds = [], dependencies = [], sources = [] } = manifest;
+  if (!Array.isArray(expectedSources) || expectedSources.length === 0) {
+    findings.push(finding('EMPTY_TRUSTED_EXPECTED_SOURCES', 'trustedManifest.expectedSources'));
+  }
+  if (!Array.isArray(mandatorySourceIds) || mandatorySourceIds.length === 0) {
+    findings.push(finding('EMPTY_TRUSTED_MANDATORY_SOURCES', 'trustedManifest.mandatorySourceIds'));
+  }
+  if (!Array.isArray(requirementIds) || !Array.isArray(acceptanceIds) || requirementIds.length + acceptanceIds.length === 0) {
+    findings.push(finding('EMPTY_TRUSTED_COVERAGE_REQUIREMENTS', 'trustedManifest.requirementIds'));
+  }
+  if (!Array.isArray(dependencies) || !Array.isArray(sources)) {
+    findings.push(finding('INVALID_TRUSTED_CONTEXT_MANIFEST', 'trustedManifest'));
+    return null;
+  }
+  if (!Array.isArray(expectedSources)) return null;
+
+  const sourceKey = entry => `${String(entry?.repository).toLowerCase()}@${entry?.revisionSha}:${entry?.path}`;
+  const producedById = new Map(sources.filter(isRecord).map(entry => [sourceKey(entry), entry]));
+  return {
+    sources: receipt.sources,
+    expectedSources: expectedSources.map((entry) => {
+      const produced = producedById.get(sourceKey(entry));
+      return isRecord(entry) && produced ? { ...entry, blobSha: produced.blobSha, sha256: produced.sha256 } : entry;
+    }),
+    mandatorySourceIds,
+    requirementIds,
+    acceptanceIds,
+    declaredDependencies: dependencies.map(dependency => dependency?.repository)
+  };
 }
 
 function evaluateRuntime(receipt, runtime, findings) {
@@ -98,6 +157,7 @@ export function evaluateContextAdmission({
   handoff,
   contextPolicy = DEFAULT_CONTEXT_POLICY,
   receipt,
+  trustedManifest,
   sourceVerifier,
   runtime = null
 } = {}) {
@@ -127,14 +187,8 @@ export function evaluateContextAdmission({
   if (typeof sourceVerifier !== 'function') {
     findings.push(finding('TRUSTED_CONTEXT_VERIFIER_REQUIRED', 'sourceVerifier'));
   }
-  findings.push(...validateContextCoverage({
-    sources: receipt.sources,
-    expectedSources: receipt.expectedSources,
-    mandatorySourceIds: receipt.mandatorySourceIds,
-    requirementIds: receipt.requirementIds,
-    acceptanceIds: receipt.acceptanceIds ?? [],
-    declaredDependencies: receipt.declaredDependencies ?? []
-  }, sourceVerifier));
+  const coverage = trustedCoverageEnvelope(trustedManifest, receipt, handoff, findings);
+  if (coverage) findings.push(...validateContextCoverage(coverage, sourceVerifier));
 
   const runtimeAssessment = evaluateRuntime(receipt, runtime, findings);
   return { allowed: findings.length === 0, version, findings, runtime: runtimeAssessment };
