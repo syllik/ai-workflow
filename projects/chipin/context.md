@@ -38,4 +38,4 @@ merge.
 
 Vercel is a preview/deployment signal, not a replacement for `frontend-ci`.
 
-Relevant frontend repository rules: `AGENTS.md`, `docs/codex/`.
+Relevant frontend repository rules: `AGENTS.md`, `docs/engineering/`.
