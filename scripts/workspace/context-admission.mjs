@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto';
 import {
   DEFAULT_CONTEXT_POLICY,
+  approvalScopeDigest,
+  canonicalContextPolicy,
   assessRuntime,
   chooseCompaction,
   evaluateContextBytes,
   resolveContextPolicy,
   validateContextCoverage
 } from './context-policy.mjs';
+// Cyclic by design: recovery must re-run the single canonical admission.
+import { evaluateTaskAction } from './task-policy.mjs';
 
 const SHA40 = /^[0-9a-f]{40}$/u;
 const SHA64 = /^[0-9a-f]{64}$/u;
@@ -31,7 +35,7 @@ function sha256(value) {
 }
 
 function compareReceiptIdentity(receipt, handoff, findings) {
-  for (const field of ['policySha', 'baseSha', 'headSha']) {
+  for (const field of ['taskId', 'policySha', 'baseSha', 'headSha']) {
     if (receipt[field] !== handoff[field]) findings.push(finding('CONTEXT_RECEIPT_DRIFT', `receipt.${field}`));
   }
   if (!sameRepository(receipt.repository, handoff.repository)) {
@@ -101,6 +105,16 @@ function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
   if (!sameRepository(manifest.repository, handoff.repository)) {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', 'trustedManifest.repository'));
   }
+  // Evidence produced for one task, approval or scope never admits another.
+  if (typeof manifest.taskId !== 'string' || manifest.taskId !== handoff.taskId) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', 'trustedManifest.taskId'));
+  }
+  const scopeSha256 = approvalScopeDigest(handoff.approval);
+  if (!isRecord(manifest.approval) || scopeSha256 === null
+    || manifest.approval.reference !== handoff.approval?.reference
+    || manifest.approval.scopeSha256 !== scopeSha256) {
+    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', 'trustedManifest.approval'));
+  }
   if (manifest.assembledContextCheck !== 'PASSED') {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_NOT_PASSED', 'trustedManifest.assembledContextCheck'));
   }
@@ -144,15 +158,14 @@ function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
   };
 }
 
-function evaluateRuntime(receipt, runtime, findings) {
-  const measurement = isRecord(runtime) && Object.hasOwn(runtime, 'status')
-    ? runtime
-    : receipt?.runtime;
+// Runtime capacity and compaction come only from the trusted runtime adapter.
+// Receipt-supplied metrics are agent claims and are ignored (treated as UNMEASURED).
+function evaluateRuntime(runtime, findings) {
+  const measurement = isRecord(runtime) && Object.hasOwn(runtime, 'status') ? runtime : null;
   const assessed = assessRuntime(measurement);
   findings.push(...assessed.findings);
-  const capabilities = receipt?.compactionCapabilities ?? measurement?.compactionCapabilities;
-  const compaction = chooseCompaction(capabilities, { required: receipt?.compactionRequired === true });
-  if (compaction.blocked) findings.push(finding('UNSUPPORTED_COMPACTION', 'receipt.compactionCapabilities'));
+  const compaction = chooseCompaction(measurement?.compactionCapabilities, { required: measurement?.compactionRequired === true });
+  if (compaction.blocked) findings.push(finding('UNSUPPORTED_COMPACTION', 'runtime.compactionCapabilities'));
   return { ...assessed, compaction };
 }
 
@@ -167,9 +180,19 @@ export function evaluateContextAdmission({
   const findings = [];
   if (!isRecord(handoff)) return { allowed: false, version: null, findings: [finding('INVALID_HANDOFF', 'handoff')] };
 
-  const resolved = resolveContextPolicy(handoff, contextPolicy);
+  // The trusted producer manifest carries the policy pinned in workspace.yaml at
+  // policySha; a different caller-supplied policy is rejected.
+  let effectivePolicy = contextPolicy;
+  if (isRecord(trustedManifest) && isRecord(trustedManifest.contextPolicy)) {
+    if (contextPolicy !== DEFAULT_CONTEXT_POLICY
+      && canonicalContextPolicy(contextPolicy) !== canonicalContextPolicy(trustedManifest.contextPolicy)) {
+      findings.push(finding('CONTEXT_POLICY_NOT_PINNED', 'contextPolicy'));
+    }
+    effectivePolicy = trustedManifest.contextPolicy;
+  }
+  const resolved = resolveContextPolicy(handoff, effectivePolicy);
   findings.push(...resolved.findings);
-  if (!resolved.admitted) return { allowed: false, version: resolved.version, findings };
+  if (!resolved.admitted || findings.length > 0) return { allowed: false, version: resolved.version, findings };
 
   const version = resolved.version;
   validateReceiptShape(receipt, handoff, version, findings);
@@ -181,7 +204,7 @@ export function evaluateContextAdmission({
   validateAggregateReceipt(receipt, handoff, version, findings);
   if (version === 1) {
     // Runtime findings must be collected before deriving the decision.
-    const runtimeAssessment = evaluateRuntime(receipt, runtime, findings);
+    const runtimeAssessment = evaluateRuntime(runtime, findings);
     return { allowed: findings.length === 0, version, findings, runtime: runtimeAssessment };
   }
 
@@ -197,21 +220,91 @@ export function evaluateContextAdmission({
   const coverage = trustedCoverageEnvelope(trustedManifest, receipt, handoff, findings);
   if (coverage) findings.push(...validateContextCoverage(coverage, sourceVerifier));
 
-  const runtimeAssessment = evaluateRuntime(receipt, runtime, findings);
+  const runtimeAssessment = evaluateRuntime(runtime, findings);
   return { allowed: findings.length === 0, version, findings, runtime: runtimeAssessment };
 }
 
-export async function recoverContextAdmission({
-  store,
-  checkpointId,
-  current,
-  ...admission
-} = {}) {
+function checkpointSources(manifest) {
+  return Array.isArray(manifest?.sources)
+    ? manifest.sources.filter(isRecord).map(({ kind, repository, path, revisionSha, blobSha, sha256: sourceSha256 }) => (
+      { kind, repository, path, revisionSha, blobSha, sha256: sourceSha256 }
+    ))
+    : null;
+}
+
+// Resume always re-runs the canonical evaluateTaskAction() with a freshly produced
+// trusted manifest. The revalidation state is derived here, never supplied by a caller.
+export async function recoverContextAdmission({ store, checkpointId, taskAction } = {}) {
   if (!store || typeof store.loadLatest !== 'function') {
     return { allowed: false, findings: [finding('CHECKPOINT_STORE_REQUIRED', 'store')] };
   }
+  if (!isRecord(taskAction) || !isRecord(taskAction.handoff)) {
+    return { allowed: false, findings: [finding('INVALID_RECOVERY_INPUT', 'taskAction')] };
+  }
+  const { handoff, contextManifest } = taskAction;
+  if (!isRecord(contextManifest) || contextManifest.assembledContextCheck !== 'PASSED') {
+    return { allowed: false, findings: [finding('TRUSTED_CONTEXT_MANIFEST_REQUIRED', 'taskAction.contextManifest')] };
+  }
+  const admitted = evaluateTaskAction(taskAction);
+  if (!admitted.allowed) return { allowed: false, findings: admitted.findings };
+
+  const sources = checkpointSources(contextManifest);
+  const producedIds = new Set((sources ?? []).map(entry => `${String(entry.repository).toLowerCase()}@${entry.revisionSha}:${entry.path}`));
+  const rehydrated = Array.isArray(contextManifest.mandatorySourceIds)
+    && contextManifest.mandatorySourceIds.length > 0
+    && contextManifest.mandatorySourceIds.every(id => producedIds.has(id));
+  const current = {
+    contractVersion: handoff.contractVersion,
+    contextPolicyVersion: Object.hasOwn(handoff, 'contextPolicyVersion') ? handoff.contextPolicyVersion : 1,
+    policySha: handoff.policySha,
+    baseSha: handoff.baseSha,
+    headSha: handoff.headSha,
+    repository: handoff.repository,
+    approval: handoff.approval,
+    allowedPaths: handoff.approval?.allowedPaths,
+    sources,
+    requirementCoverage: contextManifest.requirementIds,
+    freshAuthorityValidated: true,
+    allMandatorySourcesRehydrated: rehydrated,
+    coverageRevalidated: rehydrated
+  };
   const restored = await store.loadLatest(checkpointId, { current });
   if (!restored.valid) return { allowed: false, findings: restored.findings, checkpoint: restored.checkpoint };
-  const result = evaluateContextAdmission(admission);
-  return { ...result, checkpoint: restored.checkpoint };
+  if (restored.checkpoint?.payload?.taskId !== handoff.taskId) {
+    return { allowed: false, findings: [finding('CHECKPOINT_TASK_MISMATCH', 'checkpoint.payload.taskId')], checkpoint: restored.checkpoint };
+  }
+  return { ...admitted, checkpoint: restored.checkpoint };
+}
+
+const REQUIREMENT_TOKEN_BOUNDARY = '[A-Za-z0-9_-]';
+function containsExactId(content, id) {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?<!${REQUIREMENT_TOKEN_BOUNDARY})${escaped}(?!${REQUIREMENT_TOKEN_BOUNDARY})`, 'u').test(content);
+}
+
+// Vendor-neutral trusted verifier (D2). `loadSource` is the trusted Git-object
+// loader; `deliveries` is the trusted runner's ledger of sourceId -> sha256 for
+// content it delivered to the agent in full. Coverage is computed from the
+// verified Git content (exact ID tokens), never taken from the receipt.
+export function createTrustedSourceVerifier({ loadSource, deliveries, requirementIds = [], acceptanceIds = [] } = {}) {
+  if (typeof loadSource !== 'function' || !(deliveries instanceof Map)) {
+    throw new Error('Trusted source loader and delivery ledger required');
+  }
+  return (source) => {
+    const loaded = loadSource(source);
+    if (!isRecord(loaded) || typeof loaded.content !== 'string' || typeof loaded.blobSha !== 'string') return null;
+    const id = `${String(source.repository).toLowerCase()}@${source.revisionSha}:${source.path}`;
+    const contentSha256 = sha256(loaded.content);
+    const delivered = deliveries.get(id) === contentSha256;
+    return {
+      repository: source.repository,
+      path: source.path,
+      revisionSha: source.revisionSha,
+      blobSha: loaded.blobSha,
+      content: loaded.content,
+      ...(delivered ? { consumption: { fullSource: true, sourceSha256: contentSha256 } } : {}),
+      coveredRequirements: delivered ? requirementIds.filter(rid => containsExactId(loaded.content, rid)) : [],
+      coveredAcceptance: delivered ? acceptanceIds.filter(aid => containsExactId(loaded.content, aid)) : []
+    };
+  };
 }

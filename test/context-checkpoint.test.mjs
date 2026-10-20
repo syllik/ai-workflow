@@ -131,3 +131,40 @@ test('a contended save never releases a lock held by another writer', async () =
   assert.equal(blocked.valid, false);
   assert.equal((await stat(lockPath)).isFile(), true);
 });
+
+test('deleting the newest record cannot roll the checkpoint back', async () => {
+  const { directory, store } = await makeStore();
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const second = await store.save(checkpointId, payload({ pendingWork: ['next'] }), { sequence: 2 });
+  assert.equal(second.valid, true);
+  const { unlink } = await import('node:fs/promises');
+  await unlink(second.path);
+  const loaded = await store.loadLatest(checkpointId, { current: current() });
+  assert.equal(loaded.valid, false);
+  assert.equal(loaded.findings.some(({ code }) => code === 'CHECKPOINT_ROLLBACK_DETECTED'), true);
+  const resaved = await store.save(checkpointId, payload(), { sequence: 2 });
+  assert.equal(resaved.valid, false);
+});
+
+test('a tampered head record fails closed', async () => {
+  const { directory, store } = await makeStore();
+  assert.equal((await store.save(checkpointId, payload(), { sequence: 1 })).valid, true);
+  const headPath = path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.head`);
+  const head = JSON.parse(await readFile(headPath, 'utf8'));
+  await writeFile(headPath, JSON.stringify({ ...head, sequence: 0 }), { mode: 0o600 });
+  const loaded = await store.loadLatest(checkpointId, { current: current() });
+  assert.equal(loaded.valid, false);
+  assert.equal(loaded.findings.some(({ code }) => code === 'CHECKPOINT_HEAD_INVALID'), true);
+});
+
+test('a live lock reports CHECKPOINT_LOCKED and a crashed writer lock is reclaimed', async () => {
+  const { directory, store } = await makeStore();
+  const lockPath = path.join(directory, `${createHash('sha256').update(checkpointId, 'utf8').digest('hex')}.lock`);
+  await writeFile(lockPath, `${process.pid}:${Date.now()}`, { mode: 0o600 });
+  const locked = await store.save(checkpointId, payload(), { sequence: 1 });
+  assert.equal(locked.valid, false);
+  assert.equal(locked.findings.some(({ code }) => code === 'CHECKPOINT_LOCKED'), true);
+  await writeFile(lockPath, `2147483646:${Date.now()}`, { mode: 0o600 });
+  const reclaimed = await store.save(checkpointId, payload(), { sequence: 1 });
+  assert.equal(reclaimed.valid, true);
+});

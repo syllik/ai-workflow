@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { open, lstat, mkdir, readdir, unlink, link } from 'node:fs/promises';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { open, lstat, mkdir, readdir, readFile, rename, unlink, link } from 'node:fs/promises';
 import path from 'node:path';
 import { signContextCheckpoint, verifyContextCheckpoint } from './context-policy.mjs';
 
@@ -87,7 +87,79 @@ function storageFailure(findings) {
   return { valid: false, findings };
 }
 
-export function createContextCheckpointStore({ directory, secretProvider } = {}) {
+const DEFAULT_STALE_LOCK_MS = 10 * 60 * 1000;
+
+function headMac(secret, checkpointId, sequence) {
+  return createHmac('sha256', secret).update(`checkpoint-head:v1:${checkpointId}:${sequence}`).digest('hex');
+}
+
+// Authenticated high-water mark: deleting newer records cannot roll a checkpoint back.
+async function readHead(root, key, checkpointId, secret) {
+  let raw;
+  try {
+    raw = await readFile(path.join(root, `${key}.head`), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { head: null };
+    return { error: [finding('CHECKPOINT_STORAGE_UNAVAILABLE', 'head')] };
+  }
+  try {
+    const head = JSON.parse(raw);
+    const expected = headMac(secret, checkpointId, head?.sequence);
+    if (head?.checkpointId !== checkpointId || !validSequence(head?.sequence) || typeof head?.mac !== 'string' || !SHA256.test(head.mac)
+      || !timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(head.mac, 'hex'))) {
+      return { error: [finding('CHECKPOINT_HEAD_INVALID', 'head')] };
+    }
+    return { head };
+  } catch {
+    return { error: [finding('CHECKPOINT_HEAD_INVALID', 'head')] };
+  }
+}
+
+async function writeHead(root, key, checkpointId, sequence, secret) {
+  const tempPath = path.join(root, `.${key}.head.${randomUUID()}.tmp`);
+  const handle = await open(tempPath, 'wx', 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify({ checkpointId, sequence, mac: headMac(secret, checkpointId, sequence) })}\n`, 'utf8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(tempPath, path.join(root, `${key}.head`));
+}
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+// A lock left by a crashed writer is reclaimed only when its owner is gone or it is stale.
+async function acquireLock(lockPath, staleLockMs) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await open(lockPath, 'wx', 0o600);
+      await handle.writeFile(`${process.pid}:${Date.now()}`, 'utf8');
+      return { handle };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      let owner = '';
+      try { owner = await readFile(lockPath, 'utf8'); } catch { owner = ''; }
+      const [pidText, sinceText] = owner.split(':');
+      const pid = Number(pidText);
+      const since = Number(sinceText);
+      const abandoned = (Number.isSafeInteger(pid) && pid > 0 && !processAlive(pid))
+        || (Number.isFinite(since) && Date.now() - since > staleLockMs);
+      if (attempt > 0 || !abandoned) return { locked: true };
+      await unlink(lockPath).catch(() => {});
+    }
+  }
+  return { locked: true };
+}
+
+export function createContextCheckpointStore({ directory, secretProvider, staleLockMs = DEFAULT_STALE_LOCK_MS } = {}) {
   const root = typeof directory === 'string' ? path.resolve(directory) : directory;
 
   async function save(checkpointId, payload, { sequence } = {}) {
@@ -103,10 +175,18 @@ export function createContextCheckpointStore({ directory, secretProvider } = {})
     const lockPath = path.join(root, `${key}.lock`);
     let lockHandle;
     try {
-      lockHandle = await open(lockPath, 'wx', 0o600);
+      const lock = await acquireLock(lockPath, staleLockMs);
+      if (lock.locked) return storageFailure([finding('CHECKPOINT_LOCKED', 'checkpointId')]);
+      lockHandle = lock.handle;
       const listed = await listRecords(root, key);
       if (listed.error) return storageFailure(listed.error);
-      const latest = listed.records[0]?.sequence;
+      const headState = await readHead(root, key, checkpointId, secret);
+      if (headState.error) return storageFailure(headState.error);
+      const latestRecord = listed.records[0]?.sequence;
+      if ((latestRecord !== undefined) !== (headState.head !== null) || (latestRecord !== undefined && latestRecord !== headState.head.sequence)) {
+        return storageFailure([finding('CHECKPOINT_ROLLBACK_DETECTED', 'records')]);
+      }
+      const latest = headState.head?.sequence;
       if (latest !== undefined && sequence <= latest) return storageFailure([finding('CHECKPOINT_REPLAY', 'sequence', { latestSequence: latest })]);
 
       const signedPayload = { ...payload, checkpointId, sequence };
@@ -129,6 +209,7 @@ export function createContextCheckpointStore({ directory, secretProvider } = {})
       } finally {
         await unlink(tempPath).catch(() => {});
       }
+      await writeHead(root, key, checkpointId, sequence, secret);
       await syncDirectory(root);
       return { valid: true, checkpoint, sequence, path: finalPath };
     } catch (error) {
@@ -154,7 +235,12 @@ export function createContextCheckpointStore({ directory, secretProvider } = {})
       const listed = await listRecords(root, key);
       if (listed.error) return storageFailure(listed.error);
       const record = listed.records[0];
-      if (!record) return storageFailure([finding('CHECKPOINT_NOT_FOUND', 'checkpointId')]);
+      const headState = await readHead(root, key, checkpointId, secret);
+      if (headState.error) return storageFailure(headState.error);
+      if (!record && headState.head === null) return storageFailure([finding('CHECKPOINT_NOT_FOUND', 'checkpointId')]);
+      if (!record || headState.head === null || record.sequence !== headState.head.sequence) {
+        return storageFailure([finding('CHECKPOINT_ROLLBACK_DETECTED', 'records')]);
+      }
       let checkpoint;
       try {
         const handle = await open(record.filePath, 'r');

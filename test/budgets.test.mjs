@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { BUDGETS, checkAssembledExecutionContext, checkBudget, checkBudgets, utf8Bytes } from '../scripts/workspace/budgets.mjs';
+import { BUDGETS, checkAssembledExecutionContext, checkBudget, checkBudgets, splitAdvisoryBudgetFindings, utf8Bytes } from '../scripts/workspace/budgets.mjs';
 
 describe('budgets', () => {
   test('reports empty assembled execution context as zero bytes without a finding', () => {
@@ -274,4 +274,17 @@ describe('budgets', () => {
   test('accepts text at the exact UTF-8 boundary', () => {
     assert.deepEqual(checkBudget({ path: 'AI.md', text: 'é'.repeat(512) }, BUDGETS), []);
   });
+});
+
+test('Context Policy v2 makes document length advisory except AI.md and FLOW.md', () => {
+  const oversized = 'x'.repeat(9000);
+  assert.equal(checkBudget({ path: 'repo/.ai/context.md', text: oversized })[0].severity, undefined);
+  assert.equal(checkBudget({ path: 'repo/.ai/context.md', text: oversized }, BUDGETS, { contextPolicyVersion: 2 })[0].severity, 'ADVISORY');
+  assert.equal(checkBudget({ path: 'repo/AI.md', text: oversized }, BUDGETS, { contextPolicyVersion: 2 })[0].severity, 'HARD');
+  const { blocking, advisory } = splitAdvisoryBudgetFindings([
+    ...checkBudget({ path: 'repo/.ai/context.md', text: oversized }, BUDGETS, { contextPolicyVersion: 2 }),
+    ...checkBudget({ path: 'repo/AI.md', text: oversized }, BUDGETS, { contextPolicyVersion: 2 })
+  ]);
+  assert.equal(blocking.length, 1);
+  assert.equal(advisory.length, 1);
 });

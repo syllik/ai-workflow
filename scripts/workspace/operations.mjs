@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkBudget, BUDGETS } from './budgets.mjs';
+import { checkBudget, BUDGETS, splitAdvisoryBudgetFindings } from './budgets.mjs';
+import { contextPolicyVersionForRepository, DEFAULT_CONTEXT_POLICY } from './context-policy.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
@@ -659,7 +660,7 @@ function validateManagedAgents(repositoryRoot, findingPath, manifest, findings, 
   }
 }
 
-function validateManagedDecisions(repositoryRoot, findingPath, findings) {
+function validateManagedDecisions(repositoryRoot, findingPath, findings, budgetOptions = {}) {
   const decisionsFindingPath = path.posix.join(findingPath, '.ai/decisions.md');
   const decisionsPath = resolveInside(repositoryRoot, '.ai/decisions.md');
   if (!decisionsPath) {
@@ -667,14 +668,20 @@ function validateManagedDecisions(repositoryRoot, findingPath, findings) {
   } else if (!isRegularFile(decisionsPath)) {
     findings.push(finding('GENERATED_DRIFT', decisionsFindingPath));
   } else {
-    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS));
+    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS, budgetOptions));
   }
 }
 
-export function validateManagedTarget(repositoryRoot, project, manifest, findings = [], options = {}) {
+export function validateManagedTarget(repositoryRoot, project, manifest, outerFindings = [], options = {}) {
+  // Length budgets of a v2-activated project's documents are ADVISORY; they are
+  // reported through options.advisories and never block. Integrity stays HARD.
+  const budgetOptions = {
+    contextPolicyVersion: contextPolicyVersionForRepository(manifest?.contextPolicy ?? DEFAULT_CONTEXT_POLICY, project.repository)
+  };
+  const findings = [];
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
-  validateManagedDecisions(repositoryRoot, project.localPath, findings);
+  validateManagedDecisions(repositoryRoot, project.localPath, findings, budgetOptions);
 
   if (options.validateTaskArtifacts === true) {
     const taskArtifactFindings = [];
@@ -685,7 +692,7 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
     })));
     for (const artifact of taskArtifacts) {
       const artifactPath = path.posix.join(project.localPath, artifact.path);
-      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
+      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS, budgetOptions));
     }
   }
 
@@ -714,10 +721,13 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
   } else if (!isRegularFile(contextPath)) {
     findings.push(finding('GENERATED_DRIFT', contextFindingPath));
   } else {
-    findings.push(...checkBudget({ path: contextFindingPath, text: readFileSync(contextPath, 'utf8') }, BUDGETS));
+    findings.push(...checkBudget({ path: contextFindingPath, text: readFileSync(contextPath, 'utf8') }, BUDGETS, budgetOptions));
   }
 
-  return findings;
+  const { blocking, advisory } = splitAdvisoryBudgetFindings(findings);
+  if (Array.isArray(options.advisories)) options.advisories.push(...advisory);
+  outerFindings.push(...blocking);
+  return outerFindings;
 }
 
 function readKnownArtifact(root, relativePath, findings = null) {
