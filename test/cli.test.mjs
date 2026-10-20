@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
-import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderManagedBlock, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { planWorkspace } from '../scripts/workspace/operations.mjs';
 import { parseArgs, run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
 
@@ -87,10 +87,12 @@ describe('workspace CLI', () => {
       writeFileSync(path.join(projectPath, manifest.projects[0].contextPath), renderContextScaffold(manifest.projects[0]), 'utf8');
       writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n\nRecord durable decisions for this repository here.\n', 'utf8');
       writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(projectPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
       const manifestPath = writeFixtureManifest(manifestRoot, manifest);
       mkdirSync(path.join(manifestRoot, 'projects'), { recursive: true });
       writeFileSync(path.join(manifestRoot, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
       writeFileSync(path.join(manifestRoot, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(manifestRoot, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
       const result = runCli('check', '--root', root, '--manifest', manifestPath);
       assert.equal(result.status, 0, result.stderr);
     } finally {
@@ -113,6 +115,8 @@ describe('workspace CLI', () => {
       assert.match(stale.stderr, /GENERATED_DRIFT.*AGENTS\.md/u);
 
       writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+
+      writeFileSync(path.join(root, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
       const restored = runCli('check', '--root', root, '--manifest', manifestPath);
       assert.equal(restored.status, 0, restored.stderr);
     } finally {
@@ -143,6 +147,7 @@ describe('workspace CLI', () => {
         mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
         writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
         writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+        writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
         const remote = path.join(remoteRoot, 'life-ops-bot');
         initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
@@ -191,11 +196,13 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', 'AGENTS.md');
+      writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
+      git(remote, 'add', 'AGENTS.md', 'CLAUDE.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing without context');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
@@ -232,6 +239,7 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
@@ -239,7 +247,8 @@ describe('workspace CLI', () => {
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
       writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing and context');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
@@ -281,6 +290,7 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
@@ -288,7 +298,8 @@ describe('workspace CLI', () => {
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
       writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned repaired activation');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
@@ -342,6 +353,7 @@ describe('workspace CLI', () => {
         mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
         writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
         writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+        writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
         const remote = path.join(remoteRoot, 'life-ops-bot');
         initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
@@ -391,6 +403,7 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, baseTarget.integrationBranch);
@@ -431,6 +444,7 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, baseTarget.integrationBranch);
@@ -439,7 +453,8 @@ describe('workspace CLI', () => {
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
       writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md');
+      writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
+      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
       git(remote, 'commit', '--quiet', '-m', 'aligned routing and context on changed branch');
 
       const status = runWorkspaceCli(['check', '--root', centralPath, '--manifest', manifestPath, '--activation-base', 'HEAD'], {
@@ -503,6 +518,7 @@ describe('workspace CLI', () => {
       mkdirSync(path.join(centralPath, 'projects'), { recursive: true });
       writeFileSync(path.join(centralPath, 'projects/index.md'), renderProjectIndex(currentManifest), 'utf8');
       writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+      writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
 
       let cloneCount = 0;
 

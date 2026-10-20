@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { renderAgentsBlock, renderContextScaffold, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest } from './helpers.mjs';
 
 describe('renderers', () => {
+  test('render CLAUDE.md block as a managed import of the repository AGENTS.md', () => {
+    assert.equal(renderClaudeBlock(), '<!-- ai-workflow:claude-routing:start -->\n@AGENTS.md\n<!-- ai-workflow:claude-routing:end -->\n');
+  });
+
   test('render deterministic project index uses exact GitHub-native repository routes', () => {
     const manifest = fixtureManifest();
     const first = renderProjectIndex(manifest);

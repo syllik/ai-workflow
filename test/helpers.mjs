@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { CANONICAL_EXECUTION_POLICY } from '../scripts/workspace/task-policy.mjs';
 
 export const expectedProjects = [
@@ -111,6 +111,7 @@ export function initCentralManifestRepo(root, manifest, { indexManifest = manife
   initFixtureRepo(centralPath, 'https://github.com/syllik/ai-workflow.git', central.integrationBranch);
   mkdirSync(path.join(centralPath, '.ai'), { recursive: true });
   writeFileSync(path.join(centralPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+  writeFileSync(path.join(centralPath, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
   writeFileSync(path.join(centralPath, central.contextPath), renderContextScaffold(central), 'utf8');
   writeFileSync(path.join(centralPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
   if (includeIndex) {

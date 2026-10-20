@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { githubAppGitAuthorization } from '../scripts/workspace/github-auth.mjs';
-import { renderAgentsBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderClaudeBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
 import { evaluatePilotRollout, inspectMaterializedTarget, loadRolloutPolicy, resolveRolloutProjects, validateRolloutPolicy } from '../scripts/workspace/rollout.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot } from './helpers.mjs';
 
@@ -51,6 +51,7 @@ function materializeRolloutTarget(root, project, manifest, { staleAgents = false
     const agentsManifest = staleAgents ? { ...manifest, canonicalRoot: '~/OLD-WORK' } : manifest;
     agentsPath = path.join(repositoryRoot, 'AGENTS.md');
     writeFileSync(agentsPath, localPrefix + renderAgentsBlock(agentsManifest), 'utf8');
+    writeFileSync(path.join(repositoryRoot, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
     writeFileSync(path.join(repositoryRoot, project.contextPath), '# Project context\n', 'utf8');
     writeFileSync(path.join(repositoryRoot, '.ai/decisions.md'), '# Decisions\n', 'utf8');
     if (project.repository === 'syllik/syllik') {
