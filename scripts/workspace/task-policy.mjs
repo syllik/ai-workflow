@@ -1,3 +1,5 @@
+import { evaluateContextAdmission } from './context-admission.mjs';
+
 export const TASK_CONTRACT_VERSION = 2;
 export const LEGACY_TASK_CONTRACT_VERSION = 1;
 export const ASSEMBLED_CONTEXT_BUDGET_BYTES = 32768;
@@ -31,7 +33,7 @@ const CORRECTION_KEYS = new Set(['authorization', 'maxBatches']);
 const HANDOFF_V2_KEYS = new Set([
   'contractVersion', 'taskId', 'repository', 'taskBranch', 'integrationBranch', 'requiredCiChecks', 'role',
   'policySha', 'baseSha', 'headSha', 'approval',
-  'assembledContextBudgetBytes', 'assembledContextActualBytes', 'assembledContextCheck'
+  'contextPolicyVersion', 'assembledContextBudgetBytes', 'assembledContextActualBytes', 'assembledContextCheck'
 ]);
 const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches']);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
@@ -183,6 +185,23 @@ function pathAllowed(changedPath, allowedPaths) {
 }
 
 function validateAggregateContext(handoff, findings) {
+  const contextPolicyVersion = Object.hasOwn(handoff, 'contextPolicyVersion')
+    ? handoff.contextPolicyVersion
+    : 1;
+  if (![1, 2].includes(contextPolicyVersion)) {
+    findings.push(finding('INVALID_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
+    return;
+  }
+  if (contextPolicyVersion === 2) {
+    if (handoff.assembledContextBudgetBytes !== null) {
+      findings.push(finding('INVALID_V2_ASSEMBLED_CONTEXT_BUDGET', 'handoff.assembledContextBudgetBytes'));
+    }
+    if (!Number.isInteger(handoff.assembledContextActualBytes) || handoff.assembledContextActualBytes <= 0) {
+      findings.push(finding('INVALID_ASSEMBLED_CONTEXT_ACTUAL_BYTES', 'handoff.assembledContextActualBytes'));
+    }
+    if (handoff.assembledContextCheck !== 'PASSED') findings.push(finding('ASSEMBLED_CONTEXT_NOT_PASSED', 'handoff.assembledContextCheck'));
+    return;
+  }
   if (handoff.assembledContextBudgetBytes !== ASSEMBLED_CONTEXT_BUDGET_BYTES) {
     findings.push(finding('INVALID_ASSEMBLED_CONTEXT_BUDGET', 'handoff.assembledContextBudgetBytes'));
   }
@@ -388,7 +407,7 @@ export function evaluateTaskAction(input = {}) {
   if (!isObject(input)) {
     return { allowed: false, findings: [finding('INVALID_POLICY_EVALUATION_INPUT', 'input')], compatibility: 'invalid' };
   }
-  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {} } = input;
+  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {}, contextPolicy, contextManifest } = input;
   const validation = validateTaskHandoff(inputHandoff, policy);
   if (!validation.valid) return { allowed: false, findings: validation.findings, compatibility: validation.compatibility };
   if (!isObject(runtime)) {
@@ -402,6 +421,17 @@ export function evaluateTaskAction(input = {}) {
     ...currentShaFindings(handoff, runtime, action),
     ...scopeFindings(handoff, runtime, action)
   ];
+  const contextAdmission = evaluateContextAdmission({
+    handoff,
+    // Activation policy and the producer manifest come from the trusted caller,
+    // never from runtime evidence that the evaluated agent can influence.
+    contextPolicy,
+    receipt: runtime.contextReceipt,
+    trustedManifest: contextManifest,
+    sourceVerifier: runtime.contextSourceVerifier,
+    runtime: runtime.contextRuntime
+  });
+  findings.push(...contextAdmission.findings);
 
   if (action.kind === 'publish') {
     if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {

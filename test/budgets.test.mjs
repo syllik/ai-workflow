@@ -187,6 +187,13 @@ describe('budgets', () => {
     }]);
   });
 
+  test('measures oversized v2 context without applying the legacy aggregate gate', () => {
+    const result = checkAssembledExecutionContext(['x'.repeat(40000)], { enforceLimit: false });
+    assert.equal(result.actualBytes, 40000);
+    assert.equal(result.maxBytes, null);
+    assert.deepEqual(result.findings, []);
+  });
+
   test('rejects oversized assembled context when the aggregate config object is empty', () => {
     const result = checkAssembledExecutionContext(['x'.repeat(40000)], {});
     assert.equal(result.maxBytes, 32768);

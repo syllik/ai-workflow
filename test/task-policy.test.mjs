@@ -183,6 +183,22 @@ describe('task handoff compatibility', () => {
     assert.equal(over.valid, false);
     assert.equal(over.findings.some(({ code }) => code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
   });
+
+  test('allows explicitly admitted v2 handoffs to carry measured context beyond the legacy gate', () => {
+    const result = validateTaskHandoff(handoff({
+      contextPolicyVersion: 2,
+      assembledContextBudgetBytes: null,
+      assembledContextActualBytes: 40000,
+      assembledContextCheck: 'PASSED'
+    }));
+    assert.equal(result.valid, true);
+  });
+
+  test('does not reinterpret an explicit null context policy version as legacy v1', () => {
+    const result = validateTaskHandoff(handoff({ contextPolicyVersion: null }));
+    assert.equal(result.valid, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_POLICY_VERSION'), true);
+  });
 });
 
 describe('deterministic task actions', () => {

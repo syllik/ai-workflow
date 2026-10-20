@@ -230,6 +230,105 @@ test('builds a deterministic minimal handoff with complete expected sources, exa
   assert.match(first.manifest.assembledContextSha256, /^[0-9a-f]{64}$/u);
 });
 
+test('assembles an explicitly activated v2 context beyond 32768 UTF-8 bytes', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: ['ChipIn-one/chipin-frontend'],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    },
+    acceptance: { text: 'x'.repeat(33000) }
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.contextPolicyVersion, 2);
+  assert.equal(result.manifest.assembledContextBudgetBytes, null);
+  assert.equal(result.manifest.assembledContextActualBytes > 32768, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+test('binds target sources to the handoff repository even when a fork shares the commit', () => {
+  let calls = 0;
+  const result = build(input({
+    repository: 'evil/fork',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: ['evil/fork'],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    }
+  }), {
+    sourceLoader: source => {
+      if (source.kind === 'target') calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(calls, 0);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_REPOSITORY_MISMATCH'), true);
+});
+
+test('records the handoff repository in the v2 manifest', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: ['ChipIn-one/chipin-frontend'],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    }
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.repository, 'ChipIn-one/chipin-frontend');
+});
+
+test('does not load Git sources when an explicit v2 handoff is disabled by the workspace gate', () => {
+  let calls = 0;
+  const result = build(input({
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: [],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    }
+  }), {
+    sourceLoader: source => {
+      calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_V2_NOT_ACTIVATED'), true);
+});
+
+test('does not call the source loader for an undeclared source', () => {
+  let calls = 0;
+  const result = build(input({
+    sources: [
+      ...canonicalSources(),
+      { kind: 'dependency', repository: 'evil.example/impersonator', path: 'secret.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'forged\n' }
+    ]
+  }), {
+    sourceLoader: source => {
+      calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(calls, canonicalSources().length);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+});
+
 test('blocks a missing mandatory source from the explicit expected-source set', () => {
   const value = input();
   value.sources = value.sources.filter(({ path }) => path !== 'AI.md');

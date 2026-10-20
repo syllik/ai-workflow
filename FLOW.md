@@ -4,7 +4,7 @@ GitHub authority: `AI.md -> FLOW.md -> workspace record -> global/workflow.md ->
 
 Roles are provider-independent: Planner scopes, Architect handles risks, Executor implements, Reviewer independently reviews pinned SHA without mutations, Auditor checks evidence. Select capability/risk, not provider. Trusted Publisher is separate.
 
-v2 pins policy/base/head and approval (allowed paths, publication permission, `maxCorrectionBatches` 0–2). Legacy v1/unspecified handoffs gain no automatic publication/correction authority; preserve human gates. Implementation requires exact 32768-byte UTF-8 assembled context.
+v2 pins policy/base/head plus approval (paths, publication, 0–2 corrections). Legacy v1/unspecified remains human-gated; no automatic publication/correction. Context v1 keeps hard 32768-byte aggregate; allowlisted v2 has no global cap but source, coverage, structure and integrity.
 
 Publish one final commit + one push; never rewrite published history. Review only after required CI green for current head; one review per SHA and consolidated findings. Head changes stale CI/review. v2 corrections require upfront authority; legacy requires human approval per batch. After two correction batches, escalate. Human merges.
 
