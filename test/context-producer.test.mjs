@@ -250,6 +250,45 @@ test('assembles an explicitly activated v2 context beyond 32768 UTF-8 bytes', ()
   assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
 });
 
+test('binds target sources to the handoff repository even when a fork shares the commit', () => {
+  let calls = 0;
+  const result = build(input({
+    repository: 'evil/fork',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: ['evil/fork'],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    }
+  }), {
+    sourceLoader: source => {
+      if (source.kind === 'target') calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(calls, 0);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_REPOSITORY_MISMATCH'), true);
+});
+
+test('records the handoff repository in the v2 manifest', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    contextPolicy: {
+      supportedVersions: [1, 2],
+      defaultNewTaskVersion: 1,
+      rolloutAllowlist: ['ChipIn-one/chipin-frontend'],
+      excludedRepositories: ['syllik/Zero-Touch-DCA']
+    }
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.repository, 'ChipIn-one/chipin-frontend');
+});
+
 test('does not load Git sources when an explicit v2 handoff is disabled by the workspace gate', () => {
   let calls = 0;
   const result = build(input({

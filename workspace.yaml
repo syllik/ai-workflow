@@ -12,12 +12,6 @@ budgets:
   assembled execution context: 32768
   result.md: 4096
   human plan.md: 16384
-contextPolicy:
-  supportedVersions: [1, 2]
-  defaultNewTaskVersion: 1
-  rolloutAllowlist: []
-  excludedRepositories:
-    - syllik/Zero-Touch-DCA
 executionPolicy:
   contractVersion: 2
   roles: [planner, architect, executor, reviewer, auditor]
