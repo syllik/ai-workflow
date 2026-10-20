@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { stringify } from 'yaml';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -11,12 +12,14 @@ const baseSha = 'b'.repeat(40);
 const headSha = 'c'.repeat(40);
 const dependencySha = 'd'.repeat(40);
 
-function canonicalSources() {
+function canonicalSources(contextPolicy) {
+  const policyLines = contextPolicy ? stringify({ contextPolicy }).trimEnd().split('\n') : [];
   return [
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', revisionSha: policySha, expectedRevisionSha: policySha, content: [
       'schemaVersion: 2',
+      ...policyLines,
       'projects:',
       '  - id: ChipIn-one/chipin-frontend',
       '    repository: ChipIn-one/chipin-frontend',
@@ -42,7 +45,7 @@ function expectedSources(sources) {
 }
 
 function input(overrides = {}) {
-  const sources = canonicalSources();
+  const sources = canonicalSources(overrides.contextPolicy);
   return {
     role: 'executor',
     policySha,
@@ -233,6 +236,8 @@ test('builds a deterministic minimal handoff with complete expected sources, exa
 test('assembles an explicitly activated v2 context beyond 32768 UTF-8 bytes', () => {
   const result = build(input({
     repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
     contractVersion: 2,
     contextPolicyVersion: 2,
     contextPolicy: {
@@ -276,6 +281,8 @@ test('binds target sources to the handoff repository even when a fork shares the
 test('records the handoff repository in the v2 manifest', () => {
   const result = build(input({
     repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
     contractVersion: 2,
     contextPolicyVersion: 2,
     contextPolicy: {
@@ -969,4 +976,66 @@ test('PRODUCT reference rejects missing IDs in AGENTS but allows all IDs when PR
   const result = build(value);
   assert.equal(result.passed, true);
   assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+const pinnedV2Policy = {
+  supportedVersions: [1, 2],
+  defaultNewTaskVersion: 1,
+  rolloutAllowlist: ['ChipIn-one/chipin-frontend'],
+  excludedRepositories: ['syllik/Zero-Touch-DCA']
+};
+const v2Binding = {
+  repository: 'ChipIn-one/chipin-frontend',
+  taskId: 'ChipIn-one/chipin-frontend#1',
+  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+  contractVersion: 2,
+  contextPolicyVersion: 2
+};
+
+test('a dependency absent from the pinned workspace registry is denied before any Git read', () => {
+  const loaded = [];
+  const value = input();
+  const rogue = { kind: 'dependency', repository: 'evil-org/private-secrets', path: 'creds.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'secret\n' };
+  value.sources.push(rogue);
+  value.expectedSources.push({ kind: 'dependency', repository: rogue.repository, path: rogue.path, revisionSha: dependencySha });
+  value.dependencies.push({ repository: rogue.repository, revisionSha: dependencySha, expectedRevisionSha: dependencySha });
+  const result = build(value, { sourceLoader: source => { loaded.push(source.repository); return testSourceLoader(source); } });
+  assert.equal(result.passed, false);
+  assert.equal(loaded.includes('evil-org/private-secrets'), false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNEXPECTED'), true);
+});
+
+test('activation comes from the pinned workspace.yaml, and a different caller policy is rejected', () => {
+  const pinnedOnly = { ...input({ ...v2Binding, contextPolicy: pinnedV2Policy }) };
+  delete pinnedOnly.contextPolicy;
+  const fromWorkspace = build(pinnedOnly);
+  assert.equal(fromWorkspace.passed, true, JSON.stringify(fromWorkspace.findings));
+  assert.equal(fromWorkspace.manifest.contextPolicyVersion, 2);
+  assert.deepEqual(fromWorkspace.manifest.contextPolicy.rolloutAllowlist, ['ChipIn-one/chipin-frontend']);
+
+  const forged = build({ ...input({ ...v2Binding, contextPolicy: { ...pinnedV2Policy, rolloutAllowlist: [] } }), contextPolicy: pinnedV2Policy });
+  assert.equal(forged.passed, false);
+  assert.equal(forged.findings.some(({ code }) => code === 'CONTEXT_POLICY_NOT_PINNED'), true);
+});
+
+test('v2 manifests are bound to one task and its approved scope', () => {
+  const bound = build(input({ ...v2Binding, contextPolicy: pinnedV2Policy }));
+  assert.equal(bound.manifest.taskId, 'ChipIn-one/chipin-frontend#1');
+  assert.equal(bound.manifest.approval.reference, 'owner-approval');
+  assert.match(bound.manifest.approval.scopeSha256, /^[0-9a-f]{64}$/u);
+  const unbound = build(input({ ...v2Binding, taskId: undefined, contextPolicy: pinnedV2Policy }));
+  assert.equal(unbound.passed, false);
+  assert.equal(unbound.findings.some(({ code }) => code === 'CONTEXT_TASK_BINDING_UNAVAILABLE'), true);
+});
+
+test('new tasks default to v2 only where v2 is activated, otherwise v1', () => {
+  const policy = { ...pinnedV2Policy, defaultNewTaskVersion: 2 };
+  const { contextPolicyVersion: _v, ...binding } = v2Binding;
+  const activated = build(input({ ...binding, newTask: true, contextPolicy: policy }));
+  assert.equal(activated.manifest.contextPolicyVersion, 2);
+  const notAllowlisted = build(input({ ...binding, newTask: true, contextPolicy: { ...policy, rolloutAllowlist: [] } }));
+  assert.equal(notAllowlisted.manifest.contextPolicyVersion, 1);
+  assert.equal(notAllowlisted.passed, true, JSON.stringify(notAllowlisted.findings));
+  const legacyContract = build(input({ ...binding, contractVersion: 1, newTask: true, contextPolicy: policy }));
+  assert.equal(legacyContract.manifest.contextPolicyVersion, 1);
 });

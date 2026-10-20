@@ -159,6 +159,39 @@ describe('workspace operations', () => {
     }
   });
 
+  test('acceptance 10: v2-activated project length budgets are advisory, v1 stay hard', () => {
+    for (const activated of [false, true]) {
+      const root = makeFixtureRoot();
+      try {
+        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+        const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+        const manifest = fixtureManifest({
+          projects: [central, project],
+          contextPolicy: {
+            supportedVersions: [1, 2], defaultNewTaskVersion: 1,
+            rolloutAllowlist: activated ? ['syllik/syllik'] : [], excludedRepositories: ['syllik/Zero-Touch-DCA']
+          }
+        });
+        const { manifestPath } = initCentralManifestRepo(root, manifest);
+        const projectPath = path.join(root, project.localPath);
+        initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+        mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
+        writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+        writeFileSync(path.join(projectPath, project.contextPath), 'x'.repeat(8193), 'utf8');
+        writeFileSync(path.join(projectPath, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+        const advisories = [];
+        const findings = checkGeneratedFiles(root, manifest, manifestPath, { advisories });
+        const contextPath = `${project.localPath}/.ai/context.md`;
+        const blocking = findings.some(({ code, path: findingPath }) => code === 'BUDGET_EXCEEDED' && findingPath === contextPath);
+        const advisory = advisories.some(({ path: findingPath, severity }) => findingPath === contextPath && severity === 'ADVISORY');
+        assert.equal(blocking, !activated);
+        assert.equal(advisory, activated);
+      } finally {
+        removeFixtureRoot(root);
+      }
+    }
+  });
+
   test('one apply writes the exact central index and a second plan is clean', () => {
     const root = makeFixtureRoot();
     try {

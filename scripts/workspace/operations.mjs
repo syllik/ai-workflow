@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkBudget, BUDGETS } from './budgets.mjs';
+import { checkBudget, BUDGETS, splitAdvisoryBudgetFindings } from './budgets.mjs';
+import { contextPolicyVersionForRepository, DEFAULT_CONTEXT_POLICY } from './context-policy.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
@@ -383,7 +384,18 @@ function addDecisionsOperation(root, operations, findings, project) {
   }
 }
 
-function addContextOperation(root, operations, findings, project) {
+function projectBudgetOptions(manifest, project) {
+  return { contextPolicyVersion: contextPolicyVersionForRepository(manifest?.contextPolicy ?? DEFAULT_CONTEXT_POLICY, project.repository) };
+}
+
+function pushBudgetFindings(findings, budgetFindings, advisories = null) {
+  const { blocking, advisory } = splitAdvisoryBudgetFindings(budgetFindings);
+  findings.push(...blocking);
+  if (Array.isArray(advisories)) advisories.push(...advisory);
+}
+
+function addContextOperation(root, operations, findings, project, manifest = null) {
+  const budgetOptions = projectBudgetOptions(manifest, project);
   const projectDestination = resolveInside(root, project.localPath);
   const relativePath = path.posix.join(project.localPath, project.contextPath);
   const destination = projectDestination && resolveInside(projectDestination, project.contextPath);
@@ -393,7 +405,7 @@ function addContextOperation(root, operations, findings, project) {
   }
   const desired = renderContextScaffold(project);
   if (!existsSync(destination)) {
-    findings.push(...checkBudget({ path: relativePath, text: desired }, BUDGETS));
+    pushBudgetFindings(findings, checkBudget({ path: relativePath, text: desired }, BUDGETS, budgetOptions));
     operations.push({
       kind: 'create-file',
       path: relativePath,
@@ -409,7 +421,7 @@ function addContextOperation(root, operations, findings, project) {
     findings.push(finding('DESTINATION_COLLISION', relativePath));
     return;
   }
-  findings.push(...checkBudget({ path: relativePath, text: readFileSync(destination, 'utf8') }, BUDGETS));
+  pushBudgetFindings(findings, checkBudget({ path: relativePath, text: readFileSync(destination, 'utf8') }, BUDGETS, budgetOptions));
 }
 
 export function planWorkspace(options = {}) {
@@ -461,7 +473,7 @@ export function planWorkspace(options = {}) {
         addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
       }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
-      addContextOperation(root, operations, findings, project);
+      addContextOperation(root, operations, findings, project, manifest);
       addDecisionsOperation(root, operations, findings, project);
     }
   }
@@ -659,7 +671,7 @@ function validateManagedAgents(repositoryRoot, findingPath, manifest, findings, 
   }
 }
 
-function validateManagedDecisions(repositoryRoot, findingPath, findings) {
+function validateManagedDecisions(repositoryRoot, findingPath, findings, budgetOptions = {}) {
   const decisionsFindingPath = path.posix.join(findingPath, '.ai/decisions.md');
   const decisionsPath = resolveInside(repositoryRoot, '.ai/decisions.md');
   if (!decisionsPath) {
@@ -667,14 +679,18 @@ function validateManagedDecisions(repositoryRoot, findingPath, findings) {
   } else if (!isRegularFile(decisionsPath)) {
     findings.push(finding('GENERATED_DRIFT', decisionsFindingPath));
   } else {
-    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS));
+    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS, budgetOptions));
   }
 }
 
-export function validateManagedTarget(repositoryRoot, project, manifest, findings = [], options = {}) {
+export function validateManagedTarget(repositoryRoot, project, manifest, outerFindings = [], options = {}) {
+  // Length budgets of a v2-activated project's documents are ADVISORY; they are
+  // reported through options.advisories and never block. Integrity stays HARD.
+  const budgetOptions = projectBudgetOptions(manifest, project);
+  const findings = [];
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
-  validateManagedDecisions(repositoryRoot, project.localPath, findings);
+  validateManagedDecisions(repositoryRoot, project.localPath, findings, budgetOptions);
 
   if (options.validateTaskArtifacts === true) {
     const taskArtifactFindings = [];
@@ -685,7 +701,7 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
     })));
     for (const artifact of taskArtifacts) {
       const artifactPath = path.posix.join(project.localPath, artifact.path);
-      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
+      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS, budgetOptions));
     }
   }
 
@@ -714,10 +730,13 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
   } else if (!isRegularFile(contextPath)) {
     findings.push(finding('GENERATED_DRIFT', contextFindingPath));
   } else {
-    findings.push(...checkBudget({ path: contextFindingPath, text: readFileSync(contextPath, 'utf8') }, BUDGETS));
+    findings.push(...checkBudget({ path: contextFindingPath, text: readFileSync(contextPath, 'utf8') }, BUDGETS, budgetOptions));
   }
 
-  return findings;
+  const { blocking, advisory } = splitAdvisoryBudgetFindings(findings);
+  if (Array.isArray(options.advisories)) options.advisories.push(...advisory);
+  outerFindings.push(...blocking);
+  return outerFindings;
 }
 
 function readKnownArtifact(root, relativePath, findings = null) {
@@ -805,7 +824,9 @@ function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = nu
       continue;
     }
     if (!isDirectory(repository)) continue;
-    entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks'), findings));
+    const { contextPolicyVersion } = projectBudgetOptions(manifest, project);
+    entries.push(...collectTaskArtifacts(root, path.posix.join(project.localPath, '.ai/tasks'), findings)
+      .map((entry) => ({ ...entry, contextPolicyVersion })));
   }
   return entries;
 }
@@ -872,7 +893,10 @@ export function checkActivatedTargetRouting(manifest, baseManifest, options = {}
   return findings;
 }
 
-export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
+// Canonical shared artifacts (AI.md, FLOW.md, global/*, the generated AGENTS routing
+// block) serve v1 and v2 consumers alike and keep HARD length budgets. Per-project
+// artifacts of v2-activated projects are ADVISORY and reported via options.advisories.
+export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH, options = {}) {
   const requestedWorkspaceRoot = path.resolve(root);
   const workspaceRoot = requestedWorkspaceRoot;
   const findings = [];
@@ -899,10 +923,10 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
       }
       continue;
     }
-    validateManagedTarget(repository, project, manifest, findings, { checkedAgents });
+    validateManagedTarget(repository, project, manifest, findings, { checkedAgents, advisories: options.advisories });
   }
   const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings);
-  findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
+  pushBudgetFindings(findings, budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS, { contextPolicyVersion: entry.contextPolicyVersion ?? 1 })), options.advisories);
   const budgetAgents = new Set();
   const checkAgentBudget = (agentsPath) => {
     if (!agentsPath || !isRegularFile(agentsPath)) return;

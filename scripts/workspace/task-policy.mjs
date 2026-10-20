@@ -407,7 +407,7 @@ export function evaluateTaskAction(input = {}) {
   if (!isObject(input)) {
     return { allowed: false, findings: [finding('INVALID_POLICY_EVALUATION_INPUT', 'input')], compatibility: 'invalid' };
   }
-  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {}, contextPolicy, contextManifest } = input;
+  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {}, contextPolicy, contextManifest, contextSourceVerifier, contextRuntime } = input;
   const validation = validateTaskHandoff(inputHandoff, policy);
   if (!validation.valid) return { allowed: false, findings: validation.findings, compatibility: validation.compatibility };
   if (!isObject(runtime)) {
@@ -428,8 +428,9 @@ export function evaluateTaskAction(input = {}) {
     contextPolicy,
     receipt: runtime.contextReceipt,
     trustedManifest: contextManifest,
-    sourceVerifier: runtime.contextSourceVerifier,
-    runtime: runtime.contextRuntime
+    // The verifier and runtime adapter are trusted in-process components.
+    sourceVerifier: contextSourceVerifier,
+    runtime: contextRuntime
   });
   findings.push(...contextAdmission.findings);
 

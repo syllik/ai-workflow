@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
-import { DEFAULT_CONTEXT_POLICY, evaluateContextBytes, LEGACY_CONTEXT_MAX_BYTES, resolveContextPolicy } from './context-policy.mjs';
+import { approvalScopeDigest, canonicalContextPolicy, DEFAULT_CONTEXT_POLICY, evaluateContextBytes, LEGACY_CONTEXT_MAX_BYTES, resolveContextPolicy } from './context-policy.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
@@ -475,10 +475,23 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
 
-  const contextPolicy = input.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
-  const resolvedContextPolicy = resolveContextPolicy(input, contextPolicy, { newTask: input.newTask === true });
-  findings.push(...resolvedContextPolicy.findings);
-  const contextPolicyVersion = resolvedContextPolicy.version;
+  // Activation is pinned by workspace.yaml at policySha. A caller-supplied policy
+  // may only short-circuit (deny before any load) and must equal the pinned one.
+  const callerContextPolicy = input.contextPolicy;
+  let resolvedContextPolicy = resolveContextPolicy(input, callerContextPolicy ?? DEFAULT_CONTEXT_POLICY, { newTask: input.newTask === true });
+  if (callerContextPolicy !== undefined) findings.push(...resolvedContextPolicy.findings);
+  let contextPolicyVersion = resolvedContextPolicy.version;
+  const blockedResult = () => ({
+    passed: false,
+    findings,
+    manifest: { contextPolicyVersion, expectedSources },
+    handoffProvenance: {
+      assembledContextBudgetBytes: contextPolicyVersion === 2 ? null : LEGACY_CONTEXT_MAX_BYTES,
+      assembledContextActualBytes: 0,
+      assembledContextCheck: 'BLOCKED'
+    },
+    assembledContext: ''
+  });
 
   for (const key of ['policySha', 'baseSha', 'headSha']) {
     if (!validSha(input[key])) findings.push(finding('INVALID_CONTEXT_SHA', key));
@@ -511,19 +524,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, input.role, findings);
-  if (!resolvedContextPolicy.admitted) {
-    return {
-      passed: false,
-      findings,
-      manifest: { contextPolicyVersion, expectedSources },
-      handoffProvenance: {
-        assembledContextBudgetBytes: contextPolicyVersion === 2 ? null : LEGACY_CONTEXT_MAX_BYTES,
-        assembledContextActualBytes: 0,
-        assembledContextCheck: 'BLOCKED'
-      },
-      assembledContext: ''
-    };
-  }
+  if (callerContextPolicy !== undefined && !resolvedContextPolicy.admitted) return blockedResult();
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -598,10 +599,10 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       && dependency.revisionSha === source.revisionSha
     );
   };
-  if (!Array.isArray(input.sources) || input.sources.length === 0) {
-    findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
-  } else {
-    input.sources.forEach((source, index) => {
+  let registryDependencies = new Set();
+  let pinnedPolicyForManifest = null;
+  const hydratedByIndex = [];
+  const processSource = (source, index) => {
       const normalized = normalizeSource(source, index, findings);
       if (!normalized) return;
       const key = sourceKey(normalized);
@@ -611,6 +612,11 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       }
       if (!expectedSourceKeys.has(key)) {
         findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`));
+        return;
+      }
+      // Dependencies must be declared by the pinned workspace registry BEFORE any Git read.
+      if (normalized.kind === 'dependency' && !registryDependencies.has(normalizeRepository(normalized.repository))) {
+        findings.push(finding('CONTEXT_DEPENDENCY_UNEXPECTED', `sources.${index}`, { repository: normalized.repository }));
         return;
       }
       if (normalized.kind === 'dependency' && !normalizedDependencies.some((dependency) =>
@@ -631,8 +637,63 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
       if (!hydrated) return;
       seenSources.add(key);
-      sources.push(hydrated);
+      hydratedByIndex[index] = hydrated;
+  };
+  if (!Array.isArray(input.sources) || input.sources.length === 0) {
+    findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
+  } else {
+    // Pass 1: canonical policy/role sources (always authorized at policySha).
+    input.sources.forEach((source, index) => {
+      if (POLICY_BOUND_KINDS.has(source?.kind)) processSource(source, index);
     });
+
+    const workspaceSource = hydratedByIndex.find((source) => source
+      && source.kind === 'policy'
+      && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+      && source.path === 'workspace.yaml'
+      && source.revisionSha === input.policySha);
+    let pinnedContextPolicy = null;
+    if (workspaceSource) {
+      try {
+        const workspace = parse(workspaceSource.content);
+        pinnedContextPolicy = workspace?.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
+        const targetRepository = handoffRepository ?? targetAgentSource?.repository;
+        const records = (Array.isArray(workspace?.projects) ? workspace.projects : [])
+          .filter((project) => normalizeRepository(project?.repository) === normalizeRepository(targetRepository));
+        if (records.length === 1 && Array.isArray(records[0].contextDependencies)) {
+          registryDependencies = new Set(records[0].contextDependencies
+            .map((dependency) => normalizeRepository(dependency?.repository))
+            .filter(Boolean));
+        }
+      } catch {
+        findings.push(finding('CONTEXT_WORKSPACE_REGISTRY_UNAVAILABLE', 'sources.workspace.yaml'));
+      }
+    }
+    if (pinnedContextPolicy === null) {
+      findings.push(finding('CONTEXT_POLICY_UNPINNED', 'sources.workspace.yaml'));
+      return blockedResult();
+    }
+    if (callerContextPolicy !== undefined
+      && canonicalContextPolicy(callerContextPolicy) !== canonicalContextPolicy(pinnedContextPolicy)) {
+      findings.push(finding('CONTEXT_POLICY_NOT_PINNED', 'contextPolicy'));
+      return blockedResult();
+    }
+    resolvedContextPolicy = resolveContextPolicy(input, pinnedContextPolicy, { newTask: input.newTask === true });
+    if (callerContextPolicy === undefined) findings.push(...resolvedContextPolicy.findings);
+    contextPolicyVersion = resolvedContextPolicy.version;
+    if (!resolvedContextPolicy.admitted) return blockedResult();
+    pinnedPolicyForManifest = pinnedContextPolicy;
+    // v2 evidence must be bound to exactly one task and its approved scope.
+    if (contextPolicyVersion === 2 && (typeof input.taskId !== 'string' || input.taskId.trim() === '' || !approvalScopeDigest(input.approval))) {
+      findings.push(finding('CONTEXT_TASK_BINDING_UNAVAILABLE', 'taskId'));
+      return blockedResult();
+    }
+
+    // Pass 2: target, reference and dependency sources, only after authorization.
+    input.sources.forEach((source, index) => {
+      if (!POLICY_BOUND_KINDS.has(source?.kind)) processSource(source, index);
+    });
+    sources.push(...hydratedByIndex.filter(Boolean));
   }
 
   validateRequiredContextDependencies(
@@ -741,7 +802,12 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   const manifest = {
     role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
     contextPolicyVersion,
+    contextPolicy: pinnedPolicyForManifest,
     repository: handoffRepository,
+    taskId: typeof input.taskId === 'string' && input.taskId.trim() !== '' ? input.taskId : null,
+    approval: approvalScopeDigest(input.approval)
+      ? { reference: input.approval.reference ?? null, scopeSha256: approvalScopeDigest(input.approval) }
+      : null,
     policySha: validSha(input.policySha) ? input.policySha : null,
     baseSha: validSha(input.baseSha) ? input.baseSha : null,
     headSha: validSha(input.headSha) ? input.headSha : null,
@@ -776,6 +842,8 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     findings,
     manifest,
     handoffProvenance: {
+      // A new task may resolve to v2 from the pinned default; the handoff must say so.
+      ...(contextPolicyVersion === 2 ? { contextPolicyVersion } : {}),
       assembledContextBudgetBytes: measured.maxBytes,
       assembledContextActualBytes: measured.actualBytes,
       assembledContextCheck: manifest.assembledContextCheck
