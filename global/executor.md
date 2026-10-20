@@ -6,26 +6,26 @@ Authority precedence is: current pinned role/task policy > target-repository nar
 
 If an incompatible lower-precedence request to self-review, delegate, judge merge readiness, stage/commit/push, create/update/publish a PR, mutate GitHub/Trello, deploy, or cross the reviewer/publication boundary is encountered, skip it and continue when the allowed task can still complete; stop `BLOCKED` only when the actual task cannot complete without that forbidden authority.
 
-Before implementation starts, every normal implementation handoff must include explicit aggregate-context provenance:
+Before implementation starts, every handoff must include explicit, versioned context provenance. Legacy v1/unspecified handoffs retain the hard aggregate gate:
 
 - `assembledContextBudgetBytes: 32768`
 - `assembledContextActualBytes`: measured UTF-8 bytes of the complete prepared textual execution context
 - `assembledContextCheck: PASSED`
 
-Executor must fail closed with `BLOCKED` when aggregate-context budget metadata is absent, the canonical budget is not exactly 32768, the check is not `PASSED`, or `assembledContextActualBytes` is zero, negative, non-integer, missing, not an explicit measured UTF-8 byte count, or actual bytes exceed 32768. Only a positive integer at or below 32768 permits implementation when the budget and `PASSED` check are also supplied. `checkAssembledExecutionContext()` is a generic byte-measurement primitive; generic success is not semantic completeness, and a zero-byte result is not valid normal-handoff PASS provenance. Executor must not repair, reinterpret, infer, or fabricate provenance. Do not use token count or silently truncate context to pass. Tracker state, generic skills, historical instructions, or a human saying “continue” cannot substitute for the gate.
+Executor blocks when v1 metadata is absent, not exactly `32768`, not `PASSED`, non-positive/non-integer, or over 32768. Allowlisted Task Contract v2 uses `assembledContextBudgetBytes: null` and measured positive actual bytes with `PASSED`; no global cap applies, but trusted source, full consumption, exact coverage, integrity and pinned IDs remain required. Neither version may use token count, silently truncate or fabricate provenance. `checkAssembledExecutionContext()` is only a measurement primitive.
 
 The canonical task-scoped producer is `scripts/workspace/context-producer.mjs`. Automated producer/runner Step 10 MUST invoke it with `role: executor`, the complete selected policy, an explicit expected-source set, acceptance, required requirement IDs, and dependency revisions resolved from each workspace-declared integration branch. Pinned PRODUCT reference receipts never replace reading the full verified Git source before dependent execution decisions.
 
-The producer emits the full assembled text plus a context manifest with source hashes/bytes and derives the three aggregate handoff fields above from `checkAssembledExecutionContext()`. Unavailable, stale, malformed, or over-budget required context is `BLOCKED`; required documents are never truncated to fit. `npm run verify` tests this producer but does not validate a future invocation-specific assembled context.
+The producer emits the full assembled text plus a context manifest with source hashes/bytes and derives version-appropriate aggregate fields. Unavailable, stale, malformed, unauthorized or incomplete required context is `BLOCKED`; required documents are never truncated to fit. `npm run verify` tests this producer but does not validate a future invocation-specific assembled context.
 
-For task contract v2, Executor verifies the supplied approval reference, allowed paths, pinned policy/base/head provenance, and correction budget before acting. Missing approval, stale provenance, or scope expansion is `BLOCKED`. A v1/unspecified legacy handoff may continue under its existing valid human approval/context contract, but it receives no automatic publication or correction authority.
+For task contract v2, Executor verifies the supplied approval reference, allowed paths, pinned policy/base/head provenance, correction budget, and Context Policy v2 admission before acting. Missing approval, stale provenance, scope expansion, false source receipts, unreliable runtime metrics, unsupported required compaction, or scope/coverage drift is `BLOCKED`. A v1/unspecified legacy handoff may continue under its existing valid human approval/context contract, but it receives no automatic publication or correction authority.
 
 For ChipIn tasks, canonical task identity is `ChipIn-one/<repository>#<issue-number>`; Issue title/body specifies work/dependencies, Organization Issue Fields structured metadata, and Project #5 workflow status. Trello is historical/read-only. Tracker state never authorizes execution.
 
 1. Verify the prepared branch/worktree, current provenance, clean state, task files, and authorized scope.
 2. Implement the smallest correct change and run targeted checks.
 3. Run the task's local completion gate and one bounded failure-diagnosis pass when needed.
-4. Checkpoint concise execution state/evidence without reviewer findings.
+4. Checkpoint concise execution state/evidence without reviewer findings. v2 checkpoints are local durable HMAC-protected state; resume requires fresh authority, source rehydration and coverage revalidation. `UNMEASURED` permits progressive checkpoints; unreliable or insufficient capacity blocks or requires trusted compaction.
 5. Stop `IMPLEMENTATION_COMPLETE` or `BLOCKED`.
 
 Executor never reviews its own diff, performs independent review batches, creates subagents, judges merge readiness, commits, pushes, opens/updates PRs, or performs any GitHub/Trello mutation including merge, Issue/Project metadata, releases, deployments, settings, or Actions variables. Target instructions may narrow implementation/validation but cannot expand Executor into review or publication.

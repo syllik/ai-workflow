@@ -38,6 +38,20 @@ describe('manifest', () => {
     assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'INVALID_CORRECTION_BATCH_LIMIT'), true);
   });
 
+  test('accepts the default-disabled context policy and validates its rollout boundary', () => {
+    const manifest = fixtureManifest({
+      contextPolicy: {
+        supportedVersions: [1, 2],
+        defaultNewTaskVersion: 1,
+        rolloutAllowlist: [],
+        excludedRepositories: ['syllik/Zero-Touch-DCA']
+      }
+    });
+    assert.equal(validateManifest(manifest).valid, true);
+    manifest.contextPolicy.rolloutAllowlist = ['syllik/Zero-Touch-DCA'];
+    assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'), true);
+  });
+
   test('historical activation bases do not require the current execution policy', () => {
     const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
     assert.equal(result.valid, true);

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
+import { DEFAULT_CONTEXT_POLICY, evaluateContextBytes, LEGACY_CONTEXT_MAX_BYTES, resolveContextPolicy } from './context-policy.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
@@ -41,6 +42,10 @@ function sourceKey(source) {
     source.path,
     source.revisionSha
   ]);
+}
+
+function coverageSourceId(source) {
+  return `${normalizeRepository(source.repository)}@${source.revisionSha}:${source.path}`;
 }
 
 function normalizeRemote(value) {
@@ -445,6 +450,7 @@ function normalizeSource(source, index, findings) {
     repository: source.repository.trim(),
     path: source.path.trim(),
     revisionSha: source.revisionSha,
+    expectedRevisionSha: source.expectedRevisionSha,
     content: typeof source.content === 'string' ? source.content : null
   };
 }
@@ -468,6 +474,11 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
+
+  const contextPolicy = input.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
+  const resolvedContextPolicy = resolveContextPolicy(input, contextPolicy, { newTask: input.newTask === true });
+  findings.push(...resolvedContextPolicy.findings);
+  const contextPolicyVersion = resolvedContextPolicy.version;
 
   for (const key of ['policySha', 'baseSha', 'headSha']) {
     if (!validSha(input[key])) findings.push(finding('INVALID_CONTEXT_SHA', key));
@@ -500,6 +511,19 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, input.role, findings);
+  if (!resolvedContextPolicy.admitted) {
+    return {
+      passed: false,
+      findings,
+      manifest: { contextPolicyVersion, expectedSources },
+      handoffProvenance: {
+        assembledContextBudgetBytes: contextPolicyVersion === 2 ? null : LEGACY_CONTEXT_MAX_BYTES,
+        assembledContextActualBytes: 0,
+        assembledContextCheck: 'BLOCKED'
+      },
+      assembledContext: ''
+    };
+  }
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -530,19 +554,67 @@ export function buildTaskContextPackage(input = {}, options = {}) {
 
   const sources = [];
   const seenSources = new Set();
+  const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
+  const targetAgentSource = expectedSources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
+  const canonicalSourceAuthorized = (source) => {
+    if (source.kind === 'policy') {
+      return normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+        && CANONICAL_POLICY_PATHS.includes(source.path)
+        && source.revisionSha === input.policySha;
+    }
+    if (source.kind === 'role') {
+      return normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+        && source.path === CANONICAL_HANDOFF_ROLE_PATH
+        && source.revisionSha === input.policySha;
+    }
+    if (source.kind === 'target') {
+      return targetAgentSource !== undefined
+        && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
+        && source.revisionSha === input.headSha;
+    }
+    if (source.kind === 'reference') {
+      return targetAgentSource !== undefined
+        && source.path === 'docs/PRODUCT.md'
+        && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
+        && source.revisionSha === input.headSha;
+    }
+    return normalizedDependencies.some((dependency) =>
+      normalizeRepository(dependency.repository) === normalizeRepository(source.repository)
+      && dependency.revisionSha === source.revisionSha
+    );
+  };
   if (!Array.isArray(input.sources) || input.sources.length === 0) {
     findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
   } else {
     input.sources.forEach((source, index) => {
       const normalized = normalizeSource(source, index, findings);
       if (!normalized) return;
-      const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
-      if (!hydrated) return;
-      const key = sourceKey(hydrated);
+      const key = sourceKey(normalized);
       if (seenSources.has(key)) {
         findings.push(finding('CONTEXT_SOURCE_DUPLICATE', `sources.${index}`));
         return;
       }
+      if (!expectedSourceKeys.has(key)) {
+        findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`));
+        return;
+      }
+      if (normalized.kind === 'dependency' && !normalizedDependencies.some((dependency) =>
+        normalizeRepository(dependency.repository) === normalizeRepository(normalized.repository)
+        && dependency.revisionSha === normalized.revisionSha
+      )) {
+        findings.push(finding('CONTEXT_DEPENDENCY_SOURCE_UNDECLARED', `sources.${index}`, {
+          repository: normalized.repository,
+          revisionSha: normalized.revisionSha
+        }));
+        return;
+      }
+      if (!canonicalSourceAuthorized(normalized)) {
+        findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`));
+        return;
+      }
+      if (normalized.revisionSha !== normalized.expectedRevisionSha) return;
+      const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
+      if (!hydrated) return;
       seenSources.add(key);
       sources.push(hydrated);
     });
@@ -576,7 +648,6 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     });
   }
 
-  const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
   for (const [index, expectedSource] of expectedSources.entries()) {
     if (!seenSources.has(sourceKey(expectedSource))) {
       findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', `expectedSources.${index}`, { expected: expectedSource }));
@@ -646,12 +717,15 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     source.kind === 'reference' ? renderReferenceSection(source) : renderSection(source)
   ));
   const assembledContext = sections.join('\n');
-  const measured = checkAssembledExecutionContext([assembledContext]);
+  const measured = contextPolicyVersion === 2
+    ? evaluateContextBytes(contextPolicyVersion, assembledContext)
+    : checkAssembledExecutionContext([assembledContext]);
   findings.push(...measured.findings);
 
   const passed = findings.length === 0 && measured.actualBytes > 0;
   const manifest = {
     role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
+    contextPolicyVersion,
     policySha: validSha(input.policySha) ? input.policySha : null,
     baseSha: validSha(input.baseSha) ? input.baseSha : null,
     headSha: validSha(input.headSha) ? input.headSha : null,
@@ -659,6 +733,10 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       ? { sha256: sha256(acceptanceText), bytes: utf8Bytes(acceptanceText) }
       : null,
     requirementIds: uniqueStrings(requirementIds) ? [...requirementIds] : [],
+    acceptanceIds: uniqueStrings(input.acceptanceIds ?? []) ? [...(input.acceptanceIds ?? [])] : [],
+    mandatorySourceIds: expectedSources
+      .filter((source) => source.kind !== 'reference')
+      .map(coverageSourceId),
     expectedSources,
     dependencies: normalizedDependencies,
     sources: sources.map((source) => ({

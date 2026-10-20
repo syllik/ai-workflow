@@ -152,18 +152,21 @@ describe('workflow documentation', () => {
     assert.match(trusted, /permission-contents: read/u);
   });
 
-  test('retains the exact 32768-byte aggregate-context contract', () => {
+  test('documents versioned aggregate-context policy', () => {
     assert.equal(BUDGETS['assembled execution context'], 32768);
     assert.deepEqual(checkAssembledExecutionContext([]), { actualBytes: 0, maxBytes: 32768, findings: [] });
-    for (const filePath of ['global/planner.md', 'global/architect.md', 'global/executor.md', 'prompts/implementation.md', 'templates/prompt.md']) {
+    assert.equal(checkAssembledExecutionContext(['x'.repeat(40000)], { enforceLimit: false }).maxBytes, null);
+    for (const filePath of ['FLOW.md', 'global/core.md', 'global/planner.md', 'global/architect.md', 'global/executor.md', '.ai/context.md']) {
       assert.match(text(filePath), /32768/u, filePath);
     }
-    const consumer = `${text('global/executor.md')}\n${text('prompts/implementation.md')}\n${text('templates/prompt.md')}`;
+    const consumer = `${text('global/architect.md')}\n${text('global/executor.md')}\n${text('.ai/context.md')}`;
     assert.match(consumer, /PASSED/u);
-    assert.match(consumer, /zero|positive integer/iu);
+    assert.match(consumer, /zero|positive/iu);
     assert.match(consumer, /UTF-8/iu);
     assert.match(consumer, /must not.*(?:infer|fabricate|repair)|Do not infer/isu);
     assert.match(consumer, /token count|silently truncate/iu);
+    assert.match(consumer, /no global (?:assembled-context )?cap/iu);
+    assert.match(consumer, /trusted source|source authorization/iu);
   });
 
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { DEFAULT_CONTEXT_POLICY, validateContextPolicyConfig } from './context-policy.mjs';
 import { ASSEMBLED_CONTEXT_BUDGET_BYTES, validateExecutionPolicyConfig } from './task-policy.mjs';
 
 export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
@@ -22,7 +23,7 @@ export const HARD_BUDGETS = Object.freeze({
   'human plan.md': 16384
 });
 
-const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'executionPolicy', 'gitLifecycle', 'projects']);
+const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'contextPolicy', 'executionPolicy', 'gitLifecycle', 'projects']);
 const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
 const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const GIT_LIFECYCLE_KEYS = new Set(['canonicalBranch', 'normalMergeMethod', 'productionPromotion', 'temporaryIssueBranchPattern', 'repositories']);
@@ -239,6 +240,7 @@ export function validateManifest(value) {
   }
 
   findings.push(...validateExecutionPolicyConfig(value.executionPolicy));
+  findings.push(...validateContextPolicyConfig(value.contextPolicy ?? DEFAULT_CONTEXT_POLICY));
   validateGitLifecycle(value.gitLifecycle, value.projects, findings);
 
   if (!Array.isArray(value.projects)) {
