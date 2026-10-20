@@ -12,6 +12,21 @@ budgets:
   assembled execution context: 32768
   result.md: 4096
   human plan.md: 16384
+contextPolicy:
+  supportedVersions: [1, 2]
+  defaultNewTaskVersion: 2
+  rolloutAllowlist:
+    - syllik/syllik
+    - syllik/life-ops
+    - syllik/life-ops-bot
+    - ChipIn-one/chipin-frontend
+    - ChipIn-one/.github
+    - syllik/chatgpt-archive-cleanup
+    - syllik/youtube-metadata-translator
+    - syllik/ai-workflow
+    - syllik/gpg-signed-commits
+    - syllik/Zero-Touch-DCA
+  excludedRepositories: []
 executionPolicy:
   contractVersion: 2
   roles: [planner, architect, executor, reviewer, auditor]

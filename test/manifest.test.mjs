@@ -52,6 +52,18 @@ describe('manifest', () => {
     assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'), true);
   });
 
+  test('canonical context policy covers exactly the active managed projects', () => {
+    // Every active managed project is either activated or explicitly excluded (rollback),
+    // and nothing else is listed, so onboarding cannot silently skip Context Policy v2.
+    const manifest = loadManifest(new URL('../workspace.yaml', import.meta.url).pathname);
+    const listed = [...manifest.contextPolicy.rolloutAllowlist, ...manifest.contextPolicy.excludedRepositories]
+      .map((repository) => repository.toLowerCase()).sort();
+    const managed = manifest.projects
+      .filter(({ access, status }) => access === 'managed' && status === 'active')
+      .map(({ repository }) => repository.toLowerCase()).sort();
+    assert.deepEqual([...new Set(listed)], managed);
+  });
+
   test('historical activation bases do not require the current execution policy', () => {
     const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
     assert.equal(result.valid, true);
