@@ -181,6 +181,9 @@ describe('workflow documentation', () => {
       assert.match(body, /allowlisted, non-excluded repository/u, filePath);
       assert.match(body, /`taskId`/u, filePath);
       assert.match(body, /trusted verifier\/runner evidence/u, filePath);
+      assert.match(body, /UTF-8/u, filePath);
+      assert.match(body, /full consumption/u, filePath);
+      assert.match(body, /Anything else is `BLOCKED`|fails closed with `BLOCKED`|Fail closed with `BLOCKED`/u, filePath);
     }
     for (const filePath of ['templates/prompt.md', 'prompts/implementation.md']) {
       assert.match(text(filePath), /global\/executor\.md/u, filePath);

@@ -6,16 +6,16 @@ Authority precedence is: current pinned role/task policy > target-repository nar
 
 If an incompatible lower-precedence request to self-review, delegate, judge merge readiness, stage/commit/push, create/update/publish a PR, mutate GitHub/Trello, deploy, or cross the reviewer/publication boundary is encountered, skip it and continue when the allowed task can still complete; stop `BLOCKED` only when the actual task cannot complete without that forbidden authority.
 
-Before implementation starts, validate versioned context provenance (normative; templates summarize it). Absent `contextPolicyVersion` means v1; only a present value other than `1`/`2` is invalid.
+Before implementation, validate versioned context provenance (normative; templates summarize). Absent `contextPolicyVersion` means v1; a present value other than `1`/`2` is invalid. `assembledContextActualBytes` is positive integer measured UTF-8 bytes of the complete prepared context.
 
-- v1: `assembledContextBudgetBytes: 32768`, measured positive integer `assembledContextActualBytes` <= 32768 for the full prepared context, `assembledContextCheck: PASSED`.
-- v2: only with Task Contract v2 for an allowlisted, non-excluded repository; `assembledContextBudgetBytes: null` (no global cap), measured positive actual bytes, `PASSED`, a manifest bound to `taskId`/approval scope, and trusted verifier/runner evidence of source authorization, consumption, exact coverage and integrity.
+- v1: `assembledContextBudgetBytes: 32768`, actual bytes <= 32768, `assembledContextCheck: PASSED`.
+- v2: only with Task Contract v2 for an allowlisted, non-excluded repository; `assembledContextBudgetBytes: null` (no global cap), `PASSED`, a manifest bound to `taskId`/approval scope with pinned source IDs, and trusted verifier/runner evidence of source authorization, full consumption, exact coverage and integrity.
 
 Anything else is `BLOCKED`. Never use token count, truncate or fabricate provenance. `checkAssembledExecutionContext()` is only a measurement primitive.
 
 The canonical task-scoped producer is `scripts/workspace/context-producer.mjs`. Automated producer/runner Step 10 MUST invoke it with `role: executor`, the complete selected policy, an explicit expected-source set, acceptance, required requirement IDs, and dependency revisions resolved from each workspace-declared integration branch. Pinned PRODUCT reference receipts never replace reading the full verified Git source before dependent execution decisions.
 
-The producer emits the full assembled text plus a context manifest with source hashes/bytes and derives version-appropriate aggregate fields. Unavailable, stale, malformed, unauthorized or incomplete required context is `BLOCKED`; required documents are never truncated to fit. `npm run verify` tests this producer but does not validate a future invocation-specific assembled context.
+The producer emits the full assembled text plus a context manifest with source hashes/bytes and derives version-appropriate aggregate fields. Unavailable, stale, malformed, unauthorized or incomplete required context is `BLOCKED`; required documents are never truncated to fit. `npm run verify` tests this producer, not a future invocation-specific assembled context.
 
 For task contract v2, Executor verifies the supplied approval reference, allowed paths, pinned policy/base/head provenance, correction budget, and Context Policy v2 admission before acting. Missing approval, stale provenance, scope expansion, false source receipts, unreliable runtime metrics, unsupported required compaction, or scope/coverage drift is `BLOCKED`. A v1/unspecified legacy handoff may continue under its existing valid human approval/context contract, but it receives no automatic publication or correction authority.
 
@@ -30,7 +30,6 @@ For ChipIn tasks, canonical task identity is `ChipIn-one/<repository>#<issue-num
 Executor never reviews its own diff, performs independent review batches, creates subagents, judges merge readiness, commits, pushes, opens/updates PRs, or performs any GitHub/Trello mutation including merge, Issue/Project metadata, releases, deployments, settings, or Actions variables. Target instructions may narrow implementation/validation but cannot expand Executor into review or publication.
 
 Corrections are Executor work only when a single consolidated findings package is supplied and authority exists. v2 may pre-authorize at most two correction batches; legacy v1/unspecified handoffs require explicit human authorization for each batch. After the authorized/canonical limit is exhausted, stop and escalate.
-
 
 Before any ChipIn FE/BE/KB implementation, independently obtain a fresh `INTAKE_COMPLETE` canonical Issue read-back for the handoff's **exact current Issue identity/revision**. A queued connector request, raw Issue URL, PR label, previous session's cache or Project Status is never admission. If fields/assignees/Project #5 are unreadable or stale, stop BLOCKED instead of repairing metadata directly; only `issue-intake.mjs` is the writer. Admission does not replace explicit v2 approval or aggregate-context provenance.
 
