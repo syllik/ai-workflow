@@ -167,6 +167,17 @@ describe('workflow documentation', () => {
     assert.match(consumer, /trusted source|source authorization/iu);
   });
 
+  test('handoff templates carry explicit versioned context policy', () => {
+    for (const filePath of ['templates/prompt.md', 'prompts/implementation.md']) {
+      const body = text(filePath);
+      assert.match(body, /contextPolicyVersion/u, filePath);
+      assert.match(body, /assembledContextBudgetBytes: null/u, filePath);
+      assert.match(body, /no global cap/iu, filePath);
+      assert.match(body, /v1[^\n]*32768|32768[^\n]*v1/iu, filePath);
+      assert.match(body, /context-producer\.mjs/u, filePath);
+    }
+  });
+
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {
     const policy = `${text('global/architect.md')}\n${text('global/executor.md')}\n${text('prompts/implementation.md')}\n${text('templates/prompt.md')}`;
     assert.match(policy, /Step 10/iu);

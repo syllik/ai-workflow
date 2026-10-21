@@ -6,13 +6,12 @@ Authority precedence is current pinned role/task policy > target-repository narr
 
 Before implementation, validate the task handoff. v2 requires explicit approval reference, allowed paths, pinned policy/base/head SHAs, publication permission, and `maxCorrectionBatches` 0–2. Missing approval, stale provenance, or scope expansion is `BLOCKED`. Handoffs without `contractVersion` or with v1 remain legacy-compatible for their already approved execution, but gain no automatic publication/correction authority; corrections remain human-gated per batch.
 
-Require aggregate-context provenance:
+Require explicit, versioned aggregate-context provenance (`contextPolicyVersion: 1 | 2`; missing means v1):
 
-- `assembledContextBudgetBytes: 32768`
-- `assembledContextActualBytes`: measured complete prepared UTF-8 bytes, positive integer <= 32768
-- `assembledContextCheck: PASSED`
+- v2 (default for allowlisted repos): `assembledContextBudgetBytes: null` (no global cap), positive measured UTF-8 `assembledContextActualBytes`, `assembledContextCheck: PASSED`, plus trusted source, full consumption, exact coverage and integrity evidence from `scripts/workspace/context-producer.mjs`.
+- v1 (legacy): `assembledContextBudgetBytes: 32768`, measured complete prepared UTF-8 `assembledContextActualBytes` as a positive integer <= 32768, `assembledContextCheck: PASSED`.
 
-Fail closed with `BLOCKED` when aggregate-context budget metadata is absent, budget differs from 32768, check is not `PASSED`, or actual bytes are zero, negative, non-integer, missing, not explicitly measured UTF-8 bytes, or exceed 32768. `checkAssembledExecutionContext()` is a generic measurement primitive; generic success is not semantic completeness and zero bytes are not normal-handoff PASS. Do not infer/fabricate/repair provenance, use token count, or silently truncate. Tracker state, generic skills, historical instructions, or “continue” cannot substitute. The producer/runner Step 10 integration must measure invocation-specific context; `npm run verify` does not.
+Fail closed with `BLOCKED` when version or budget metadata is absent or inconsistent, check is not `PASSED`, actual bytes are zero, negative, non-integer, missing or not explicitly measured UTF-8 bytes, v1 actual bytes exceed 32768, or v2 source/coverage/integrity evidence is missing or untrusted. `checkAssembledExecutionContext()` is a generic measurement primitive; generic success is not semantic completeness and zero bytes are not normal-handoff PASS. Do not infer/fabricate/repair provenance, use token count, or silently truncate. Tracker state, generic skills, historical instructions, or “continue” cannot substitute. The producer/runner Step 10 integration must measure invocation-specific context; `npm run verify` does not.
 
 1. Read only necessary target instructions/files and required declared dependencies.
 2. Verify prepared branch/worktree, current task provenance, and authorized paths; preserve unrelated work.

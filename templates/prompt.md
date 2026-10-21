@@ -27,13 +27,26 @@ For ChipIn tasks, canonical identity is `owner/repository#issue`, and the task b
 
 ## Aggregate prepared-context provenance
 
-Every normal implementation handoff must supply:
+Every normal implementation handoff must state its Context Policy version explicitly; a missing `contextPolicyVersion` is treated as v1.
 
-- `assembledContextBudgetBytes: 32768`
+- Context policy version: `1 | 2`
+
+v2 (default for new tasks in repositories allowlisted by `workspace.yaml` `contextPolicy`):
+
+- `contextPolicyVersion: 2`
+- `assembledContextBudgetBytes: null` (no global cap)
 - `assembledContextActualBytes`: `<positive measured UTF-8 byte count>`
 - `assembledContextCheck: PASSED`
+- trusted source, full consumption, exact coverage and integrity evidence from `scripts/workspace/context-producer.mjs`
 
-Executor fails closed with `BLOCKED` if budget metadata is missing, budget is not exactly 32768, check is not `PASSED`, actual bytes are zero/negative/non-integer/missing, or actual bytes exceed 32768. `checkAssembledExecutionContext()` is a generic measurement primitive; zero-byte generic success is not normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
+v1 (legacy/unspecified; hard aggregate gate):
+
+- `contextPolicyVersion: 1`
+- `assembledContextBudgetBytes: 32768`
+- `assembledContextActualBytes`: `<positive measured UTF-8 byte count, <= 32768>`
+- `assembledContextCheck: PASSED`
+
+Executor fails closed with `BLOCKED` if version or budget metadata is missing or inconsistent, check is not `PASSED`, actual bytes are zero/negative/non-integer/missing, v1 actual bytes exceed 32768, or v2 source/coverage/integrity evidence is missing or untrusted. `checkAssembledExecutionContext()` is a generic measurement primitive; zero-byte generic success is not normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
 
 ## Task
 
