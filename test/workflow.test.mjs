@@ -167,14 +167,23 @@ describe('workflow documentation', () => {
     assert.match(consumer, /trusted source|source authorization/iu);
   });
 
-  test('handoff templates carry explicit versioned context policy', () => {
-    for (const filePath of ['templates/prompt.md', 'prompts/implementation.md']) {
+  test('handoff templates and executor role share one versioned context rule', () => {
+    for (const filePath of ['global/executor.md', 'templates/prompt.md', 'prompts/implementation.md']) {
       const body = text(filePath);
-      assert.match(body, /contextPolicyVersion/u, filePath);
-      assert.match(body, /assembledContextBudgetBytes: null/u, filePath);
+      // A missing version selects legacy v1; it is never itself a reason to block.
+      assert.match(body, /absent(?: `contextPolicyVersion`)? means v1|`contextPolicyVersion` absent means v1/iu, filePath);
+      assert.doesNotMatch(body, /BLOCKED`?[^\n]*(?:version|metadata) (?:or budget metadata )?is (?:missing|absent)/iu, filePath);
+      assert.match(body, /- v1[^\n]*`assembledContextBudgetBytes: 32768`|^- `assembledContextBudgetBytes: 32768`$/imu, filePath);
+      assert.match(body, /`assembledContextBudgetBytes: null`/u, filePath);
       assert.match(body, /no global cap/iu, filePath);
-      assert.match(body, /v1[^\n]*32768|32768[^\n]*v1/iu, filePath);
-      assert.match(body, /context-producer\.mjs/u, filePath);
+      // v2 is gated by Task Contract v2 and an allowlisted, non-excluded repository.
+      assert.match(body, /Task Contract v2/u, filePath);
+      assert.match(body, /allowlisted, non-excluded repository/u, filePath);
+      assert.match(body, /`taskId`/u, filePath);
+      assert.match(body, /trusted verifier\/runner evidence/u, filePath);
+    }
+    for (const filePath of ['templates/prompt.md', 'prompts/implementation.md']) {
+      assert.match(text(filePath), /global\/executor\.md/u, filePath);
     }
   });
 

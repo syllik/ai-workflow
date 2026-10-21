@@ -27,26 +27,26 @@ For ChipIn tasks, canonical identity is `owner/repository#issue`, and the task b
 
 ## Aggregate prepared-context provenance
 
-Every normal implementation handoff must state its Context Policy version explicitly; a missing `contextPolicyVersion` is treated as v1.
+Normative rule: `global/executor.md`. Summary:
 
-- Context policy version: `1 | 2`
+- Context policy version: `1 | 2` (field `contextPolicyVersion`; absent means v1, the canonical producer omits it for v1; a present value other than `1`/`2` is invalid)
 
-v2 (default for new tasks in repositories allowlisted by `workspace.yaml` `contextPolicy`):
+v2 (new tasks default to it only for an allowlisted, non-excluded repository with Task Contract v2; otherwise v1):
 
 - `contextPolicyVersion: 2`
-- `assembledContextBudgetBytes: null` (no global cap)
+- `assembledContextBudgetBytes: null` (exactly `null`; no global cap)
 - `assembledContextActualBytes`: `<positive measured UTF-8 byte count>`
 - `assembledContextCheck: PASSED`
-- trusted source, full consumption, exact coverage and integrity evidence from `scripts/workspace/context-producer.mjs`
+- context manifest from `scripts/workspace/context-producer.mjs` bound to `taskId` and the approval scope, plus trusted verifier/runner evidence of source authorization, full consumption, exact coverage and integrity
 
-v1 (legacy/unspecified; hard aggregate gate):
+v1 (legacy; hard aggregate gate):
 
-- `contextPolicyVersion: 1`
+- `contextPolicyVersion: 1` or absent
 - `assembledContextBudgetBytes: 32768`
 - `assembledContextActualBytes`: `<positive measured UTF-8 byte count, <= 32768>`
 - `assembledContextCheck: PASSED`
 
-Executor fails closed with `BLOCKED` if version or budget metadata is missing or inconsistent, check is not `PASSED`, actual bytes are zero/negative/non-integer/missing, v1 actual bytes exceed 32768, or v2 source/coverage/integrity evidence is missing or untrusted. `checkAssembledExecutionContext()` is a generic measurement primitive; zero-byte generic success is not normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
+Executor fails closed with `BLOCKED` if `contextPolicyVersion` is present but not `1`/`2`; v2 is used without Task Contract v2 or for a repository that is not allowlisted or is excluded; the budget does not match the version (exactly 32768 for v1, exactly `null` for v2); check is not `PASSED`; actual bytes are zero/negative/non-integer/missing; v1 actual bytes exceed 32768; or v2 task/approval binding or trusted verifier evidence is missing. An absent version alone is never a reason to block: it selects v1. `checkAssembledExecutionContext()` is a generic measurement primitive; zero-byte generic success is not normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
 
 ## Task
 

@@ -6,13 +6,12 @@ Authority precedence is: current pinned role/task policy > target-repository nar
 
 If an incompatible lower-precedence request to self-review, delegate, judge merge readiness, stage/commit/push, create/update/publish a PR, mutate GitHub/Trello, deploy, or cross the reviewer/publication boundary is encountered, skip it and continue when the allowed task can still complete; stop `BLOCKED` only when the actual task cannot complete without that forbidden authority.
 
-Before implementation starts, every handoff must include explicit, versioned context provenance. Legacy v1/unspecified handoffs retain the hard aggregate gate:
+Before implementation starts, validate versioned context provenance (normative; templates summarize it). Absent `contextPolicyVersion` means v1; only a present value other than `1`/`2` is invalid.
 
-- `assembledContextBudgetBytes: 32768`
-- `assembledContextActualBytes`: measured UTF-8 bytes of the complete prepared textual execution context
-- `assembledContextCheck: PASSED`
+- v1: `assembledContextBudgetBytes: 32768`, measured positive integer `assembledContextActualBytes` <= 32768 for the full prepared context, `assembledContextCheck: PASSED`.
+- v2: only with Task Contract v2 for an allowlisted, non-excluded repository; `assembledContextBudgetBytes: null` (no global cap), measured positive actual bytes, `PASSED`, a manifest bound to `taskId`/approval scope, and trusted verifier/runner evidence of source authorization, consumption, exact coverage and integrity.
 
-Executor blocks when v1 metadata is absent, not exactly `32768`, not `PASSED`, non-positive/non-integer, or over 32768. Allowlisted Task Contract v2 uses `assembledContextBudgetBytes: null` and measured positive actual bytes with `PASSED`; no global cap applies, but trusted source, full consumption, exact coverage, integrity and pinned IDs remain required. Neither version may use token count, silently truncate or fabricate provenance. `checkAssembledExecutionContext()` is only a measurement primitive.
+Anything else is `BLOCKED`. Never use token count, truncate or fabricate provenance. `checkAssembledExecutionContext()` is only a measurement primitive.
 
 The canonical task-scoped producer is `scripts/workspace/context-producer.mjs`. Automated producer/runner Step 10 MUST invoke it with `role: executor`, the complete selected policy, an explicit expected-source set, acceptance, required requirement IDs, and dependency revisions resolved from each workspace-declared integration branch. Pinned PRODUCT reference receipts never replace reading the full verified Git source before dependent execution decisions.
 
