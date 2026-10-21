@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_CONTEXT_POLICY, validateContextPolicyConfig, resolveContextPolicy,
-  evaluateContextBytes, validateContextCoverage, assessRuntime, checkDocumentBudget, chooseCompaction,
+  resolveContextPolicy,
+  evaluateContextBytes, validateContextCoverage, assessRuntime, chooseCompaction,
   signContextCheckpoint, verifyContextCheckpoint
 } from '../scripts/workspace/context-policy.mjs';
 
@@ -26,7 +26,6 @@ const trustedSource = s => ({
 const verifyCoverage = data => validateContextCoverage(data, trustedSource);
 const coverage = (overrides = {}) => ({ sources: [source()], expectedSources: [source()], mandatorySourceIds: [id], requirementIds: ['REQ-1'], acceptanceIds: ['ACC-1'], declaredDependencies: [], ...overrides });
 const handoff = { contractVersion: 2, repository: 'syllik/life-ops-bot' };
-const activation = { ...DEFAULT_CONTEXT_POLICY, rolloutAllowlist: ['syllik/life-ops-bot'] };
 const checkpointPayload = () => ({
   contractVersion: 2, contextPolicyVersion: 2, policySha: sha40, baseSha: sha40, headSha: sha40,
   repository: handoff.repository, approval: { reference: 'owner-record' }, allowedPaths: ['FLOW.md'],
@@ -36,36 +35,18 @@ const checkpointRuntime = p => ({ ...p, freshAuthorityValidated: true, allMandat
 const secret = 'trusted runtime storage secret never provided to agent';
 const has = (xs, code) => xs.some(x => x.code === code);
 
-test('default feature gate disabled, v1 accepted', () => {
-  assert.deepEqual(validateContextPolicyConfig(), []);
-  assert.deepEqual(resolveContextPolicy(handoff).version, 1);
+test('absent context policy version means basic v1; verified v2 needs Task Contract v2', () => {
+  assert.equal(resolveContextPolicy(handoff).version, 1);
   assert.equal(resolveContextPolicy(handoff).admitted, true);
-  assert.equal(resolveContextPolicy({ ...handoff, contextPolicyVersion: 2 }).admitted, false);
+  assert.equal(resolveContextPolicy({ ...handoff, contextPolicyVersion: 2 }).admitted, true);
+  assert.ok(has(resolveContextPolicy({ ...handoff, contractVersion: 1, contextPolicyVersion: 2 }).findings, 'TASK_CONTEXT_VERSION_MISMATCH'));
+  assert.ok(has(resolveContextPolicy({ ...handoff, contextPolicyVersion: 3 }).findings, 'UNSUPPORTED_CONTEXT_POLICY_VERSION'));
 });
-test('explicit allowlist enables only opted-in v2, and task contract remains v2', () => {
-  assert.equal(resolveContextPolicy({ ...handoff, contextPolicyVersion: 2 }, activation).admitted, true);
-  assert.ok(has(resolveContextPolicy({ ...handoff, contractVersion: 1, contextPolicyVersion: 2 }, activation).findings, 'TASK_CONTEXT_VERSION_MISMATCH'));
-});
-test('legacy v1 pinned independently, more than 32768 rejected', () => {
-  assert.ok(has(evaluateContextBytes(1, 'x'.repeat(32769)).findings, 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'));
-  assert.equal(evaluateContextBytes(1, 'x'.repeat(32768)).valid, true);
-  assert.equal(resolveContextPolicy(handoff, activation).version, 1);
-});
-test('v2 supports >32768 bytes and measures actual UTF-8 bytes', () => {
-  const r = evaluateContextBytes(2, '✓'.repeat(20000));
+test('no context mode has a fixed byte cap; measurement is UTF-8 bytes', () => {
+  const r = evaluateContextBytes('✓'.repeat(200000));
   assert.equal(r.valid, true);
-  assert.equal(r.actualBytes, 60000);
-  assert.equal(r.maxBytes, null);
-});
-test('an excluded repository stays blocked even if someone allowlists it', () => {
-  const p = { ...DEFAULT_CONTEXT_POLICY, rolloutAllowlist: ['syllik/Zero-Touch-DCA'], excludedRepositories: ['syllik/Zero-Touch-DCA'] };
-  assert.ok(has(validateContextPolicyConfig(p), 'EXCLUDED_REPOSITORY_IN_ALLOWLIST'));
-  assert.ok(has(resolveContextPolicy({ ...handoff, repository: 'syllik/Zero-Touch-DCA', contextPolicyVersion: 2 }, p).findings, 'EXCLUDED_REPOSITORY'));
-});
-test('exclusions are an optional rollback lever but must be well-formed', () => {
-  assert.deepEqual(validateContextPolicyConfig({ ...activation, excludedRepositories: [] }), []);
-  assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: ['not a repo'] }), 'INVALID_EXCLUDED_REPOSITORIES'));
-  assert.ok(has(validateContextPolicyConfig({ ...activation, excludedRepositories: null }), 'INVALID_EXCLUDED_REPOSITORIES'));
+  assert.equal(r.actualBytes, 600000);
+  assert.ok(has(evaluateContextBytes('').findings, 'INVALID_ASSEMBLED_CONTEXT'));
 });
 test('source coverage happy path', () => assert.deepEqual(verifyCoverage(coverage()), []));
 test('source receipt flag without authoritative Git loader cannot pass', () => assert.ok(has(validateContextCoverage(coverage()), 'UNVERIFIED_GIT_SOURCE')));
@@ -131,26 +112,6 @@ test('stale checkpoint on repository drift or v2/v1 mismatch fails', () => {
   assert.ok(has(verifyContextCheckpoint(ckpt, secret, checkpointRuntime({ ...p, headSha: 'f'.repeat(40) })).findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
   assert.ok(has(verifyContextCheckpoint(ckpt, secret, checkpointRuntime({ ...p, contextPolicyVersion: 1 })).findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
 });
-test('feature-gate rollback disables new v2 admissions without reinterpreting them as v1', () => {
-  const v2Handoff = { ...handoff, contextPolicyVersion: 2 };
-  assert.equal(resolveContextPolicy(v2Handoff, activation).admitted, true);
-  const after = resolveContextPolicy(v2Handoff, DEFAULT_CONTEXT_POLICY);
-  assert.equal(after.admitted, false);
-  assert.equal(after.version, 2);
-  assert.equal(resolveContextPolicy(handoff, DEFAULT_CONTEXT_POLICY).admitted, true);
-});
-
-test('v1 hard length and v2 advisory for roles; entrypoints remain hard', () => {
-  const budgets = { 'AI.md': 5, 'FLOW.md': 5, 'global role file': 5 };
-  const v1 = checkDocumentBudget('global/executor.md', '123456', 1, budgets);
-  const v2 = checkDocumentBudget('global/executor.md', '123456', 2, budgets);
-  const entry = checkDocumentBudget('FLOW.md', '123456', 2, budgets);
-  assert.equal(v1.blocked, true);
-  assert.equal(v1.findings[0].severity, 'HARD');
-  assert.equal(v2.blocked, false);
-  assert.equal(v2.findings[0].severity, 'ADVISORY');
-  assert.equal(entry.blocked, true);
-});
 test('unsupported compaction falls back to checkpoints unless required', () => {
   assert.equal(chooseCompaction({ nativeCompaction: 'UNSUPPORTED' }).action, 'VERIFIED_CHECKPOINT_RESTART');
   assert.equal(chooseCompaction({ nativeCompaction: 'UNSUPPORTED' }, { required: true }).blocked, true);
@@ -194,24 +155,6 @@ test('explicit null context policy version is not an omitted legacy field', () =
   const result = resolveContextPolicy({ ...handoff, contextPolicyVersion: null });
   assert.equal(result.admitted, false);
   assert.ok(has(result.findings, 'UNSUPPORTED_CONTEXT_POLICY_VERSION'));
-});
-
-test('repository-root documents preserve v1 hard budgets and v2 advisory budgets', () => {
-  const budgets = { 'managed AGENTS block': 3, '.ai/context.md': 3 };
-  for (const path of ['AGENTS.md', '.ai/context.md']) {
-    const v1 = checkDocumentBudget(path, 'four', 1, budgets);
-    const v2 = checkDocumentBudget(path, 'four', 2, budgets);
-    assert.equal(v1.blocked, true, path);
-    assert.equal(v1.findings[0].code, 'BUDGET_EXCEEDED', path);
-    assert.equal(v2.blocked, false, path);
-    assert.equal(v2.findings[0].severity, 'ADVISORY', path);
-  }
-});
-
-test('malformed null policy configuration returns denied findings, not exception', () => {
-  const result = resolveContextPolicy(handoff, null);
-  assert.equal(result.admitted, false);
-  assert.ok(has(result.findings, 'INVALID_CONTEXT_POLICY'));
 });
 
 test('non-string trusted repository identity fails closed', () => {
@@ -361,14 +304,6 @@ test('source repository casing alone is normalized but SHA, path and identity dr
 });
 
 // Codex fifth-review findings on f391cf5; first of three owner-authorized batches.
-test('malformed supportedVersions fails closed without throwing', () => {
-  for (const bad of [3, null, {}, '1,2']) {
-    const result = resolveContextPolicy(handoff, { ...DEFAULT_CONTEXT_POLICY, supportedVersions: bad });
-    assert.equal(result.admitted, false);
-    assert.ok(has(result.findings, 'INVALID_CONTEXT_VERSIONS'));
-  }
-});
-
 test('null and invalid context coverage envelope fails closed without throwing', () => {
   for (const bad of [null, 0, [], 'invalid']) {
     const findings = validateContextCoverage(bad, trustedSource);
@@ -499,18 +434,11 @@ test('declared expected dependency is allowed to reach the Git loader', () => {
   assert.deepEqual(called, ['syllik/ai-workflow', 'vendor/foreign']);
   assert.deepEqual(findings, []);
 });
-test('new tasks fall back to v1 unless v2 is activated for that repository and contract', () => {
-  const policy = { ...activation, defaultNewTaskVersion: 2 };
-  const { contextPolicyVersion: _v, ...base } = handoff;
-  const v2Task = { ...base, contractVersion: 2, repository: 'syllik/life-ops-bot' };
-  assert.equal(resolveContextPolicy(v2Task, policy, { newTask: true }).version, 2);
-  for (const variant of [
-    { ...v2Task, contractVersion: 1 },
-    { ...v2Task, repository: 'syllik/not-allowlisted' },
-    { ...v2Task, repository: undefined }
-  ]) {
-    const resolved = resolveContextPolicy(variant, policy, { newTask: true });
-    assert.equal(resolved.version, 1);
-    assert.equal(resolved.admitted, true);
-  }
+
+test('a new Task Contract v2 task defaults to verified v2; otherwise basic v1', () => {
+  assert.equal(resolveContextPolicy(handoff, { newTask: true }).version, 2);
+  const basic = resolveContextPolicy({ ...handoff, contractVersion: 1 }, { newTask: true });
+  assert.equal(basic.version, 1);
+  assert.equal(basic.admitted, true);
+  assert.equal(resolveContextPolicy(handoff).version, 1);
 });
