@@ -12,7 +12,6 @@ Generated from `workspace.yaml`. Active managed projects route to context on the
 | syllik/deep-dark-factory | infrastructure/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/deep-dark-factory/blob/master/.ai/context.md) | — |
 | syllik/gpg-signed-commits | guides/git | managed | active | main | [.ai/context.md](https://github.com/syllik/gpg-signed-commits/blob/main/.ai/context.md) | — |
 | syllik/life-ops | personal | managed | active | master | [.ai/context.md](https://github.com/syllik/life-ops/blob/master/.ai/context.md) | — |
-| syllik/life-ops-bot | personal | managed | active | master | [.ai/context.md](https://github.com/syllik/life-ops-bot/blob/master/.ai/context.md) | [syllik/life-ops](https://github.com/syllik/life-ops/tree/master) |
 | syllik/syllik | profile | managed | active | master | [.ai/context.md](https://github.com/syllik/syllik/blob/master/.ai/context.md) | — |
 | syllik/youtube-metadata-translator | tools/content | managed | active | main | [.ai/context.md](https://github.com/syllik/youtube-metadata-translator/blob/main/.ai/context.md) | — |
 | syllik/Zero-Touch-DCA | products | managed | active | master | [.ai/context.md](https://github.com/syllik/Zero-Touch-DCA/blob/master/.ai/context.md) | — |
