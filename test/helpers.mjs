@@ -40,20 +40,6 @@ export const fixtureGitLifecycle = {
   ]
 };
 
-export const fixtureBudgets = {
-  'AI.md': 1024,
-  'FLOW.md': 2048,
-  'global role file': 6144,
-  'managed AGENTS block': 1024,
-  '.ai/context.md': 8192,
-  'one decision record': 4096,
-  'prompt.md': 8192,
-  'state.md': 2048,
-  'assembled execution context': 32768,
-  'result.md': 4096,
-  'human plan.md': 16384
-};
-
 export function fixtureManifest(overrides = {}) {
   const projects = overrides.projects ?? expectedProjects.map((project) => ({ ...project }));
   const lifecycleRepositories = fixtureGitLifecycle.repositories
@@ -65,7 +51,6 @@ export function fixtureManifest(overrides = {}) {
   return {
     schemaVersion: 2,
     canonicalRoot: '~/Desktop/WORK',
-    budgets: { ...fixtureBudgets },
     executionPolicy: overrides.executionPolicy ?? structuredClone(CANONICAL_EXECUTION_POLICY),
     gitLifecycle: overrides.gitLifecycle ?? {
       ...fixtureGitLifecycle,

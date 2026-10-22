@@ -4,31 +4,18 @@ import { loadManifest, validateActivationBaseManifest, validateManifest } from '
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
-  const base = baseFixtureManifest(overrides);
-  return {
-    ...base,
-    ...overrides,
-    budgets: {
-      ...base.budgets,
-      'assembled execution context': 32768,
-      ...overrides.budgets
-    }
-  };
+  return { ...baseFixtureManifest(overrides), ...overrides };
 }
 
 describe('manifest', () => {
-  test('accepts the canonical assembled execution context budget', () => {
+  test('rejects the removed fixed budgets and context policy rollout blocks', () => {
     const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32768
-      }
+      budgets: { 'assembled execution context': 32768 },
+      contextPolicy: { supportedVersions: [1, 2], defaultNewTaskVersion: 2, rolloutAllowlist: [], excludedRepositories: [] }
     });
-
-    const result = validateManifest(manifest);
-
-    assert.equal(result.valid, true);
-    assert.deepEqual(result.findings, []);
+    const unknown = validateManifest(manifest).findings.filter(({ code }) => code === 'UNKNOWN_KEY').map(({ path }) => path);
+    assert.deepEqual(unknown, ['manifest.budgets', 'manifest.contextPolicy']);
+    assert.deepEqual(validateManifest(fixtureManifest()).findings, []);
   });
 
   test('requires the canonical execution policy contract', () => {
@@ -41,39 +28,6 @@ describe('manifest', () => {
   test('historical activation bases do not require the current execution policy', () => {
     const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
     assert.equal(result.valid, true);
-  });
-
-  test('rejects a missing assembled execution context budget', () => {
-    const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32768
-      }
-    });
-    delete manifest.budgets['assembled execution context'];
-
-    const result = validateManifest(manifest);
-
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
-      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
-    ]);
-  });
-
-  test('rejects an incorrect assembled execution context budget', () => {
-    const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32767
-      }
-    });
-
-    const result = validateManifest(manifest);
-
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
-      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
-    ]);
   });
 
   test('loads the canonical manifest with exactly the approved project records', () => {
@@ -313,11 +267,9 @@ describe('manifest', () => {
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
-    manifest.budgets.extra = 1;
     const result = validateManifest(manifest);
     assert.deepEqual(result.findings.filter(({ code }) => code === 'UNKNOWN_KEY').map(({ code, path }) => ({ code, path })), [
       { code: 'UNKNOWN_KEY', path: 'manifest.unexpected' },
-      { code: 'UNKNOWN_KEY', path: 'manifest.budgets.extra' },
       { code: 'UNKNOWN_KEY', path: 'manifest.projects[0].extra' }
     ]);
   });

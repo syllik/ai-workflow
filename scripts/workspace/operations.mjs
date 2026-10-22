@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkBudget, BUDGETS } from './budgets.mjs';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
 import { markerState, renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
@@ -320,7 +319,6 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
     return;
   }
   if (!existsSync(destination)) {
-    if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: desiredBlock }, BUDGETS));
     operations.push({ kind: 'create-file', path: relativePath, destination, content: desiredBlock, ...repository });
     return;
   }
@@ -346,7 +344,6 @@ function addManagedFileOperation(root, operations, findings, relativePath, name,
   const content = migratesLegacyGeneratedFile
     ? normalizeText(desiredBlock)
     : replaceManagedBlock(current, name, desiredBlock);
-  if (name === 'profile-navigation') findings.push(...checkBudget({ path: relativePath, text: content }, BUDGETS));
   if (content !== normalizedCurrent) {
     operations.push({
       kind: 'replace-managed-block',
@@ -393,7 +390,6 @@ function addContextOperation(root, operations, findings, project) {
   }
   const desired = renderContextScaffold(project);
   if (!existsSync(destination)) {
-    findings.push(...checkBudget({ path: relativePath, text: desired }, BUDGETS));
     operations.push({
       kind: 'create-file',
       path: relativePath,
@@ -407,9 +403,7 @@ function addContextOperation(root, operations, findings, project) {
   }
   if (!lstatSync(destination).isFile()) {
     findings.push(finding('DESTINATION_COLLISION', relativePath));
-    return;
   }
-  findings.push(...checkBudget({ path: relativePath, text: readFileSync(destination, 'utf8') }, BUDGETS));
 }
 
 export function planWorkspace(options = {}) {
@@ -469,7 +463,7 @@ export function planWorkspace(options = {}) {
 
   addCentralGeneratedIndexOperation(root, operations, findings, manifest, manifestPath, options);
 
-  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'BRANCH_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', 'BUDGET_EXCEEDED', CENTRAL_IDENTITY_FINDING]);
+  const blockedCodes = new Set(['DESTINATION_COLLISION', 'WORKTREE_COLLISION', 'GIT_ROOT_MISMATCH', 'ORIGIN_MISMATCH', 'BRANCH_MISMATCH', 'DIRTY_REPOSITORY', 'MULTI_WORKTREE', 'DUPLICATE_MARKER', 'MALFORMED_MARKER', 'UNSAFE_PATH', CENTRAL_IDENTITY_FINDING]);
   const blocked = findings.some(({ code }) => blockedCodes.has(code));
   const fingerprints = Object.fromEntries(operations.map((operation) => [operation.path, fingerprint(operation.destination)]));
   return { root, manifestPath, manifest, operations, findings, blocked, validationFailed: false, drift: findings.some(({ code }) => code === 'GENERATED_DRIFT'), fingerprints };
@@ -674,12 +668,12 @@ function validateManagedDecisions(repositoryRoot, findingPath, findings) {
     addUniqueFinding(findings, 'UNSAFE_PATH', decisionsFindingPath);
   } else if (!isRegularFile(decisionsPath)) {
     findings.push(finding('GENERATED_DRIFT', decisionsFindingPath));
-  } else {
-    findings.push(...checkBudget({ path: decisionsFindingPath, text: readFileSync(decisionsPath, 'utf8') }, BUDGETS));
   }
 }
 
-export function validateManagedTarget(repositoryRoot, project, manifest, findings = [], options = {}) {
+export function validateManagedTarget(repositoryRoot, project, manifest, outerFindings = [], options = {}) {
+  // Document length is never checked; generated-file integrity is HARD.
+  const findings = [];
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
   validateManagedClaude(repositoryRoot, path.posix.join(project.localPath, 'CLAUDE.md'), findings, options.checkedAgents ?? null);
@@ -687,15 +681,11 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
 
   if (options.validateTaskArtifacts === true) {
     const taskArtifactFindings = [];
-    const taskArtifacts = collectTaskArtifacts(repositoryRoot, '.ai/tasks', taskArtifactFindings);
+    collectTaskArtifacts(repositoryRoot, '.ai/tasks', taskArtifactFindings);
     findings.push(...taskArtifactFindings.map((entry) => ({
       ...entry,
       path: path.posix.join(project.localPath, entry.path)
     })));
-    for (const artifact of taskArtifacts) {
-      const artifactPath = path.posix.join(project.localPath, artifact.path);
-      findings.push(...checkBudget({ path: artifactPath, text: artifact.text }, BUDGETS));
-    }
   }
 
   if (isProfileRepository(project.repository)) {
@@ -712,7 +702,6 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
       if (state.kind !== 'valid' || replaceManagedBlock(current, 'profile-navigation', desired) !== normalizeText(current)) {
         findings.push(finding('GENERATED_DRIFT', findingPath));
       }
-      findings.push(...checkBudget({ path: findingPath, text: current }, BUDGETS));
     }
   }
 
@@ -722,11 +711,10 @@ export function validateManagedTarget(repositoryRoot, project, manifest, finding
     addUniqueFinding(findings, 'UNSAFE_PATH', contextFindingPath);
   } else if (!isRegularFile(contextPath)) {
     findings.push(finding('GENERATED_DRIFT', contextFindingPath));
-  } else {
-    findings.push(...checkBudget({ path: contextFindingPath, text: readFileSync(contextPath, 'utf8') }, BUDGETS));
   }
 
-  return findings;
+  outerFindings.push(...findings);
+  return outerFindings;
 }
 
 function readKnownArtifact(root, relativePath, findings = null) {
@@ -780,7 +768,8 @@ function collectTaskArtifacts(root, taskRootRelative, findings = null) {
   return output;
 }
 
-function collectKnownBudgetArtifacts(root, manifest, manifestPath, findings = null) {
+// Scans known artifacts for unsafe paths (symlinks, escapes); content length is not checked.
+function scanKnownArtifacts(root, manifest, manifestPath, findings = null) {
   const manifestRoot = trustedRoot(path.dirname(path.resolve(manifestPath))) ?? path.dirname(path.resolve(manifestPath));
   const entries = [];
   for (const relativePath of ['AI.md', 'FLOW.md']) {
@@ -881,6 +870,7 @@ export function checkActivatedTargetRouting(manifest, baseManifest, options = {}
   return findings;
 }
 
+// Integrity of generated artifacts is HARD; no document has a fixed length budget.
 export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIFEST_PATH) {
   const requestedWorkspaceRoot = path.resolve(root);
   const workspaceRoot = requestedWorkspaceRoot;
@@ -911,26 +901,6 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
     }
     validateManagedTarget(repository, project, manifest, findings, { checkedAgents });
   }
-  const budgetEntries = collectKnownBudgetArtifacts(workspaceRoot, manifest, manifestPath, findings);
-  findings.push(...budgetEntries.flatMap((entry) => checkBudget(entry, BUDGETS)));
-  const budgetAgents = new Set();
-  const checkAgentBudget = (agentsPath) => {
-    if (!agentsPath || !isRegularFile(agentsPath)) return;
-    const identity = realpathSync(agentsPath);
-    if (budgetAgents.has(identity)) return;
-    budgetAgents.add(identity);
-    const agents = readFileSync(agentsPath, 'utf8');
-    const state = markerState(agents, 'agents-routing');
-    if (state.kind === 'valid') {
-      const end = agents.indexOf('-->', state.endIndex) + 3;
-      findings.push(...checkBudget({ path: 'managed AGENTS block', text: agents.slice(state.startIndex, end) }, BUDGETS));
-    }
-  };
-  checkAgentBudget(resolveInside(manifestRoot, 'AGENTS.md'));
-  for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
-    const repository = resolveInside(workspaceRoot, project.localPath);
-    if (!repository || !isDirectory(repository)) continue;
-    checkAgentBudget(resolveInside(repository, 'AGENTS.md'));
-  }
+  scanKnownArtifacts(workspaceRoot, manifest, manifestPath, findings);
   return findings;
 }

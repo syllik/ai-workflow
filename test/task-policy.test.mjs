@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
-  ASSEMBLED_CONTEXT_BUDGET_BYTES,
   CANONICAL_EXECUTION_POLICY,
   evaluateTaskAction,
   normalizeTaskHandoff,
@@ -36,7 +35,6 @@ function handoff(overrides = {}) {
       publication: 'allowed',
       maxCorrectionBatches: 2
     },
-    assembledContextBudgetBytes: ASSEMBLED_CONTEXT_BUDGET_BYTES,
     assembledContextActualBytes: 12000,
     assembledContextCheck: 'PASSED',
     ...overrides
@@ -164,7 +162,6 @@ describe('task handoff compatibility', () => {
       approvalReference: 'human-approved-existing-task',
       policySha,
       baseSha,
-      assembledContextBudgetBytes: 32768,
       assembledContextActualBytes: 4096,
       assembledContextCheck: 'PASSED'
     };
@@ -177,11 +174,26 @@ describe('task handoff compatibility', () => {
     assert.equal(evaluateTaskAction({ handoff: legacy, runtime: runtime({ legacyAllowedPaths: ['FLOW.md'] }), action: { kind: 'correct', actorRole: 'executor', expectedHeadSha: headSha, changedPaths: ['FLOW.md'], findingsPackageCount: 1 } }).allowed, false);
   });
 
-  test('retains the exact 32768-byte normal handoff gate', () => {
-    assert.equal(validateTaskHandoff(handoff({ assembledContextActualBytes: 32768 })).valid, true);
-    const over = validateTaskHandoff(handoff({ assembledContextActualBytes: 32769 }));
-    assert.equal(over.valid, false);
-    assert.equal(over.findings.some(({ code }) => code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
+  test('has no fixed byte cap in either context mode', () => {
+    for (const contextPolicyVersion of [undefined, 1, 2]) {
+      const result = validateTaskHandoff(handoff({
+        ...(contextPolicyVersion === undefined ? {} : { contextPolicyVersion }),
+        assembledContextActualBytes: 400000
+      }));
+      assert.equal(result.valid, true, String(contextPolicyVersion));
+    }
+  });
+
+  test('rejects the removed fixed-budget handoff field', () => {
+    const result = validateTaskHandoff(handoff({ assembledContextBudgetBytes: 32768 }));
+    assert.equal(result.valid, false);
+    assert.equal(result.findings.some(({ code, path }) => code === 'UNKNOWN_KEY' && path === 'handoff.assembledContextBudgetBytes'), true);
+  });
+
+  test('does not reinterpret an explicit null context policy version as basic v1', () => {
+    const result = validateTaskHandoff(handoff({ contextPolicyVersion: null }));
+    assert.equal(result.valid, false);
+    assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_POLICY_VERSION'), true);
   });
 });
 
@@ -403,7 +415,6 @@ test('keeps legacy execution compatible without a repository field', () => {
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -426,7 +437,6 @@ test('requires headSha for v2 but keeps it optional for legacy compatibility', (
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -503,7 +513,6 @@ test('denies legacy publication without dereferencing v2 approval', () => {
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -636,7 +645,6 @@ test('does not let handoff input override computed validation result fields', ()
     approvalReference: '',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -697,7 +705,6 @@ test('requires a concrete pinned head before legacy review', () => {
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -834,7 +841,6 @@ test('requires a concrete pinned head for legacy execution', () => {
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };
@@ -920,7 +926,6 @@ test('fails closed for malformed legacy allowed-path evidence', () => {
     approvalReference: 'human-approved-existing-task',
     policySha,
     baseSha,
-    assembledContextBudgetBytes: 32768,
     assembledContextActualBytes: 4096,
     assembledContextCheck: 'PASSED'
   };

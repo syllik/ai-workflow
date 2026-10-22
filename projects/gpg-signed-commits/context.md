@@ -23,6 +23,7 @@ Source of truth — актуальный default branch target repository. Эт�
 - Никогда не сохранять private keys, passphrases, tokens, credentials или `.env`.
 - Перед изменениями читать target `AGENTS.md` и другие repository-local instructions.
 - Проверять инструкции по signing и verification непосредственно в target repository.
+- No subagents in this project.
 
 ## Canonical files in target repository
 

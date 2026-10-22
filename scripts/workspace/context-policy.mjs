@@ -1,15 +1,10 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
-// Independent of Task Contract v2. Legacy handoffs always retain Context Policy v1.
-export const CONTEXT_POLICY_V1 = 1;
-export const CONTEXT_POLICY_V2 = 2;
-export const LEGACY_CONTEXT_MAX_BYTES = 32768;
-export const DEFAULT_CONTEXT_POLICY = Object.freeze({
-  supportedVersions: Object.freeze([1, 2]),
-  defaultNewTaskVersion: 1,
-  rolloutAllowlist: Object.freeze([]),
-  excludedRepositories: Object.freeze(['syllik/Zero-Touch-DCA'])
-});
+// Two context modes, neither with a fixed byte cap. v1 (basic, the default when the
+// field is absent) carries measured UTF-8 bytes and PASSED. v2 (verified) requires
+// Task Contract v2 plus trusted source, coverage, structure and integrity evidence.
+export const CONTEXT_POLICY_BASIC = 1;
+export const CONTEXT_POLICY_VERIFIED = 2;
 const SHA40 = /^[0-9a-f]{40}$/u;
 const SHA64 = /^[0-9a-f]{64}$/u;
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
@@ -22,40 +17,35 @@ const uniqueStrings = xs => Array.isArray(xs) && xs.every(x => typeof x === 'str
 const digest = value => createHash('sha256').update(value, 'utf8').digest('hex');
 const sourceId = source => `${normalizeRepo(source.repository)}@${source.revisionSha}:${source.path}`;
 
-export function validateContextPolicyConfig(policy = DEFAULT_CONTEXT_POLICY) {
-  const errors = [];
-  if (!isRecord(policy)) return [finding('INVALID_CONTEXT_POLICY', 'contextPolicy')];
-  for (const name of Object.keys(policy)) if (!['supportedVersions', 'defaultNewTaskVersion', 'rolloutAllowlist', 'excludedRepositories'].includes(name)) errors.push(finding('UNKNOWN_CONTEXT_POLICY_KEY', `contextPolicy.${name}`));
-  if (!Array.isArray(policy.supportedVersions) || policy.supportedVersions.length !== 2 || policy.supportedVersions[0] !== 1 || policy.supportedVersions[1] !== 2) errors.push(finding('INVALID_CONTEXT_VERSIONS', 'contextPolicy.supportedVersions'));
-  if (![1, 2].includes(policy.defaultNewTaskVersion)) errors.push(finding('INVALID_DEFAULT_CONTEXT_VERSION', 'contextPolicy.defaultNewTaskVersion'));
-  if (!uniqueStrings(policy.rolloutAllowlist) || !policy.rolloutAllowlist.every(s => REPO.test(s))) errors.push(finding('INVALID_ROLLOUT_ALLOWLIST', 'contextPolicy.rolloutAllowlist'));
-  if (!uniqueStrings(policy.excludedRepositories) || !policy.excludedRepositories.every(s => REPO.test(s)) || !policy.excludedRepositories.some(s => normalizeRepo(s) === 'syllik/zero-touch-dca')) errors.push(finding('MISSING_REQUIRED_EXCLUSION', 'contextPolicy.excludedRepositories'));
-  if (Array.isArray(policy.rolloutAllowlist) && Array.isArray(policy.excludedRepositories) && policy.rolloutAllowlist.some(s => policy.excludedRepositories.some(e => normalizeRepo(s) === normalizeRepo(e)))) errors.push(finding('EXCLUDED_REPOSITORY_IN_ALLOWLIST', 'contextPolicy.rolloutAllowlist'));
-  return errors;
+// Binds context evidence to one approval and its exact scope.
+export function approvalScopeDigest(approval) {
+  if (!isRecord(approval)) return null;
+  const allowedPaths = Array.isArray(approval.allowedPaths) ? [...approval.allowedPaths].map(String).sort() : null;
+  return digest(JSON.stringify({
+    reference: approval.reference ?? null,
+    allowedPaths,
+    publication: approval.publication ?? null,
+    maxCorrectionBatches: approval.maxCorrectionBatches ?? null
+  }));
 }
 
-export function resolveContextPolicy(handoff, config = DEFAULT_CONTEXT_POLICY, { newTask = false } = {}) {
-  const findings = validateContextPolicyConfig(config);
-  if (!isRecord(handoff)) return { version: null, admitted: false, findings: [...findings, finding('INVALID_HANDOFF', 'handoff')] };
-  if (!isRecord(config)) return { version: null, admitted: false, findings };
-  // Only an absent field is legacy-compatible; explicit null is malformed.
+export function resolveContextPolicy(handoff, { newTask = false } = {}) {
+  if (!isRecord(handoff)) return { version: null, admitted: false, findings: [finding('INVALID_HANDOFF', 'handoff')] };
+  const findings = [];
+  // Only an absent field defaults; explicit null or any other value is malformed.
+  // A new Task Contract v2 task produced by the canonical producer defaults to verified.
   const version = Object.hasOwn(handoff, 'contextPolicyVersion')
     ? handoff.contextPolicyVersion
-    : (newTask ? config.defaultNewTaskVersion : CONTEXT_POLICY_V1);
-  if (![1, 2].includes(version) || (!Array.isArray(config.supportedVersions) || !config.supportedVersions.includes(version))) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
-  if (handoff.contractVersion !== 2 && version === 2) findings.push(finding('TASK_CONTEXT_VERSION_MISMATCH', 'handoff.contractVersion'));
-  if (version === 2 && (!REPO.test(handoff.repository ?? '') || !Array.isArray(config.rolloutAllowlist) || !config.rolloutAllowlist.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)))) findings.push(finding('CONTEXT_V2_NOT_ACTIVATED', 'handoff.repository'));
-  if (Array.isArray(config.excludedRepositories) && config.excludedRepositories.some(r => normalizeRepo(r) === normalizeRepo(handoff.repository)) && version === 2) findings.push(finding('EXCLUDED_REPOSITORY', 'handoff.repository'));
+    : (newTask && handoff.contractVersion === 2 ? CONTEXT_POLICY_VERIFIED : CONTEXT_POLICY_BASIC);
+  if (version !== CONTEXT_POLICY_BASIC && version !== CONTEXT_POLICY_VERIFIED) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
+  if (version === CONTEXT_POLICY_VERIFIED && handoff.contractVersion !== 2) findings.push(finding('TASK_CONTEXT_VERSION_MISMATCH', 'handoff.contractVersion'));
   return { version, admitted: findings.length === 0, findings };
 }
 
-export function evaluateContextBytes(version, assembledContext) {
+// Measures UTF-8 bytes only; no context mode has a fixed byte cap.
+export function evaluateContextBytes(assembledContext) {
   if (typeof assembledContext !== 'string' || assembledContext.length === 0) return { valid: false, findings: [finding('INVALID_ASSEMBLED_CONTEXT', 'assembledContext')] };
-  const actualBytes = Buffer.byteLength(assembledContext, 'utf8');
-  const findings = [];
-  if (version === 1 && actualBytes > LEGACY_CONTEXT_MAX_BYTES) findings.push(finding('ASSEMBLED_CONTEXT_BUDGET_EXCEEDED', 'assembledContext'));
-  if (version !== 1 && version !== 2) findings.push(finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'contextPolicyVersion'));
-  return { valid: findings.length === 0, actualBytes, maxBytes: version === 1 ? LEGACY_CONTEXT_MAX_BYTES : null, findings };
+  return { valid: true, actualBytes: Buffer.byteLength(assembledContext, 'utf8'), findings: [] };
 }
 
 // The caller's Git-object loader must independently attest repository identity, commit, blob SHA and content.
@@ -154,34 +144,6 @@ export function validateContextCoverage(envelope = {}, verifySource) {
   return findings;
 }
 
-// Length classification is policy-aware; structural and generated-file integrity are separate HARD checks.
-export function classifyDocumentBudget(filePath, version, budgets) {
-  if (typeof filePath !== 'string' || !isRecord(budgets)) return { severity: 'HARD', maximumBytes: null, findings: [finding('INVALID_DOCUMENT_BUDGET_INPUT', 'budget')] };
-  const path = filePath.replaceAll('\\', '/');
-  const key = path === 'AI.md' || path.endsWith('/AI.md') ? 'AI.md'
-    : path === 'FLOW.md' || path.endsWith('/FLOW.md') ? 'FLOW.md'
-    : path.startsWith('global/') ? 'global role file'
-    : path === 'AGENTS.md' || path.endsWith('/AGENTS.md') ? 'managed AGENTS block'
-    : path === '.ai/context.md' || path.endsWith('/.ai/context.md') ? '.ai/context.md'
-    : path.endsWith('/decisions.md') ? 'one decision record'
-    : path.endsWith('/prompt.md') ? 'prompt.md'
-    : path.endsWith('/state.md') ? 'state.md'
-    : path.endsWith('/result.md') ? 'result.md'
-    : path.endsWith('/plan.md') ? 'human plan.md'
-    : null;
-  if (![1, 2].includes(version)) return { severity: 'HARD', maximumBytes: null, findings: [finding('UNSUPPORTED_CONTEXT_POLICY_VERSION', 'contextPolicyVersion')] };
-  return { severity: version === 1 || key === 'AI.md' || key === 'FLOW.md' ? 'HARD' : 'ADVISORY', maximumBytes: key ? budgets[key] ?? null : null, findings: [] };
-}
-
-export function checkDocumentBudget(filePath, content, version, budgets) {
-  const classification = classifyDocumentBudget(filePath, version, budgets);
-  if (classification.findings.length || typeof content !== 'string') return { blocked: true, findings: [...classification.findings, ...(typeof content === 'string' ? [] : [finding('INVALID_DOCUMENT_CONTENT', filePath)])] };
-  const actualBytes = Buffer.byteLength(content, 'utf8');
-  const exceeded = classification.maximumBytes !== null && actualBytes > classification.maximumBytes;
-  const findings = exceeded ? [{ code: 'BUDGET_EXCEEDED', path: filePath, severity: classification.severity, actualBytes, maximumBytes: classification.maximumBytes }] : [];
-  return { blocked: exceeded && classification.severity === 'HARD', actualBytes, ...classification, findings };
-}
-
 export function chooseCompaction(capabilities, { required = false } = {}) {
   if (isRecord(capabilities) && capabilities.nativeCompaction === 'SUPPORTED' && capabilities.trustedAdapter === true) return { action: 'NATIVE_COMPACTION_WITH_CHECKPOINT', blocked: false };
   return required ? { action: 'BLOCKED_UNSUPPORTED_COMPACTION', blocked: true } : { action: 'VERIFIED_CHECKPOINT_RESTART', blocked: false };
@@ -204,7 +166,7 @@ function validateCheckpointPayload(payload) {
   for (const key of required) if (!Object.hasOwn(payload, key)) findings.push(finding('INCOMPLETE_CHECKPOINT', `checkpoint.payload.${key}`));
   const invalid = key => findings.push(finding('INVALID_CHECKPOINT_PAYLOAD', `checkpoint.payload.${key}`));
   if (![1, 2].includes(payload.contractVersion)) invalid('contractVersion');
-  if (![1, 2].includes(payload.contextPolicyVersion) || (payload.contextPolicyVersion === 2 && payload.contractVersion !== 2)) invalid('contextPolicyVersion');
+  if (![CONTEXT_POLICY_BASIC, CONTEXT_POLICY_VERIFIED].includes(payload.contextPolicyVersion) || (payload.contextPolicyVersion === CONTEXT_POLICY_VERIFIED && payload.contractVersion !== 2)) invalid('contextPolicyVersion');
   for (const key of ['policySha', 'baseSha', 'headSha']) if (typeof payload[key] !== 'string' || !SHA40.test(payload[key])) invalid(key);
   if (typeof payload.repository !== 'string' || !REPO.test(payload.repository)) invalid('repository');
   if (!isRecord(payload.approval) || typeof payload.approval.reference !== 'string' || !payload.approval.reference.trim()) invalid('approval');

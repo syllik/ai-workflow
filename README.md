@@ -80,11 +80,10 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 2. Открытие PR, Ready и push не должны автоматически запускать единственное ревью.
 3. Требуемый repository-defined CI должен завершиться зелёным на точном текущем head SHA.
 4. Явно запускается один независимый read-only Reviewer для этого SHA. Провайдер выбирается по возможностям, доступности и риску; Executor, Publisher и Reviewer сохраняют раздельные полномочия.
-5. Если выбран адаптер GitHub Codex Code Review, он запускается явным комментарием `@codex review` **только после** зелёного CI. Это поддерживаемая интеграция, не обязательный поставщик роли.
-6. Reviewer не вызывает `@codex fix`, `@codex address that feedback` или другие branch-mutation команды; findings возвращаются одним consolidated package.
-7. Изменение head инвалидирует прежние CI/review evidence; новое ревью требует свежего зелёного CI.
-8. Corrections выполняет Executor только в пределах v2 upfront approval (не более двух batches) либо после отдельного human approval для legacy. Спорные findings и превышение лимита направляются человеку.
-9. Merge выполняет только человек.
+5. Reviewer работает только в read-only режиме: не вызывает branch-mutation команды и не изменяет ветку; findings возвращаются одним consolidated package.
+6. Изменение head инвалидирует прежние CI/review evidence; новое ревью требует свежего зелёного CI.
+7. Corrections выполняет Executor только в пределах v2 upfront approval (не более двух batches) либо после отдельного human approval для legacy. Спорные findings и превышение лимита направляются человеку.
+8. Merge выполняет только человек.
 
 ## Структура
 
@@ -214,7 +213,8 @@ bounded corrections, and human-only merge.
 Planner supplies a self-contained Executor handoff; persisted task state
 supports continuation without depending on conversation history.
 
-Do not use subagents; minimize repeated research and context/token usage.
+Use subagents only under the delegation rules in `global/core.md`; minimize
+repeated research and context/token usage.
 The task prompt plus this GitHub repository are sufficient bootstrap.
 ```
 

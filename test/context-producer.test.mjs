@@ -11,7 +11,8 @@ const baseSha = 'b'.repeat(40);
 const headSha = 'c'.repeat(40);
 const dependencySha = 'd'.repeat(40);
 
-function canonicalSources() {
+function canonicalSources(targetRecord = {}) {
+  const { access = 'managed', status = 'active' } = targetRecord;
   return [
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
@@ -20,8 +21,8 @@ function canonicalSources() {
       'projects:',
       '  - id: ChipIn-one/chipin-frontend',
       '    repository: ChipIn-one/chipin-frontend',
-      '    access: managed',
-      '    status: active',
+      `    access: ${access}`,
+      `    status: ${status}`,
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
       '        integrationBranch: master',
@@ -42,7 +43,8 @@ function expectedSources(sources) {
 }
 
 function input(overrides = {}) {
-  const sources = canonicalSources();
+  const { targetRecord, ...rest } = overrides;
+  const sources = canonicalSources(targetRecord);
   return {
     role: 'executor',
     policySha,
@@ -53,7 +55,17 @@ function input(overrides = {}) {
     expectedSources: expectedSources(sources),
     dependencies: [{ repository: 'ChipIn-one/chipin-knowledge-base', revisionSha: dependencySha, expectedRevisionSha: dependencySha }],
     sources,
-    ...overrides
+    ...rest
+  };
+}
+
+function v2BindingFields() {
+  return {
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2
   };
 }
 
@@ -224,10 +236,89 @@ test('builds a deterministic minimal handoff with complete expected sources, exa
   assert.deepEqual(second, first);
   assert.equal(first.manifest.expectedSources.length, 9);
   assert.equal(first.manifest.dependencies[0].revisionSha, dependencySha);
-  assert.equal(first.handoffProvenance.assembledContextBudgetBytes, 32768);
+  assert.equal(first.handoffProvenance.contextPolicyVersion, 1);
+  assert.equal(Object.hasOwn(first.handoffProvenance, 'assembledContextBudgetBytes'), false);
   assert.equal(first.handoffProvenance.assembledContextActualBytes, Buffer.byteLength(first.assembledContext, 'utf8'));
   assert.equal(first.handoffProvenance.assembledContextCheck, 'PASSED');
   assert.match(first.manifest.assembledContextSha256, /^[0-9a-f]{64}$/u);
+});
+
+test('assembles a verified v2 context of any size without a byte cap', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    acceptance: { text: 'x'.repeat(200000) }
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.contextPolicyVersion, 2);
+  assert.equal(Object.hasOwn(result.manifest, 'assembledContextBudgetBytes'), false);
+  assert.equal(result.manifest.assembledContextActualBytes > 200000, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+test('binds target sources to the handoff repository even when a fork shares the commit', () => {
+  let calls = 0;
+  const result = build(input({
+    repository: 'evil/fork',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+  }), {
+    sourceLoader: source => {
+      if (source.kind === 'target') calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(calls, 0);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_REPOSITORY_MISMATCH'), true);
+});
+
+test('records the handoff repository in the v2 manifest', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.repository, 'ChipIn-one/chipin-frontend');
+});
+
+test('does not load target sources when a verified v2 target is not an active managed project', () => {
+  for (const targetRecord of [{ status: 'onboarding' }, { access: 'read-only' }]) {
+    const loadedKinds = [];
+    const result = build(input({ ...v2BindingFields(), targetRecord }), {
+      sourceLoader: source => {
+        loadedKinds.push(source.kind);
+        return testSourceLoader(source);
+      }
+    });
+    assert.equal(loadedKinds.some((kind) => !['policy', 'role'].includes(kind)), false);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_NOT_MANAGED'), true);
+  }
+});
+
+test('does not call the source loader for an undeclared source', () => {
+  let calls = 0;
+  const result = build(input({
+    sources: [
+      ...canonicalSources(),
+      { kind: 'dependency', repository: 'evil.example/impersonator', path: 'secret.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'forged\n' }
+    ]
+  }), {
+    sourceLoader: source => {
+      calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(calls, canonicalSources().length);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
 });
 
 test('blocks a missing mandatory source from the explicit expected-source set', () => {
@@ -747,14 +838,13 @@ test('blocks a required requirement id that is not represented by selected conte
   assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
 });
 
-test('blocks oversize context without truncating required documents', () => {
+test('assembles large context in full without a byte cap or truncation', () => {
   const value = input();
   const marker = 'REQUIRED_DOCUMENT_TAIL';
-  sourceByPath(value, 'common/specs/dashboard.md').content = `${'x'.repeat(40000)}${marker}`;
+  sourceByPath(value, 'common/specs/dashboard.md').content = `**DSH-001** ${'x'.repeat(40000)}${marker}`;
   const result = build(value);
-  assert.equal(result.passed, false);
-  assert.equal(result.findings.some(({ code }) => code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
-  assert.equal(result.handoffProvenance.assembledContextActualBytes > 32768, true);
+  assert.equal(result.passed, true, JSON.stringify(result.findings));
+  assert.equal(result.handoffProvenance.assembledContextActualBytes > 40000, true);
   assert.equal(result.assembledContext.includes(marker), true);
 });
 
@@ -766,7 +856,7 @@ test('counts multibyte context as UTF-8 bytes rather than characters', () => {
   assert.equal(result.handoffProvenance.assembledContextActualBytes, Buffer.byteLength(result.assembledContext, 'utf8'));
 });
 
-test('allows oversized pinned PRODUCT as a verified reference within the unchanged byte cap', () => {
+test('keeps a large pinned PRODUCT as a verified reference instead of inlining it', () => {
   const value = input();
   const product = '| DSH-001 | Normative ID row |\n| HIST-001 | Convert history | source | acceptance |\n' + 'x'.repeat(40000);
   const reference = {
@@ -779,7 +869,6 @@ test('allows oversized pinned PRODUCT as a verified reference within the unchang
   value.requirementIds.push('HIST-001');
   const result = build(value);
   assert.equal(result.passed, true);
-  assert.equal(result.handoffProvenance.assembledContextBudgetBytes, 32768);
   assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
   assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').bytes, Buffer.byteLength(product));
   assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').assembly, 'verified-reference');
@@ -824,20 +913,6 @@ test('reference requires exact expected identity and source integrity; IDs match
   assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
 });
 
-test('does not allow mandatory instruction overflow even with a PRODUCT reference', () => {
-  const value = input();
-  sourceByPath(value, 'AGENTS.md').content = 'x'.repeat(40000);
-  const reference = {
-    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
-    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
-    content: '| HIST-001 | provenance |\n'
-  };
-  value.sources.push(reference);
-  value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: headSha});
-  const result = build(value);
-  assert.equal(result.passed, false);
-  assert.equal(result.findings.some((f) => f.code === 'ASSEMBLED_CONTEXT_BUDGET_EXCEEDED'), true);
-});
 
 test('PRODUCT reference owns requirement IDs even when missing rows appear in AGENTS or dependencies', () => {
   const value = input();
@@ -870,4 +945,58 @@ test('PRODUCT reference rejects missing IDs in AGENTS but allows all IDs when PR
   const result = build(value);
   assert.equal(result.passed, true);
   assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+const v2Binding = {
+  repository: 'ChipIn-one/chipin-frontend',
+  taskId: 'ChipIn-one/chipin-frontend#1',
+  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+  contractVersion: 2,
+  contextPolicyVersion: 2
+};
+
+test('a dependency absent from the pinned workspace registry is denied before any Git read', () => {
+  const loaded = [];
+  const value = input();
+  const rogue = { kind: 'dependency', repository: 'evil-org/private-secrets', path: 'creds.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'secret\n' };
+  value.sources.push(rogue);
+  value.expectedSources.push({ kind: 'dependency', repository: rogue.repository, path: rogue.path, revisionSha: dependencySha });
+  value.dependencies.push({ repository: rogue.repository, revisionSha: dependencySha, expectedRevisionSha: dependencySha });
+  const result = build(value, { sourceLoader: source => { loaded.push(source.repository); return testSourceLoader(source); } });
+  assert.equal(result.passed, false);
+  assert.equal(loaded.includes('evil-org/private-secrets'), false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNEXPECTED'), true);
+});
+
+test('verified v2 needs the target record in the pinned workspace.yaml', () => {
+  const fromWorkspace = build(input(v2Binding));
+  assert.equal(fromWorkspace.passed, true, JSON.stringify(fromWorkspace.findings));
+  assert.equal(fromWorkspace.manifest.contextPolicyVersion, 2);
+  assert.equal(Object.hasOwn(fromWorkspace.manifest, 'contextPolicy'), false);
+
+  const value = input(v2Binding);
+  value.sources = value.sources.filter(({ path }) => path !== 'workspace.yaml');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'workspace.yaml');
+  const unpinned = build(value);
+  assert.equal(unpinned.passed, false);
+  assert.equal(unpinned.findings.some(({ code }) => ['CONTEXT_POLICY_UNPINNED', 'CONTEXT_CANONICAL_SOURCE_MISSING'].includes(code)), true, JSON.stringify(unpinned.findings));
+});
+
+test('v2 manifests are bound to one task and its approved scope', () => {
+  const bound = build(input(v2Binding));
+  assert.equal(bound.manifest.taskId, 'ChipIn-one/chipin-frontend#1');
+  assert.equal(bound.manifest.approval.reference, 'owner-approval');
+  assert.match(bound.manifest.approval.scopeSha256, /^[0-9a-f]{64}$/u);
+  const unbound = build(input({ ...v2Binding, taskId: undefined }));
+  assert.equal(unbound.passed, false);
+  assert.equal(unbound.findings.some(({ code }) => code === 'CONTEXT_TASK_BINDING_UNAVAILABLE'), true);
+});
+
+test('new Task Contract v2 tasks default to verified v2; a legacy contract stays basic v1', () => {
+  const { contextPolicyVersion: _v, ...binding } = v2Binding;
+  const verified = build(input({ ...binding, newTask: true }));
+  assert.equal(verified.manifest.contextPolicyVersion, 2);
+  assert.equal(verified.passed, true, JSON.stringify(verified.findings));
+  const legacyContract = build(input({ ...binding, contractVersion: 1, newTask: true }));
+  assert.equal(legacyContract.manifest.contextPolicyVersion, 1)
 });

@@ -2,33 +2,15 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { ASSEMBLED_CONTEXT_BUDGET_BYTES, validateExecutionPolicyConfig } from './task-policy.mjs';
+import { validateExecutionPolicyConfig } from './task-policy.mjs';
 
 export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
-export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY = 'assembled execution context';
-export const ASSEMBLED_EXECUTION_CONTEXT_BUDGET = ASSEMBLED_CONTEXT_BUDGET_BYTES;
-
-export const HARD_BUDGETS = Object.freeze({
-  'AI.md': 1024,
-  'FLOW.md': 2048,
-  'global role file': 6144,
-  'managed AGENTS block': 1024,
-  '.ai/context.md': 8192,
-  'one decision record': 4096,
-  'prompt.md': 8192,
-  'state.md': 2048,
-  [ASSEMBLED_EXECUTION_CONTEXT_BUDGET_KEY]: ASSEMBLED_EXECUTION_CONTEXT_BUDGET,
-  'result.md': 4096,
-  'human plan.md': 16384
-});
-
-const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'budgets', 'executionPolicy', 'gitLifecycle', 'projects']);
+const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'executionPolicy', 'gitLifecycle', 'projects']);
 const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
 const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const GIT_LIFECYCLE_KEYS = new Set(['canonicalBranch', 'normalMergeMethod', 'productionPromotion', 'temporaryIssueBranchPattern', 'repositories']);
 const GIT_LIFECYCLE_REPOSITORY_KEYS = new Set(['repository', 'deploymentProfile', 'branchState', 'defaultBranch', 'integrationBranch', 'promotionBranch', 'exception']);
 const GIT_LIFECYCLE_EXCEPTION_KEYS = new Set(['reason', 'followUp']);
-const BUDGET_KEYS = new Set(Object.keys(HARD_BUDGETS));
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 const CENTRAL_REPOSITORY = 'syllik/ai-workflow';
@@ -228,15 +210,6 @@ export function validateManifest(value) {
   checkUnknownKeys(value, MANIFEST_KEYS, 'manifest', findings);
   if (value.schemaVersion !== 2) findings.push(finding('INVALID_SCHEMA_VERSION', 'manifest.schemaVersion'));
   if (value.canonicalRoot !== '~/Desktop/WORK') findings.push(finding('INVALID_CANONICAL_ROOT', 'manifest.canonicalRoot'));
-
-  if (!isObject(value.budgets)) {
-    findings.push(finding('INVALID_BUDGETS', 'manifest.budgets'));
-  } else {
-    checkUnknownKeys(value.budgets, BUDGET_KEYS, 'manifest.budgets', findings);
-    for (const [key, maximum] of Object.entries(HARD_BUDGETS)) {
-      if (value.budgets[key] !== maximum) findings.push(finding('INVALID_BUDGET', `manifest.budgets.${key}`));
-    }
-  }
 
   findings.push(...validateExecutionPolicyConfig(value.executionPolicy));
   validateGitLifecycle(value.gitLifecycle, value.projects, findings);

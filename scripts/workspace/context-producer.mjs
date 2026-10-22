@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
+import { approvalScopeDigest, CONTEXT_POLICY_VERIFIED, evaluateContextBytes, resolveContextPolicy } from './context-policy.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
@@ -14,6 +14,10 @@ const CANONICAL_HANDOFF_ROLE_PATH = 'global/executor.md';
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
+}
+
+function utf8Bytes(text) {
+  return Buffer.byteLength(String(text), 'utf8');
 }
 
 function sha256(text) {
@@ -41,6 +45,10 @@ function sourceKey(source) {
     source.path,
     source.revisionSha
   ]);
+}
+
+function coverageSourceId(source) {
+  return `${normalizeRepository(source.repository)}@${source.revisionSha}:${source.path}`;
 }
 
 function normalizeRemote(value) {
@@ -445,6 +453,7 @@ function normalizeSource(source, index, findings) {
     repository: source.repository.trim(),
     path: source.path.trim(),
     revisionSha: source.revisionSha,
+    expectedRevisionSha: source.expectedRevisionSha,
     content: typeof source.content === 'string' ? source.content : null
   };
 }
@@ -454,7 +463,7 @@ function renderSection(source) {
 }
 
 function renderReferenceSection(source) {
-  // The receipt counts against the execution budget. The entire source remains
+  // The receipt stands in for the inline source. The entire source remains
   // Git-hydrated, authenticated, hashed and independently readable.
   return `=== verified Git reference ${source.repository}@${source.revisionSha}:${source.path} blob=${source.blobSha} sha256=${sha256(source.content)} bytes=${utf8Bytes(source.content)} (read full source at pinned SHA before decisions) ===\n`;
 }
@@ -468,6 +477,23 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
+
+  // The mode/contract check needs no sources and denies before any load. Verified (v2)
+  // additionally requires an active managed target in workspace.yaml pinned at policySha.
+  const resolvedContextPolicy = resolveContextPolicy(input, { newTask: input.newTask === true });
+  findings.push(...resolvedContextPolicy.findings);
+  const contextPolicyVersion = resolvedContextPolicy.version;
+  const blockedResult = () => ({
+    passed: false,
+    findings,
+    manifest: { contextPolicyVersion, expectedSources },
+    handoffProvenance: {
+      contextPolicyVersion,
+      assembledContextActualBytes: 0,
+      assembledContextCheck: 'BLOCKED'
+    },
+    assembledContext: ''
+  });
 
   for (const key of ['policySha', 'baseSha', 'headSha']) {
     if (!validSha(input[key])) findings.push(finding('INVALID_CONTEXT_SHA', key));
@@ -500,6 +526,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, input.role, findings);
+  if (!resolvedContextPolicy.admitted) return blockedResult();
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -530,22 +557,140 @@ export function buildTaskContextPackage(input = {}, options = {}) {
 
   const sources = [];
   const seenSources = new Set();
-  if (!Array.isArray(input.sources) || input.sources.length === 0) {
-    findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
-  } else {
-    input.sources.forEach((source, index) => {
+  const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
+  const targetAgentSource = expectedSources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
+  // Target instructions must belong to the repository the handoff executes in,
+  // even when another repository (for example a fork) shares the pinned commit.
+  const handoffRepository = typeof input.repository === 'string' && input.repository.trim() !== ''
+    ? input.repository.trim()
+    : null;
+  const targetRepositoryMatches = (repository) => handoffRepository === null
+    || normalizeRepository(repository) === normalizeRepository(handoffRepository);
+  if (targetAgentSource !== undefined && !targetRepositoryMatches(targetAgentSource.repository)) {
+    findings.push(finding('CONTEXT_TARGET_REPOSITORY_MISMATCH', 'expectedSources', {
+      expected: handoffRepository,
+      actual: targetAgentSource.repository
+    }));
+  }
+  const canonicalSourceAuthorized = (source) => {
+    if (source.kind === 'policy') {
+      return normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+        && CANONICAL_POLICY_PATHS.includes(source.path)
+        && source.revisionSha === input.policySha;
+    }
+    if (source.kind === 'role') {
+      return normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+        && source.path === CANONICAL_HANDOFF_ROLE_PATH
+        && source.revisionSha === input.policySha;
+    }
+    if (source.kind === 'target') {
+      return targetAgentSource !== undefined
+        && targetRepositoryMatches(source.repository)
+        && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
+        && source.revisionSha === input.headSha;
+    }
+    if (source.kind === 'reference') {
+      return targetAgentSource !== undefined
+        && source.path === 'docs/PRODUCT.md'
+        && targetRepositoryMatches(source.repository)
+        && normalizeRepository(source.repository) === normalizeRepository(targetAgentSource.repository)
+        && source.revisionSha === input.headSha;
+    }
+    return normalizedDependencies.some((dependency) =>
+      normalizeRepository(dependency.repository) === normalizeRepository(source.repository)
+      && dependency.revisionSha === source.revisionSha
+    );
+  };
+  let registryDependencies = new Set();
+  const hydratedByIndex = [];
+  const processSource = (source, index) => {
       const normalized = normalizeSource(source, index, findings);
       if (!normalized) return;
-      const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
-      if (!hydrated) return;
-      const key = sourceKey(hydrated);
+      const key = sourceKey(normalized);
       if (seenSources.has(key)) {
         findings.push(finding('CONTEXT_SOURCE_DUPLICATE', `sources.${index}`));
         return;
       }
+      if (!expectedSourceKeys.has(key)) {
+        findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`));
+        return;
+      }
+      // Dependencies must be declared by the pinned workspace registry BEFORE any Git read.
+      if (normalized.kind === 'dependency' && !registryDependencies.has(normalizeRepository(normalized.repository))) {
+        findings.push(finding('CONTEXT_DEPENDENCY_UNEXPECTED', `sources.${index}`, { repository: normalized.repository }));
+        return;
+      }
+      if (normalized.kind === 'dependency' && !normalizedDependencies.some((dependency) =>
+        normalizeRepository(dependency.repository) === normalizeRepository(normalized.repository)
+        && dependency.revisionSha === normalized.revisionSha
+      )) {
+        findings.push(finding('CONTEXT_DEPENDENCY_SOURCE_UNDECLARED', `sources.${index}`, {
+          repository: normalized.repository,
+          revisionSha: normalized.revisionSha
+        }));
+        return;
+      }
+      if (!canonicalSourceAuthorized(normalized)) {
+        findings.push(finding('CONTEXT_SOURCE_UNEXPECTED', `sources.${index}`));
+        return;
+      }
+      if (normalized.revisionSha !== normalized.expectedRevisionSha) return;
+      const hydrated = hydrateSource(normalized, index, input, findings, sourceLoader);
+      if (!hydrated) return;
       seenSources.add(key);
-      sources.push(hydrated);
+      hydratedByIndex[index] = hydrated;
+  };
+  if (!Array.isArray(input.sources) || input.sources.length === 0) {
+    findings.push(finding('CONTEXT_SOURCE_UNAVAILABLE', 'sources'));
+  } else {
+    // Pass 1: canonical policy/role sources (always authorized at policySha).
+    input.sources.forEach((source, index) => {
+      if (POLICY_BOUND_KINDS.has(source?.kind)) processSource(source, index);
     });
+
+    const workspaceSource = hydratedByIndex.find((source) => source
+      && source.kind === 'policy'
+      && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
+      && source.path === 'workspace.yaml'
+      && source.revisionSha === input.policySha);
+    let workspacePinned = false;
+    let targetManaged = false;
+    if (workspaceSource) {
+      try {
+        const workspace = parse(workspaceSource.content);
+        workspacePinned = true;
+        const targetRepository = handoffRepository ?? targetAgentSource?.repository;
+        const records = (Array.isArray(workspace?.projects) ? workspace.projects : [])
+          .filter((project) => normalizeRepository(project?.repository) === normalizeRepository(targetRepository));
+        targetManaged = records.length === 1 && records[0].access === 'managed' && records[0].status === 'active';
+        if (records.length === 1 && Array.isArray(records[0].contextDependencies)) {
+          registryDependencies = new Set(records[0].contextDependencies
+            .map((dependency) => normalizeRepository(dependency?.repository))
+            .filter(Boolean));
+        }
+      } catch {
+        findings.push(finding('CONTEXT_WORKSPACE_REGISTRY_UNAVAILABLE', 'sources.workspace.yaml'));
+      }
+    }
+    if (!workspacePinned) {
+      findings.push(finding('CONTEXT_POLICY_UNPINNED', 'sources.workspace.yaml'));
+      return blockedResult();
+    }
+    if (contextPolicyVersion === CONTEXT_POLICY_VERIFIED && !targetManaged) {
+      findings.push(finding('CONTEXT_TARGET_NOT_MANAGED', 'repository'));
+      return blockedResult();
+    }
+    // Verified evidence must be bound to exactly one task and its approved scope.
+    if (contextPolicyVersion === CONTEXT_POLICY_VERIFIED && (typeof input.taskId !== 'string' || input.taskId.trim() === '' || !approvalScopeDigest(input.approval))) {
+      findings.push(finding('CONTEXT_TASK_BINDING_UNAVAILABLE', 'taskId'));
+      return blockedResult();
+    }
+
+    // Pass 2: target, reference and dependency sources, only after authorization.
+    input.sources.forEach((source, index) => {
+      if (!POLICY_BOUND_KINDS.has(source?.kind)) processSource(source, index);
+    });
+    sources.push(...hydratedByIndex.filter(Boolean));
   }
 
   validateRequiredContextDependencies(
@@ -576,7 +721,6 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     });
   }
 
-  const expectedSourceKeys = new Set(expectedSources.map(sourceKey));
   for (const [index, expectedSource] of expectedSources.entries()) {
     if (!seenSources.has(sourceKey(expectedSource))) {
       findings.push(finding('CONTEXT_EXPECTED_SOURCE_UNAVAILABLE', `expectedSources.${index}`, { expected: expectedSource }));
@@ -646,12 +790,18 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     source.kind === 'reference' ? renderReferenceSection(source) : renderSection(source)
   ));
   const assembledContext = sections.join('\n');
-  const measured = checkAssembledExecutionContext([assembledContext]);
+  const measured = evaluateContextBytes(assembledContext);
   findings.push(...measured.findings);
 
   const passed = findings.length === 0 && measured.actualBytes > 0;
   const manifest = {
     role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
+    contextPolicyVersion,
+    repository: handoffRepository,
+    taskId: typeof input.taskId === 'string' && input.taskId.trim() !== '' ? input.taskId : null,
+    approval: approvalScopeDigest(input.approval)
+      ? { reference: input.approval.reference ?? null, scopeSha256: approvalScopeDigest(input.approval) }
+      : null,
     policySha: validSha(input.policySha) ? input.policySha : null,
     baseSha: validSha(input.baseSha) ? input.baseSha : null,
     headSha: validSha(input.headSha) ? input.headSha : null,
@@ -659,6 +809,10 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       ? { sha256: sha256(acceptanceText), bytes: utf8Bytes(acceptanceText) }
       : null,
     requirementIds: uniqueStrings(requirementIds) ? [...requirementIds] : [],
+    acceptanceIds: uniqueStrings(input.acceptanceIds ?? []) ? [...(input.acceptanceIds ?? [])] : [],
+    mandatorySourceIds: expectedSources
+      .filter((source) => source.kind !== 'reference')
+      .map(coverageSourceId),
     expectedSources,
     dependencies: normalizedDependencies,
     sources: sources.map((source) => ({
@@ -672,8 +826,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       assembly: source.kind === 'reference' ? 'verified-reference' : 'inline'
     })),
     assembledContextSha256: sha256(assembledContext),
-    assembledContextBudgetBytes: measured.maxBytes,
-    assembledContextActualBytes: measured.actualBytes,
+    assembledContextActualBytes: measured.actualBytes ?? 0,
     assembledContextCheck: passed ? 'PASSED' : 'BLOCKED'
   };
 
@@ -682,8 +835,8 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     findings,
     manifest,
     handoffProvenance: {
-      assembledContextBudgetBytes: measured.maxBytes,
-      assembledContextActualBytes: measured.actualBytes,
+      contextPolicyVersion,
+      assembledContextActualBytes: measured.actualBytes ?? 0,
       assembledContextCheck: manifest.assembledContextCheck
     },
     assembledContext

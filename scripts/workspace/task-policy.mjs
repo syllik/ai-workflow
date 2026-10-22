@@ -1,6 +1,8 @@
+import { evaluateContextAdmission } from './context-admission.mjs';
+import { CONTEXT_POLICY_BASIC, CONTEXT_POLICY_VERIFIED } from './context-policy.mjs';
+
 export const TASK_CONTRACT_VERSION = 2;
 export const LEGACY_TASK_CONTRACT_VERSION = 1;
-export const ASSEMBLED_CONTEXT_BUDGET_BYTES = 32768;
 
 export const CANONICAL_EXECUTION_POLICY = Object.freeze({
   contractVersion: TASK_CONTRACT_VERSION,
@@ -31,7 +33,7 @@ const CORRECTION_KEYS = new Set(['authorization', 'maxBatches']);
 const HANDOFF_V2_KEYS = new Set([
   'contractVersion', 'taskId', 'repository', 'taskBranch', 'integrationBranch', 'requiredCiChecks', 'role',
   'policySha', 'baseSha', 'headSha', 'approval',
-  'assembledContextBudgetBytes', 'assembledContextActualBytes', 'assembledContextCheck'
+  'contextPolicyVersion', 'assembledContextActualBytes', 'assembledContextCheck'
 ]);
 const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches']);
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
@@ -183,16 +185,13 @@ function pathAllowed(changedPath, allowedPaths) {
 }
 
 function validateAggregateContext(handoff, findings) {
-  if (handoff.assembledContextBudgetBytes !== ASSEMBLED_CONTEXT_BUDGET_BYTES) {
-    findings.push(finding('INVALID_ASSEMBLED_CONTEXT_BUDGET', 'handoff.assembledContextBudgetBytes'));
+  // Absent means basic (v1); neither mode has a fixed byte cap.
+  if (Object.hasOwn(handoff, 'contextPolicyVersion') && ![CONTEXT_POLICY_BASIC, CONTEXT_POLICY_VERIFIED].includes(handoff.contextPolicyVersion)) {
+    findings.push(finding('INVALID_CONTEXT_POLICY_VERSION', 'handoff.contextPolicyVersion'));
+    return;
   }
   if (!Number.isInteger(handoff.assembledContextActualBytes) || handoff.assembledContextActualBytes <= 0) {
     findings.push(finding('INVALID_ASSEMBLED_CONTEXT_ACTUAL_BYTES', 'handoff.assembledContextActualBytes'));
-  } else if (handoff.assembledContextActualBytes > ASSEMBLED_CONTEXT_BUDGET_BYTES) {
-    findings.push(finding('ASSEMBLED_CONTEXT_BUDGET_EXCEEDED', 'handoff.assembledContextActualBytes', {
-      actualBytes: handoff.assembledContextActualBytes,
-      maxBytes: ASSEMBLED_CONTEXT_BUDGET_BYTES
-    }));
   }
   if (handoff.assembledContextCheck !== 'PASSED') findings.push(finding('ASSEMBLED_CONTEXT_NOT_PASSED', 'handoff.assembledContextCheck'));
 }
@@ -388,7 +387,7 @@ export function evaluateTaskAction(input = {}) {
   if (!isObject(input)) {
     return { allowed: false, findings: [finding('INVALID_POLICY_EVALUATION_INPUT', 'input')], compatibility: 'invalid' };
   }
-  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {} } = input;
+  const { handoff: inputHandoff, policy = CANONICAL_EXECUTION_POLICY, runtime = {}, action = {}, contextManifest, contextSourceVerifier, contextRuntime } = input;
   const validation = validateTaskHandoff(inputHandoff, policy);
   if (!validation.valid) return { allowed: false, findings: validation.findings, compatibility: validation.compatibility };
   if (!isObject(runtime)) {
@@ -402,6 +401,17 @@ export function evaluateTaskAction(input = {}) {
     ...currentShaFindings(handoff, runtime, action),
     ...scopeFindings(handoff, runtime, action)
   ];
+  const contextAdmission = evaluateContextAdmission({
+    handoff,
+    // The producer manifest comes from the trusted caller, never from runtime
+    // evidence that the evaluated agent can influence.
+    receipt: runtime.contextReceipt,
+    trustedManifest: contextManifest,
+    // The verifier and runtime adapter are trusted in-process components.
+    sourceVerifier: contextSourceVerifier,
+    runtime: contextRuntime
+  });
+  findings.push(...contextAdmission.findings);
 
   if (action.kind === 'publish') {
     if (handoff.contractVersion === LEGACY_TASK_CONTRACT_VERSION) {

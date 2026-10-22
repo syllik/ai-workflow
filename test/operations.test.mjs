@@ -161,6 +161,26 @@ describe('workspace operations', () => {
     }
   });
 
+  test('no project document has a fixed length budget', () => {
+    const root = makeFixtureRoot();
+    try {
+      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+      const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
+      const manifest = fixtureManifest({ projects: [central, project] });
+      const { manifestPath } = initCentralManifestRepo(root, manifest);
+      const projectPath = path.join(root, project.localPath);
+      initFixtureRepo(projectPath, `https://github.com/${project.repository}.git`, project.integrationBranch);
+      mkdirSync(path.join(projectPath, '.ai'), { recursive: true });
+      writeFileSync(path.join(projectPath, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+      writeFileSync(path.join(projectPath, project.contextPath), 'x'.repeat(100000), 'utf8');
+      writeFileSync(path.join(projectPath, '.ai/decisions.md'), 'x'.repeat(100000), 'utf8');
+      const findings = checkGeneratedFiles(root, manifest, manifestPath);
+      assert.equal(findings.some(({ code }) => code === 'BUDGET_EXCEEDED'), false);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('one apply writes the exact central index and a second plan is clean', () => {
     const root = makeFixtureRoot();
     try {
@@ -508,39 +528,13 @@ describe('workspace operations', () => {
     }
   });
 
-  test('rejects each oversized persisted task artifact during activation with the canonical budget finding', () => {
-    for (const [artifactName, maxBytes] of [
-      ['prompt.md', 8192],
-      ['state.md', 2048],
-      ['result.md', 4096],
-      ['plan.md', 16384]
-    ]) {
-      const { findings, target } = activationTaskArtifactFindings(({ remote }) => {
-        const taskRoot = path.join(remote, '.ai/tasks/activation-task');
-        mkdirSync(taskRoot, { recursive: true });
-        writeFileSync(path.join(taskRoot, artifactName), 'x'.repeat(maxBytes + 1), 'utf8');
-      });
-      const findingPath = path.posix.join(target.localPath, '.ai/tasks/activation-task', artifactName);
-
-      assert.deepEqual(findings, [{
-        code: 'BUDGET_EXCEEDED',
-        path: findingPath,
-        actualBytes: maxBytes + 1,
-        maxBytes,
-        actual: maxBytes + 1,
-        maximum: maxBytes
-      }], artifactName);
-    }
-  });
-
-  test('accepts persisted task artifacts at the canonical activation budgets', () => {
+  test('accepts persisted task artifacts of any size during activation', () => {
     const { findings } = activationTaskArtifactFindings(({ remote }) => {
       const taskRoot = path.join(remote, '.ai/tasks/activation-task');
       mkdirSync(taskRoot, { recursive: true });
-      writeFileSync(path.join(taskRoot, 'prompt.md'), 'x'.repeat(8192), 'utf8');
-      writeFileSync(path.join(taskRoot, 'state.md'), 'x'.repeat(2048), 'utf8');
-      writeFileSync(path.join(taskRoot, 'result.md'), 'x'.repeat(4096), 'utf8');
-      writeFileSync(path.join(taskRoot, 'plan.md'), 'x'.repeat(16384), 'utf8');
+      for (const artifactName of ['prompt.md', 'state.md', 'result.md', 'plan.md']) {
+        writeFileSync(path.join(taskRoot, artifactName), 'x'.repeat(100000), 'utf8');
+      }
     });
 
     assert.deepEqual(findings, []);
@@ -571,7 +565,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('rejects oversized decisions during activation with the canonical budget finding', () => {
+  test('accepts large decisions during activation (no length budget)', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();
     try {
@@ -593,7 +587,7 @@ describe('workspace operations', () => {
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
       writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
-      writeFileSync(path.join(remote, '.ai/decisions.md'), 'x'.repeat(4097), 'utf8');
+      writeFileSync(path.join(remote, '.ai/decisions.md'), 'x'.repeat(100000), 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
       writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
       git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
@@ -604,14 +598,7 @@ describe('workspace operations', () => {
         expectedRemote: () => remote
       });
 
-      assert.deepEqual(findings, [{
-        code: 'BUDGET_EXCEEDED',
-        path: 'personal/life-ops-bot/.ai/decisions.md',
-        actualBytes: 4097,
-        maxBytes: 4096,
-        actual: 4097,
-        maximum: 4096
-      }]);
+      assert.deepEqual(findings, []);
     } finally {
       removeFixtureRoot(remoteRoot);
       removeFixtureRoot(root);
@@ -662,7 +649,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('rejects an oversized declared context during activation with the canonical budget finding', () => {
+  test('accepts a large declared context during activation (no length budget)', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();
     try {
@@ -683,59 +670,12 @@ describe('workspace operations', () => {
       const remote = path.join(remoteRoot, 'life-ops-bot');
       initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
       mkdirSync(path.join(remote, '.ai'), { recursive: true });
-      writeFileSync(path.join(remote, currentTarget.contextPath), 'x'.repeat(8193), 'utf8');
+      writeFileSync(path.join(remote, currentTarget.contextPath), 'x'.repeat(100000), 'utf8');
       writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
       writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
       writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
       git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
       git(remote, 'commit', '--quiet', '-m', 'oversized activation context');
-
-      const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
-        cloneSource: () => remote,
-        expectedRemote: () => remote
-      });
-
-      assert.deepEqual(findings, [{
-        code: 'BUDGET_EXCEEDED',
-        path: 'personal/life-ops-bot/.ai/context.md',
-        actualBytes: 8193,
-        maxBytes: 8192,
-        actual: 8193,
-        maximum: 8192
-      }]);
-    } finally {
-      removeFixtureRoot(remoteRoot);
-      removeFixtureRoot(root);
-    }
-  });
-
-  test('accepts a declared context exactly at the canonical activation budget', () => {
-    const root = makeFixtureRoot();
-    const remoteRoot = makeFixtureRoot();
-    try {
-      const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
-      const baseTarget = {
-        id: 'syllik/life-ops-bot',
-        repository: 'syllik/life-ops-bot',
-        localPath: 'personal/life-ops-bot',
-        group: 'personal',
-        access: 'managed',
-        status: 'onboarding',
-        integrationBranch: 'master',
-        contextPath: '.ai/context.md'
-      };
-      const currentTarget = { ...baseTarget, status: 'active' };
-      const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
-      const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
-      const remote = path.join(remoteRoot, 'life-ops-bot');
-      initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
-      mkdirSync(path.join(remote, '.ai'), { recursive: true });
-      writeFileSync(path.join(remote, currentTarget.contextPath), 'x'.repeat(8192), 'utf8');
-      writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
-      writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
-      writeFileSync(path.join(remote, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
-      git(remote, 'add', '.ai/context.md', '.ai/decisions.md', 'AGENTS.md', 'CLAUDE.md');
-      git(remote, 'commit', '--quiet', '-m', 'at-limit activation context');
 
       const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
         cloneSource: () => remote,
@@ -1313,7 +1253,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('blocks an oversized complete profile AI file during plan and verification', () => {
+  test('accepts a large complete profile AI file during plan and verification (no length budget)', () => {
     const root = makeFixtureRoot();
     try {
       const project = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/syllik');
@@ -1332,13 +1272,10 @@ describe('workspace operations', () => {
 
       const manifestPath = writeFixtureManifest(root, manifest);
       const plan = planWorkspace({ root, manifestPath, manifest });
-      assert.equal(plan.findings.some(({ code, path: findingPath, maxBytes }) =>
-        code === 'BUDGET_EXCEEDED' && findingPath === 'profile/syllik/AI.md' && maxBytes === 1024), true);
-      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'BUDGET_EXCEEDED'), false);
 
       const findings = checkGeneratedFiles(root, manifest, manifestPath);
-      assert.equal(findings.some(({ code, path: findingPath, maxBytes }) =>
-        code === 'BUDGET_EXCEEDED' && findingPath === 'profile/syllik/AI.md' && maxBytes === 1024), true);
+      assert.equal(findings.some(({ code }) => code === 'BUDGET_EXCEEDED'), false);
     } finally {
       removeFixtureRoot(root);
     }
@@ -1571,7 +1508,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('blocks an oversized existing context by UTF-8 bytes without reporting populated drift', () => {
+  test('accepts a large existing context without a length budget or populated drift', () => {
     const root = makeFixtureRoot();
     try {
       const project = fixtureManifest().projects[0];
@@ -1585,8 +1522,8 @@ describe('workspace operations', () => {
       const plan = planWorkspace({ root, manifestPath: writeFixtureManifest(root, manifest), manifest });
 
       assert.equal(plan.findings.some(({ code }) => code === 'POPULATED_CONTEXT'), false);
-      assert.equal(plan.findings.some(({ code, path: findingPath }) => code === 'BUDGET_EXCEEDED' && findingPath === `${project.localPath}/${project.contextPath}`), true);
-      assert.equal(plan.blocked, true);
+      assert.equal(plan.findings.some(({ code }) => code === 'BUDGET_EXCEEDED'), false);
+      assert.equal(plan.blocked, false);
     } finally {
       removeFixtureRoot(root);
     }
@@ -1706,7 +1643,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('blocks budget collection through an intermediate symlink', () => {
+  test('blocks artifact scanning through an intermediate symlink', () => {
     const root = makeFixtureRoot();
     const outside = makeFixtureRoot();
     try {
@@ -1746,7 +1683,7 @@ describe('workspace operations', () => {
     }
   });
 
-  test('checks only known central and managed artifacts, including human plan budgets', () => {
+  test('never reports length budgets for central or managed artifacts', () => {
     const manifestRoot = makeFixtureRoot();
     const root = makeFixtureRoot();
     try {
@@ -1778,15 +1715,7 @@ describe('workspace operations', () => {
       writeFileSync(path.join(root, 'unrelated/build-output/unrelated.bin'), 'x'.repeat(100000), 'utf8');
 
       const findings = checkGeneratedFiles(root, manifest, manifestPath);
-      const budgetPaths = findings.filter(({ code }) => code === 'BUDGET_EXCEEDED').map(({ path: findingPath }) => findingPath);
-      assert.equal(budgetPaths.includes('global/architect.md'), true);
-      assert.equal(budgetPaths.includes('.ai/tasks/central-task/plan.md'), true);
-      assert.equal(budgetPaths.includes(`${managed.localPath}/${managed.contextPath}`), true);
-      assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/decisions.md`), true);
-      assert.equal(budgetPaths.includes(`${managed.localPath}/.ai/tasks/target-task/prompt.md`), true);
-      assert.equal(budgetPaths.filter((findingPath) => findingPath === `${managed.localPath}/.ai/tasks/target-task/prompt.md`).length, 1);
-      assert.equal(budgetPaths.some((findingPath) => findingPath.includes(readOnly.localPath)), false);
-      assert.equal(budgetPaths.includes('unrelated/build-output/unrelated.bin'), false);
+      assert.equal(findings.some(({ code }) => code === 'BUDGET_EXCEEDED'), false);
     } finally {
       removeFixtureRoot(manifestRoot);
       removeFixtureRoot(root);
