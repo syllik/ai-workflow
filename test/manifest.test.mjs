@@ -8,13 +8,13 @@ function fixtureManifest(overrides = {}) {
 }
 
 describe('manifest', () => {
-  test('accepts and ignores the deprecated budgets and context policy blocks', () => {
+  test('rejects the removed fixed budgets and context policy rollout blocks', () => {
     const manifest = fixtureManifest({
       budgets: { 'assembled execution context': 32768 },
       contextPolicy: { supportedVersions: [1, 2], defaultNewTaskVersion: 2, rolloutAllowlist: [], excludedRepositories: [] }
     });
-    assert.deepEqual(validateManifest(manifest).findings, []);
-    assert.deepEqual(validateManifest(fixtureManifest({ budgets: { obsolete: 1 }, contextPolicy: 'ignored' })).findings, []);
+    const unknown = validateManifest(manifest).findings.filter(({ code }) => code === 'UNKNOWN_KEY').map(({ path }) => path);
+    assert.deepEqual(unknown, ['manifest.budgets', 'manifest.contextPolicy']);
     assert.deepEqual(validateManifest(fixtureManifest()).findings, []);
   });
 
