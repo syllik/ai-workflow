@@ -79,13 +79,9 @@ gitLifecycle:
       integrationBranch: master
     - repository: ChipIn-one/chipin-frontend
       deploymentProfile: production
-      branchState: temporary-exception
-      defaultBranch: main
-      integrationBranch: dev
-      promotionBranch: main
-      exception:
-        reason: Preserve the enforced dev-to-main ancestry promotion until exact-commit promotion replaces it.
-        followUp: Replace dev-to-main promotion, then migrate the canonical long-lived source to master.
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
     - repository: ChipIn-one/chipin-backend
       deploymentProfile: production
       branchState: migration
@@ -126,7 +122,7 @@ projects:
     group: products/chipin
     access: managed
     status: active
-    integrationBranch: dev
+    integrationBranch: master
     contextPath: .ai/context.md
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
