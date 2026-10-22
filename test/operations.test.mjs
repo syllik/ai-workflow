@@ -488,6 +488,49 @@ describe('workspace operations', () => {
     }
   });
 
+  for (const [claude, code] of [['missing', 'GENERATED_DRIFT'], ['modified', 'GENERATED_DRIFT'], ['symlink', 'UNSAFE_PATH']]) {
+    test(`rejects activation when the selected managed target has a ${claude} CLAUDE.md`, () => {
+      const root = makeFixtureRoot();
+      const remoteRoot = makeFixtureRoot();
+      try {
+        const central = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+        const baseTarget = {
+          id: 'syllik/life-ops-bot',
+          repository: 'syllik/life-ops-bot',
+          localPath: 'personal/life-ops-bot',
+          group: 'personal',
+          access: 'managed',
+          status: 'onboarding',
+          integrationBranch: 'master',
+          contextPath: '.ai/context.md'
+        };
+        const currentTarget = { ...baseTarget, status: 'active' };
+        const baseManifest = fixtureManifest({ projects: [central, baseTarget] });
+        const currentManifest = fixtureManifest({ projects: [central, currentTarget] });
+        const remote = path.join(remoteRoot, 'life-ops-bot');
+        initFixtureRepo(remote, `https://${currentTarget.repository}.git`, currentTarget.integrationBranch);
+        mkdirSync(path.join(remote, '.ai'), { recursive: true });
+        writeFileSync(path.join(remote, currentTarget.contextPath), renderContextScaffold(currentTarget), 'utf8');
+        writeFileSync(path.join(remote, '.ai/decisions.md'), '# Decisions\n', 'utf8');
+        writeFileSync(path.join(remote, 'AGENTS.md'), renderAgentsBlock(currentManifest), 'utf8');
+        if (claude === 'modified') writeFileSync(path.join(remote, 'CLAUDE.md'), renderManagedBlock('claude-routing', '@README.md'), 'utf8');
+        if (claude === 'symlink') symlinkSync('AGENTS.md', path.join(remote, 'CLAUDE.md'));
+        git(remote, 'add', '.');
+        git(remote, 'commit', '--quiet', '-m', `aligned routing with ${claude} CLAUDE.md`);
+
+        const findings = checkActivatedTargetRouting(currentManifest, baseManifest, {
+          cloneSource: () => remote,
+          expectedRemote: () => remote
+        });
+
+        assert.deepEqual(findings, [{ code, path: 'personal/life-ops-bot/CLAUDE.md' }]);
+      } finally {
+        removeFixtureRoot(remoteRoot);
+        removeFixtureRoot(root);
+      }
+    });
+  }
+
   test('accepts activation when the selected managed target has valid decisions', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();

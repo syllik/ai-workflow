@@ -124,6 +124,23 @@ describe('workspace CLI', () => {
     }
   });
 
+  test('fails check when the central checkout lacks CLAUDE.md', () => {
+    const root = makeFixtureRoot();
+    try {
+      const manifest = fixtureManifest({ projects: [] });
+      const manifestPath = writeFixtureManifest(root, manifest);
+      mkdirSync(path.join(root, 'projects'), { recursive: true });
+      writeFileSync(path.join(root, 'projects/index.md'), renderProjectIndex(manifest), 'utf8');
+      writeFileSync(path.join(root, 'AGENTS.md'), renderAgentsBlock(manifest), 'utf8');
+
+      const result = runCli('check', '--root', root, '--manifest', manifestPath);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /GENERATED_DRIFT.*CLAUDE\.md/u);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
+
   test('fails the standalone CI path for activation when the declared target lacks current routing', () => {
     for (const routing of ['missing', 'malformed', 'stale']) {
       const root = makeFixtureRoot();
