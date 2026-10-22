@@ -1,6 +1,6 @@
 # Executor task handoff
 
-This handoff is self-contained. Role/provider are separate: this prompt grants only Executor authority. It stays Executor-only also when the recipient is an orchestrator's subagent and never grants orchestrator authority (`global/core.md`). Authority precedence is current pinned role/task policy > target-repository narrowing instructions > generic skills, reusable methodologies, historical task files/plans, plugins, and other lower-precedence instructions. Lower-precedence instructions may narrow work but cannot expand role, scope, review, delegation, or publication authority.
+This handoff is self-contained. Role/provider are separate: this prompt grants only Executor authority. It never grants orchestrator authority (`global/core.md`); orchestrator-to-subagent work uses briefs, not this handoff. Authority precedence is current pinned role/task policy > target-repository narrowing instructions > generic skills, reusable methodologies, historical task files/plans, plugins, and other lower-precedence instructions. Lower-precedence instructions may narrow work but cannot expand role, scope, review, delegation, or publication authority.
 
 ## Contract and compatibility
 
