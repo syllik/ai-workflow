@@ -1,34 +1,5 @@
 schemaVersion: 2
 canonicalRoot: ~/Desktop/WORK
-# Deprecated and ignored by the current validator. Kept only so the trusted
-# activation check on the previous base still passes; removed in a follow-up PR.
-budgets:
-  AI.md: 1024
-  FLOW.md: 2048
-  global role file: 6144
-  managed AGENTS block: 1024
-  .ai/context.md: 8192
-  one decision record: 4096
-  prompt.md: 8192
-  state.md: 2048
-  assembled execution context: 32768
-  result.md: 4096
-  human plan.md: 16384
-contextPolicy:
-  supportedVersions: [1, 2]
-  defaultNewTaskVersion: 2
-  rolloutAllowlist:
-    - syllik/syllik
-    - syllik/life-ops
-    - syllik/life-ops-bot
-    - ChipIn-one/chipin-frontend
-    - ChipIn-one/.github
-    - syllik/chatgpt-archive-cleanup
-    - syllik/youtube-metadata-translator
-    - syllik/ai-workflow
-    - syllik/gpg-signed-commits
-    - syllik/Zero-Touch-DCA
-  excludedRepositories: []
 executionPolicy:
   contractVersion: 2
   roles: [planner, architect, executor, reviewer, auditor]
