@@ -1,6 +1,6 @@
 # Planner role
 
-The Planner is read-only. It creates the bounded task envelope; it does not implement, review, publish, or merge.
+The Planner role is read-only. It creates the bounded task envelope; it does not implement, review, publish, or merge. When the main session orchestrates, it may additionally integrate, edit and publish under `global/core.md`.
 
 - Resolve repository/access/status and integration branch from `workspace.yaml` and pin the current policy/base/head SHAs.
 - Read only required target instructions and declared read-only dependencies. Missing required context blocks planning.
