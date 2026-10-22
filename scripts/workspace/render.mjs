@@ -136,6 +136,10 @@ export function renderAgentsBlock(manifest) {
   return rendered;
 }
 
+export function renderClaudeBlock() {
+  return renderManagedBlock('claude-routing', '@AGENTS.md');
+}
+
 export function renderContextScaffold(project) {
   return finalNewline([
     '# Project',

@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { githubAppGitAuthorization } from '../scripts/workspace/github-auth.mjs';
-import { renderAgentsBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
+import { renderAgentsBlock, renderClaudeBlock, renderProfileNavigation } from '../scripts/workspace/render.mjs';
 import { evaluatePilotRollout, inspectMaterializedTarget, loadRolloutPolicy, resolveRolloutProjects, validateRolloutPolicy } from '../scripts/workspace/rollout.mjs';
 import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot } from './helpers.mjs';
 
@@ -41,7 +41,7 @@ function pilotManifest() {
   return fixtureManifest({ projects: [profile, org, frontend, knowledgeBase, central] });
 }
 
-function materializeRolloutTarget(root, project, manifest, { staleAgents = false, dirty = false } = {}) {
+function materializeRolloutTarget(root, project, manifest, { staleAgents = false, missingClaude = false, dirty = false } = {}) {
   const repositoryRoot = path.join(root, project.localPath);
   initFixtureRepo(repositoryRoot, `https://github.com/${project.repository}.git`, project.integrationBranch);
   let agentsPath = null;
@@ -51,6 +51,7 @@ function materializeRolloutTarget(root, project, manifest, { staleAgents = false
     const agentsManifest = staleAgents ? { ...manifest, canonicalRoot: '~/OLD-WORK' } : manifest;
     agentsPath = path.join(repositoryRoot, 'AGENTS.md');
     writeFileSync(agentsPath, localPrefix + renderAgentsBlock(agentsManifest), 'utf8');
+    if (!missingClaude) writeFileSync(path.join(repositoryRoot, 'CLAUDE.md'), renderClaudeBlock(), 'utf8');
     writeFileSync(path.join(repositoryRoot, project.contextPath), '# Project context\n', 'utf8');
     writeFileSync(path.join(repositoryRoot, '.ai/decisions.md'), '# Decisions\n', 'utf8');
     if (project.repository === 'syllik/syllik') {
@@ -186,6 +187,28 @@ test('stale routing is incomplete and local instructions remain byte-for-byte un
     assert.equal(after, before);
     assert.match(after, /^# Local instructions/u);
     assert.deepEqual(validateRolloutPolicy(policy, manifest), []);
+  } finally {
+    removeFixtureRoot(root);
+  }
+});
+
+test('missing CLAUDE.md routing makes a managed target stale', () => {
+  const root = makeFixtureRoot();
+  try {
+    const manifest = pilotManifest();
+    const project = manifest.projects.find(({ repository }) => repository === 'syllik/syllik');
+    const target = materializeRolloutTarget(root, project, manifest, { missingClaude: true });
+    const receipt = inspectMaterializedTarget({
+      repositoryRoot: target.repositoryRoot,
+      project,
+      manifest,
+      policySha: POLICY_SHA,
+      targetSha: target.targetSha
+    });
+
+    assert.equal(receipt.outcome, 'incomplete');
+    assert.equal(receipt.reason, 'TARGET_STALE');
+    assert.deepEqual(receipt.findings, [{ code: 'GENERATED_DRIFT', path: `${project.localPath}/CLAUDE.md` }]);
   } finally {
     removeFixtureRoot(root);
   }

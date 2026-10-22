@@ -94,7 +94,7 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 * `.ai/tasks/` — persisted task state for this repository.
 * `prompts/` — короткие reusable prompts.
 * `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
-* [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь.
+* [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь; [`CLAUDE.md`](CLAUDE.md) импортирует его для Claude Code.
 
 ### Reusable prompts
 
@@ -112,7 +112,8 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 4. Добавьте или проверьте запись в `workspace.yaml`. Если repository входит в lifecycle-audit scope, добавьте/обновите его `gitLifecycle` record с deployment profile и фактическим branch state; не помечайте legacy branch canonical и не переименовывайте branch в рамках onboarding-policy change.
 5. Создайте или обновите связанный change в `syllik/syllik`: `docs/workspace.md` и `docs/repositories.md`. PR с изменением `workspace.yaml` не считается готовым к human merge, пока синхронизирующий workspace-documentation change не существует и не соответствует ему. Profile `README.md` содержит стабильную ссылку на `docs/workspace.md` и не дублирует список проектов; исключение из workspace documentation требует явного решения человека.
 6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
-7. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
+7. Убедитесь, что в target repository есть `AGENTS.md` с managed-блоком `agents-routing` и `CLAUDE.md` с managed-блоком `claude-routing` (`@AGENTS.md`), чтобы Claude Code агенты получали тот же `AGENTS.md` routing, что и все остальные агенты. `CLAUDE.md` должен быть обычным файлом, а не symlink на `AGENTS.md`: symlink отклоняется как `UNSAFE_PATH`. `node scripts/workspace/cli.mjs apply` создаёт оба файла для managed projects, а `check` считает их отсутствие drift.
+8. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 
 ### Создать задачу
 

@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_MANIFEST_PATH, loadManifest, validateManifest } from './manifest.mjs';
-import { markerState, renderAgentsBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
+import { markerState, renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderDecisionsScaffold, renderLegacyProfileNavigation, renderProfileNavigation, renderProjectIndex, replaceManagedBlock } from './render.mjs';
 
 export const OPERATION_KINDS = Object.freeze(['clone', 'create-file', 'replace-managed-block', 'replace-generated-file']);
 
@@ -455,6 +455,7 @@ export function planWorkspace(options = {}) {
         addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AI.md'), 'profile-navigation', renderProfileNavigation(manifest), repository, renderLegacyProfileNavigation(manifest));
       }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
+      addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'CLAUDE.md'), 'claude-routing', renderClaudeBlock(), repository);
       addContextOperation(root, operations, findings, project);
       addDecisionsOperation(root, operations, findings, project);
     }
@@ -632,25 +633,32 @@ function addUniqueFinding(findings, code, filePath) {
   if (!findings.some((entry) => entry.code === code && entry.path === filePath)) findings.push(finding(code, filePath));
 }
 
-function validateManagedAgents(repositoryRoot, findingPath, manifest, findings, checkedAgents = null) {
-  const agentsPath = resolveInside(repositoryRoot, 'AGENTS.md');
-  if (!agentsPath) {
+function validateManagedFile(repositoryRoot, fileName, marker, desired, findingPath, findings, checkedFiles = null) {
+  const filePath = resolveInside(repositoryRoot, fileName);
+  if (!filePath) {
     addUniqueFinding(findings, 'UNSAFE_PATH', findingPath);
     return;
   }
-  const identity = physicalPath(agentsPath);
-  if (checkedAgents?.has(identity)) return;
-  checkedAgents?.add(identity);
-  const desiredAgents = renderAgentsBlock(manifest);
-  if (!isRegularFile(agentsPath)) {
+  const identity = physicalPath(filePath);
+  if (checkedFiles?.has(identity)) return;
+  checkedFiles?.add(identity);
+  if (!isRegularFile(filePath)) {
     findings.push(finding('GENERATED_DRIFT', findingPath));
     return;
   }
-  const current = readFileSync(agentsPath, 'utf8');
-  const state = markerState(current, 'agents-routing');
-  if (state.kind !== 'valid' || replaceManagedBlock(current, 'agents-routing', desiredAgents) !== normalizeText(current)) {
+  const current = readFileSync(filePath, 'utf8');
+  const state = markerState(current, marker);
+  if (state.kind !== 'valid' || replaceManagedBlock(current, marker, desired) !== normalizeText(current)) {
     findings.push(finding('GENERATED_DRIFT', findingPath));
   }
+}
+
+function validateManagedAgents(repositoryRoot, findingPath, manifest, findings, checkedFiles = null) {
+  validateManagedFile(repositoryRoot, 'AGENTS.md', 'agents-routing', renderAgentsBlock(manifest), findingPath, findings, checkedFiles);
+}
+
+function validateManagedClaude(repositoryRoot, findingPath, findings, checkedFiles = null) {
+  validateManagedFile(repositoryRoot, 'CLAUDE.md', 'claude-routing', renderClaudeBlock(), findingPath, findings, checkedFiles);
 }
 
 function validateManagedDecisions(repositoryRoot, findingPath, findings) {
@@ -668,6 +676,7 @@ export function validateManagedTarget(repositoryRoot, project, manifest, outerFi
   const findings = [];
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
+  validateManagedClaude(repositoryRoot, path.posix.join(project.localPath, 'CLAUDE.md'), findings, options.checkedAgents ?? null);
   validateManagedDecisions(repositoryRoot, project.localPath, findings);
 
   if (options.validateTaskArtifacts === true) {
@@ -877,6 +886,7 @@ export function checkGeneratedFiles(root, manifest, manifestPath = DEFAULT_MANIF
 
   const checkedAgents = new Set();
   validateManagedAgents(manifestRoot, 'AGENTS.md', manifest, findings, checkedAgents);
+  validateManagedClaude(manifestRoot, 'CLAUDE.md', findings, checkedAgents);
   for (const project of manifest.projects.filter(({ access }) => access === 'managed')) {
     const repository = resolveInside(workspaceRoot, project.localPath);
     if (!repository) {
