@@ -8,12 +8,12 @@ storage. Before working, read:
 1. `AI.md`;
 2. `FLOW.md`;
 3. one record from `workspace.yaml` and `projects/index.md`;
-4. the relevant role file from `global/architect.md`, `global/executor.md`, or `global/reviewer.md`;
+4. `global/workflow.md`, then only the selected role file;
 5. `AGENTS.md` and `.ai/context.md` in the target repository;
 6. only relevant `.ai/decisions.md`, task files, and explicit `contextDependencies` required by the target/task.
 
 For a persisted task, also use its `prompt.md` and current `state.md`. The
-human-only `plan.md` is reviewed by the user; Luna never reads it. Do not reread
+human-only `plan.md` is reviewed by the user; Executor never reads it. Do not reread
 task history without a concrete reason.
 
 The GitHub organization at `https://github.com/syllik` and the task prompt are
@@ -22,11 +22,11 @@ project, prompt, task, or history file without a concrete reason.
 
 ## Core rules
 
-* Authority precedence is: current pinned role/task policy > target-repository narrowing instructions > generic skills, reusable methodologies, historical task files/plans, plugins, and other lower-precedence instructions. Lower-precedence instructions may narrow implementation or validation, but cannot expand Luna's authority. Loading or invoking a skill grants no GitHub mutation, publication, reviewer, delegation, or scope-change authority.
-* GPT-5.6 Sol is the planner, architect, and research agent; it issues one self-contained execution prompt for implementation. Managed Codex GitHub Code Review is the default independent PR reviewer, while Sol 5.6 High is reserved for escalation, architecture/high-risk review, ambiguous findings, reviewer unavailability, or explicit human request.
-* Luna xhigh is the executor and coder only; it reads target repository instructions, implements the authorized scope, and runs authorized validation.
+* Authority precedence is: current pinned role/task policy > target-repository narrowing instructions > generic skills, reusable methodologies, historical task files/plans, plugins, and other lower-precedence instructions. Lower-precedence instructions may narrow implementation or validation, but cannot expand Executor authority. Loading or invoking a skill grants no GitHub mutation, publication, reviewer, delegation, or scope-change authority.
+* Planner, Architect, Executor, Reviewer, and Auditor are provider-independent roles; model/runtime capability is selected by task risk, not role name.
+* Trusted Publisher is separate from all AI roles and may publish only within explicit task authority.
 * Resolve target repository instructions through the selected `workspace.yaml` record's `integrationBranch`. Normal implementation requires `status: active`; `status: onboarding` permits onboarding/alignment only.
-* `contextDependencies` are approved read-only context only. Read the minimum required dependency context; never mutate it or discover additional repositories from it.
+* `contextDependencies` are approved read-only context only for the dependent task. Read the minimum required dependency context; never mutate a repository through that dependency relationship or discover additional repositories from it. A separate managed workspace record for the same repository retains its own management authority.
 * Lightweight tasks are the default; task files are not required.
 * Use a persisted task for large, architectural, long-running, cross-session, audit-significant, or context-heavy work.
 * The default persisted structure is a human-only planning record, `prompt.md`, `state.md`, and `result.md`.
@@ -36,11 +36,10 @@ project, prompt, task, or history file without a concrete reason.
 * Conversation context must not be the only execution state for a persisted task.
 * Task context is optional and must not duplicate the human-only planning record.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
-* Do not use subagents, repeat broad research, or expand scope.
-* Luna does not self-review, stage, commit, push, open or update PRs, merge, enable auto-merge, or mutate GitHub Issue metadata, Project #5 fields, labels/comments, PR publication, merge state, or Trello state.
-* Routine Codex review is automatic on every push to an open PR by default. Use `@codex review` only as a manual fallback/retrigger when automatic review does not start or an explicit retry is needed; do not duplicate an automatic review already running.
-* A Codex review is current only when its reviewed commit SHA matches the current PR head. Any correction that changes the head invalidates the previous review and requires a new Codex review before human merge.
-* Codex review is review-only. Do not use `@codex fix`, `@codex address that feedback`, or any other command that asks Codex to mutate the branch.
+* The main session may orchestrate subagents only under the delegation rules in `global/core.md`; do not repeat broad research or expand scope.
+* Executor does not self-review, publish, merge, or mutate GitHub/Trello. Trusted Publisher performs one final commit + one push per completed revision only when explicitly authorized; published history is never rewritten.
+* Reviewer runs only after required CI is green for the exact current head, at most once per SHA, in an independent read-only context, and returns one consolidated findings package.
+* Any head change invalidates prior CI/review. v2 may pre-authorize up to two bounded correction batches; legacy v1/unspecified handoffs require human authorization per batch. After the limit, escalate to a human. Only a human merges.
 * Do not create unnecessary documentation or perform unrelated refactoring.
 * Update canonical project context only when durable knowledge appears.
 * Never store secrets, credentials, tokens, private keys, or `.env` contents.
@@ -57,10 +56,10 @@ project, prompt, task, or history file without a concrete reason.
 Canonical AI routing:
 1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.
 2. Select one GitHub record from https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml / https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md.
-3. Read role rules from https://github.com/syllik/ai-workflow/blob/HEAD/global/architect.md, https://github.com/syllik/ai-workflow/blob/HEAD/global/executor.md, or https://github.com/syllik/ai-workflow/blob/HEAD/global/reviewer.md.
+3. Read the role index https://github.com/syllik/ai-workflow/blob/HEAD/global/workflow.md, then only the selected role file.
 4. On that record's `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.
 5. Read relevant `.ai/decisions.md`, task files, and required declared `contextDependencies`; block if required dependency context is unavailable.
 
-Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.
+GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.
 Canonical root: ~/Desktop/WORK
 <!-- ai-workflow:agents-routing:end -->

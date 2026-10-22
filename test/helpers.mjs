@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderAgentsBlock, renderContextScaffold, renderProjectIndex } from '../scripts/workspace/render.mjs';
+import { CANONICAL_EXECUTION_POLICY } from '../scripts/workspace/task-policy.mjs';
 
 export const expectedProjects = [
   { id: 'syllik/syllik', repository: 'syllik/syllik', localPath: 'profile/syllik', group: 'profile', access: 'managed', status: 'active', integrationBranch: 'master', contextPath: '.ai/context.md' },
@@ -15,26 +16,47 @@ export const expectedProjects = [
   { id: 'syllik/gpg-signed-commits', repository: 'syllik/gpg-signed-commits', localPath: 'guides/git/gpg-signed-commits', group: 'guides/git', access: 'managed', status: 'active', integrationBranch: 'main', contextPath: '.ai/context.md' }
 ];
 
-export const fixtureBudgets = {
-  'AI.md': 1024,
-  'FLOW.md': 2048,
-  'global role file': 6144,
-  'managed AGENTS block': 1024,
-  '.ai/context.md': 8192,
-  'one decision record': 4096,
-  'prompt.md': 8192,
-  'state.md': 2048,
-  'assembled execution context': 32768,
-  'result.md': 4096,
-  'human plan.md': 16384
+export const fixtureGitLifecycle = {
+  canonicalBranch: 'master',
+  normalMergeMethod: 'squash',
+  productionPromotion: 'exact-commit',
+  temporaryIssueBranchPattern: '<type>/issue-<number>-<slug>',
+  repositories: [
+    { repository: 'syllik/syllik', deploymentProfile: 'none', branchState: 'canonical', defaultBranch: 'master', integrationBranch: 'master' },
+    {
+      repository: 'ChipIn-one/chipin-frontend',
+      deploymentProfile: 'production',
+      branchState: 'temporary-exception',
+      defaultBranch: 'main',
+      integrationBranch: 'dev',
+      promotionBranch: 'main',
+      exception: {
+        reason: 'Preserve dev-to-main ancestry promotion until exact-commit promotion replaces it.',
+        followUp: 'Replace promotion, then migrate to master.'
+      }
+    },
+    { repository: 'ChipIn-one/chipin-backend', deploymentProfile: 'production', branchState: 'migration', defaultBranch: 'develop', integrationBranch: 'develop' },
+    { repository: 'syllik/ai-workflow', deploymentProfile: 'none', branchState: 'canonical', defaultBranch: 'master', integrationBranch: 'master' }
+  ]
 };
 
 export function fixtureManifest(overrides = {}) {
+  const projects = overrides.projects ?? expectedProjects.map((project) => ({ ...project }));
+  const lifecycleRepositories = fixtureGitLifecycle.repositories
+    .filter((entry) => projects.some((project) => project.repository.toLowerCase() === entry.repository.toLowerCase()))
+    .map((entry) => ({
+      ...entry,
+      ...(entry.exception ? { exception: { ...entry.exception } } : {})
+    }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     canonicalRoot: '~/Desktop/WORK',
-    budgets: { ...fixtureBudgets },
-    projects: expectedProjects.map((project) => ({ ...project })),
+    executionPolicy: overrides.executionPolicy ?? structuredClone(CANONICAL_EXECUTION_POLICY),
+    gitLifecycle: overrides.gitLifecycle ?? {
+      ...fixtureGitLifecycle,
+      repositories: lifecycleRepositories
+    },
+    projects,
     ...overrides
   };
 }

@@ -1,67 +1,33 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { loadManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
+import { loadManifest, validateActivationBaseManifest, validateManifest } from '../scripts/workspace/manifest.mjs';
 import { expectedProjects, fixtureManifest as baseFixtureManifest, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
 function fixtureManifest(overrides = {}) {
-  const base = baseFixtureManifest();
-  return {
-    ...base,
-    ...overrides,
-    budgets: {
-      ...base.budgets,
-      'assembled execution context': 32768,
-      ...overrides.budgets
-    }
-  };
+  return { ...baseFixtureManifest(overrides), ...overrides };
 }
 
 describe('manifest', () => {
-  test('accepts the canonical assembled execution context budget', () => {
+  test('rejects the removed fixed budgets and context policy rollout blocks', () => {
     const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32768
-      }
+      budgets: { 'assembled execution context': 32768 },
+      contextPolicy: { supportedVersions: [1, 2], defaultNewTaskVersion: 2, rolloutAllowlist: [], excludedRepositories: [] }
     });
+    const unknown = validateManifest(manifest).findings.filter(({ code }) => code === 'UNKNOWN_KEY').map(({ path }) => path);
+    assert.deepEqual(unknown, ['manifest.budgets', 'manifest.contextPolicy']);
+    assert.deepEqual(validateManifest(fixtureManifest()).findings, []);
+  });
 
-    const result = validateManifest(manifest);
+  test('requires the canonical execution policy contract', () => {
+    const manifest = fixtureManifest();
+    assert.deepEqual(validateManifest(manifest).findings, []);
+    manifest.executionPolicy.corrections.maxBatches = 3;
+    assert.equal(validateManifest(manifest).findings.some(({ code }) => code === 'INVALID_CORRECTION_BATCH_LIMIT'), true);
+  });
 
+  test('historical activation bases do not require the current execution policy', () => {
+    const result = validateActivationBaseManifest({ projects: [{ repository: 'syllik/legacy', access: 'managed', status: 'active', integrationBranch: 'master' }] });
     assert.equal(result.valid, true);
-    assert.deepEqual(result.findings, []);
-  });
-
-  test('rejects a missing assembled execution context budget', () => {
-    const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32768
-      }
-    });
-    delete manifest.budgets['assembled execution context'];
-
-    const result = validateManifest(manifest);
-
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
-      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
-    ]);
-  });
-
-  test('rejects an incorrect assembled execution context budget', () => {
-    const manifest = fixtureManifest({
-      budgets: {
-        ...fixtureManifest().budgets,
-        'assembled execution context': 32767
-      }
-    });
-
-    const result = validateManifest(manifest);
-
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_BUDGET'), [
-      { code: 'INVALID_BUDGET', path: 'manifest.budgets.assembled execution context' }
-    ]);
   });
 
   test('loads the canonical manifest with exactly the approved project records', () => {
@@ -77,6 +43,36 @@ describe('manifest', () => {
     } finally {
       removeFixtureRoot(root);
     }
+  });
+
+  test('requires valid deployment profiles and recorded lifecycle exceptions', () => {
+    const manifest = fixtureManifest();
+    delete manifest.gitLifecycle.repositories[0].deploymentProfile;
+    manifest.gitLifecycle.repositories[2].deploymentProfile = 'preview';
+    delete manifest.gitLifecycle.repositories[1].exception;
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'INVALID_DEPLOYMENT_PROFILE').map(({ path }) => path), [
+      'manifest.gitLifecycle.repositories[0].deploymentProfile',
+      'manifest.gitLifecycle.repositories[2].deploymentProfile'
+    ]);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'UNRECORDED_LIFECYCLE_EXCEPTION').map(({ path }) => path), [
+      'manifest.gitLifecycle.repositories[1].exception'
+    ]);
+  });
+
+  test('rejects lifecycle branch-state drift from the workspace record', () => {
+    const manifest = fixtureManifest();
+    manifest.gitLifecycle.repositories[1].integrationBranch = 'feature/temporary';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.findings.some(({ code, path }) => (
+      code === 'LIFECYCLE_INTEGRATION_BRANCH_MISMATCH'
+      && path === 'manifest.gitLifecycle.repositories[1].integrationBranch'
+    )), true);
   });
 
   test('accepts a new valid approved repository entry without source enumeration', () => {
@@ -110,6 +106,92 @@ describe('manifest', () => {
       'manifest.projects[0].integrationBranch',
       'manifest.projects[1].integrationBranch'
     ]);
+  });
+
+  test('accepts master for the canonical central repository using normalized identity', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects a non-master integration branch for the canonical central repository', () => {
+    const manifest = fixtureManifest();
+    const central = manifest.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
+    central.repository = 'SYLLIK/AI-WORKFLOW';
+    central.integrationBranch = 'develop';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code, path }) => code === 'INVALID_CENTRAL_INTEGRATION_BRANCH' && path === 'manifest.projects[6].integrationBranch'), [
+      { code: 'INVALID_CENTRAL_INTEGRATION_BRANCH', path: 'manifest.projects[6].integrationBranch' }
+    ]);
+  });
+
+  test('accepts historical activation base data without applying current-only policy', () => {
+    const base = fixtureManifest({
+      schemaVersion: 0,
+      canonicalRoot: '/historical/workspace',
+      budgets: { obsolete: 1 },
+      unexpected: true,
+      projects: fixtureManifest().projects.map((project, index) => index === 6
+        ? {
+          ...project,
+          repository: 'SYLLIK/AI-WORKFLOW',
+          integrationBranch: 'develop',
+          localPath: '../historical-central',
+          contextPath: '../historical-context.md',
+          contextDependencies: 'legacy'
+        }
+        : project)
+    });
+
+    const result = validateActivationBaseManifest(base);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+  });
+
+  test('rejects malformed activation base transition records', () => {
+    const missingProjects = validateActivationBaseManifest({ schemaVersion: 1 });
+    assert.equal(missingProjects.valid, false);
+    assert.equal(missingProjects.findings.some(({ code }) => code === 'INVALID_ACTIVATION_BASE_PROJECTS'), true);
+
+    const invalidProject = validateActivationBaseManifest({
+      projects: [{ repository: 'not-a-repository', access: 'managed', status: 'active', integrationBranch: '../main' }]
+    });
+    assert.equal(invalidProject.valid, false);
+    assert.deepEqual(invalidProject.findings.map(({ code }) => code).sort(), [
+      'INVALID_ACTIVATION_BASE_REPOSITORY',
+      'INVALID_ACTIVATION_BASE_BRANCH'
+    ].sort());
+  });
+
+  test('rejects duplicate normalized repository identities in an activation base', () => {
+    const project = { repository: 'syllik/life-ops', access: 'managed', status: 'active', integrationBranch: 'master' };
+    const result = validateActivationBaseManifest({ projects: [project, { ...project, repository: 'SYLLIK/LIFE-OPS' }] });
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings, [{
+      code: 'DUPLICATE_ACTIVATION_BASE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
+  });
+
+  test('keeps out-of-audit project integration branches configurable', () => {
+    const manifest = fixtureManifest();
+    const project = manifest.projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    project.integrationBranch = 'feature/routing-contract';
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
   });
 
   test('accepts explicit read-only context dependencies and rejects unsafe dependency declarations', () => {
@@ -149,7 +231,7 @@ describe('manifest', () => {
     ]);
   });
 
-  test('rejects context dependencies that alias managed workspace projects', () => {
+  test('accepts relationship-scoped read-only dependencies that are independently managed projects', () => {
     const manifest = fixtureManifest();
     manifest.projects[2].contextDependencies = [{
       repository: 'syllik/syllik',
@@ -159,10 +241,10 @@ describe('manifest', () => {
 
     const result = validateManifest(manifest);
 
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.findings.filter(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY').map(({ path }) => path), [
-      'manifest.projects[2].contextDependencies[0].repository'
-    ]);
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
+    assert.equal(manifest.projects[0].access, 'managed');
+    assert.equal(manifest.projects[2].contextDependencies[0].access, 'read-only');
   });
 
   test('normalizes repository case for dependency alias checks', () => {
@@ -173,14 +255,6 @@ describe('manifest', () => {
       access: 'read-only'
     }];
     assert.equal(validateManifest(selfAlias).findings.some(({ code }) => code === 'SELF_CONTEXT_DEPENDENCY'), true);
-
-    const managedAlias = fixtureManifest();
-    managedAlias.projects[2].contextDependencies = [{
-      repository: 'SYLLIK/SYLLIK',
-      integrationBranch: 'master',
-      access: 'read-only'
-    }];
-    assert.equal(validateManifest(managedAlias).findings.some(({ code }) => code === 'MANAGED_CONTEXT_DEPENDENCY'), true);
 
     const duplicateAlias = fixtureManifest();
     duplicateAlias.projects[2].contextDependencies = [
@@ -193,11 +267,9 @@ describe('manifest', () => {
   test('rejects unknown keys at every manifest level', () => {
     const manifest = fixtureManifest({ unexpected: true });
     manifest.projects[0].extra = true;
-    manifest.budgets.extra = 1;
     const result = validateManifest(manifest);
     assert.deepEqual(result.findings.filter(({ code }) => code === 'UNKNOWN_KEY').map(({ code, path }) => ({ code, path })), [
       { code: 'UNKNOWN_KEY', path: 'manifest.unexpected' },
-      { code: 'UNKNOWN_KEY', path: 'manifest.budgets.extra' },
       { code: 'UNKNOWN_KEY', path: 'manifest.projects[0].extra' }
     ]);
   });
@@ -213,6 +285,23 @@ describe('manifest', () => {
       { code: 'DUPLICATE_REPOSITORY', path: 'manifest.projects[1].repository' },
       { code: 'DUPLICATE_LOCAL_PATH', path: 'manifest.projects[1].localPath' }
     ]);
+  });
+
+  test('rejects repository identities that differ only by case', () => {
+    const base = fixtureManifest();
+    const archive = base.projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const youtube = base.projects.find(({ repository }) => repository === 'syllik/youtube-metadata-translator');
+    const manifest = fixtureManifest({
+      projects: [archive, { ...youtube, repository: archive.repository.toUpperCase() }]
+    });
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.findings.filter(({ code }) => code === 'DUPLICATE_REPOSITORY'), [{
+      code: 'DUPLICATE_REPOSITORY',
+      path: 'manifest.projects[1].repository'
+    }]);
   });
 
   test('rejects unsafe and non-POSIX paths', () => {
@@ -252,7 +341,19 @@ describe('manifest', () => {
     ]);
 
     const accepted = validateManifest(fixtureManifest({ projects: [fixtureManifest().projects[0]] }));
-    assert.equal(accepted.valid, true);
+    assert.deepEqual(accepted.findings, []);
+  });
+
+  test('accepts an empty lifecycle audit for unverified project sets', () => {
+    const cleanupProject = fixtureManifest().projects.find(({ repository }) => repository === 'syllik/chatgpt-archive-cleanup');
+    const manifest = fixtureManifest({ projects: [cleanupProject] });
+
+    assert.deepEqual(manifest.gitLifecycle.repositories, []);
+
+    const result = validateManifest(manifest);
+
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.findings, []);
   });
 
   test('rejects excluded repositories', () => {

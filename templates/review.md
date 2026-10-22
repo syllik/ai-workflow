@@ -1,18 +1,6 @@
-# Independent review escalation / fallback
+# Independent review handoff
 
-Use this separately from Luna execution state/result.
-
-Routine published PR review belongs to managed Codex GitHub Code Review and
-runs automatically on every push to an open PR. Use `@codex review` only as a
-manual fallback/retrigger when automatic review does not start or an explicit
-retry is needed; never duplicate an automatic review already running. Use this
-template only when Sol 5.6 High is explicitly needed for escalation or fallback:
-architecture/high-risk review, ambiguous or disputed Codex findings, Codex
-unavailability, or explicit human request.
-
-## Reviewer
-
-Sol 5.6 High — escalation/fallback only.
+Reviewer is provider-independent, read-only, and separate from Executor/Publisher. Use one independent reviewer context for one pinned current head SHA only after the repository-defined required CI gate for that exact head is complete and green.
 
 ## Repository
 
@@ -24,17 +12,14 @@ Sol 5.6 High — escalation/fallback only.
 
 ## Execution evidence checked
 
-## Escalation reason
+## Risk / escalation trigger
 
 ## Findings
 
-One consolidated package ordered by severity.
+Return one consolidated package ordered by severity. Each finding has a stable ID, severity, evidence, file/location, and required correction. If none are material, state that and list checks performed.
 
-## Checks performed
-
-## Review outcome
+Do not implement fixes, mutate the branch/PR, publish, change Issue/Project/deployment/settings state, or merge. Do not start a duplicate review already running/current for this head. A head change invalidates this review.
 
 ## Correction handoff
 
-Do not send findings to Luna until a human explicitly authorizes a correction
-pass. When authorized, send the complete findings package once.
+Correction authority comes from the task contract, not Reviewer. v2 may authorize up to two bounded correction batches upfront. Legacy v1/unspecified handoffs require human authorization per batch. Forward the consolidated package once; after the correction limit or a disputed finding, escalate to a human.

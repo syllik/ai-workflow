@@ -17,6 +17,12 @@
 - Reuse / fork / greenfield decision:
 - Decision rationale:
 
+## Git lifecycle
+
+- Deployment profile: none | staging | production | unverified
+- Canonical long-lived branch target: master
+- Temporary exception: none, or reason + bounded follow-up recorded in `workspace.yaml`
+
 ## Current state
 
 ## Stack

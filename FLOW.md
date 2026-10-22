@@ -1,17 +1,13 @@
 # Canonical workflow
 
-GitHub is the only project/task authority:
-`AI.md -> FLOW.md -> workspace record -> role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`.
-Use `integrationBranch`; no repo auto-discovery. Active managed projects may work; onboarding managed projects only onboarding/alignment; Read-only projects are never write targets. Required `contextDependencies` are read-only; unavailable required context blocks work.
+GitHub authority: `AI.md -> FLOW.md -> workspace record -> global/workflow.md -> selected role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`. Use `integrationBranch`; no repo auto-discovery. Active managed work; onboarding only onboarding/alignment; read-only projects are never write targets. `contextDependencies` are task-scoped read-only. Missing required context blocks work; Issue/PR entry does not bypass this route.
 
-New repos need human licensing before first commit. Net-new tools require analogue research and should prefer viable licensed reuse/fork over greenfield.
+Roles are provider-independent: Planner scopes, Architect handles risks, Executor implements, Reviewer independently reviews pinned SHA without mutations, Auditor checks evidence. Select capability/risk, not provider. Trusted Publisher is separate. The main session may orchestrate role subagents under `global/core.md`.
 
-Adding a project to `workspace.yaml` requires synchronized `syllik/syllik` updates to `docs/workspace.md` and `docs/repositories.md`; profile `README.md` keeps a stable workspace link.
+v2 pins policy/base/head plus approval (paths, publication, 0–2 corrections). Legacy v1/unspecified remains human-gated; no automatic publication/correction. Context has no fixed byte cap: basic v1 (default) or verified v2 (Task Contract v2, trusted source/coverage/integrity evidence); see `global/executor.md`.
 
-Sol produces one bounded prompt. Luna is executor-only: implement, validate, checkpoint, stop at `IMPLEMENTATION_COMPLETE` or `BLOCKED`. No self-review, subagents, commit, push, PR publication/update, or publication-state mutation.
+Publish one final commit + one push; never rewrite published history. Review only after required CI green for current head; one review per SHA and consolidated findings. Head changes stale CI/review. v2 corrections require upfront authority; legacy requires human approval per batch. After two correction batches, escalate. Human merges.
 
-Trusted publication creates or updates the PR. Managed Codex GitHub Code Review runs automatically on every push to an open PR. A review is valid only for the current PR head; changed heads require a fresh review. `@codex review` is fallback/retrigger only; never duplicate a running automatic review. Codex is reviewer-only: never use `@codex fix` or branch-mutation commands. Findings reach Luna only after explicit human authorization. Sol 5.6 High is escalation/fallback only. Only a human merges.
+New `workspace.yaml` projects sync `syllik/syllik` `docs/workspace.md` and `docs/repositories.md`; `README.md` stays a stable workspace link. No deployment/merge settings change.
 
-Use persisted state for long/audit-significant work. Never store secrets or credentials.
-
-ChipIn authority: identity is `owner/repository#issue`; Issue = specification/dependencies; Organization Issue Fields = structured metadata; ChipIn Development Project #5 Status = workflow. Trello is historical/read-only only; no sync. Status never authorizes execution; explicit human approval provenance is required. Descriptions use `Problem -> Outcome -> Acceptance -> Dependencies -> References`; evidence in results/comments.
+ChipIn pre-PR routing: use `scripts/workspace/chipin-admission-route.mjs` at executable planning, Executor start, publication, review and correction (see `global/core.md`). Only fresh exact-Issue/revision `chipin-issue-admission/v1` INTAKE_COMPLETE plus separate approval/context passes. Issue owns spec; Organization Issue Fields metadata; Project #5 Status workflow, not authority. Trello is read-only history. Descriptions use `Problem -> Outcome -> Acceptance -> Dependencies -> References`; evidence in results/comments.

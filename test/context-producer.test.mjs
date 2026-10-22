@@ -1,0 +1,1002 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { test } from 'node:test';
+import { buildTaskContextPackage } from '../scripts/workspace/context-producer.mjs';
+import { git, initFixtureRepo, makeFixtureRoot, removeFixtureRoot } from './helpers.mjs';
+
+const policySha = 'a'.repeat(40);
+const baseSha = 'b'.repeat(40);
+const headSha = 'c'.repeat(40);
+const dependencySha = 'd'.repeat(40);
+
+function canonicalSources(targetRecord = {}) {
+  const { access = 'managed', status = 'active' } = targetRecord;
+  return [
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', revisionSha: policySha, expectedRevisionSha: policySha, content: [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      `    access: ${access}`,
+      `    status: ${status}`,
+      '    contextDependencies:',
+      '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
+      ''
+    ].join('\n') },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'projects/index.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# projects\n' },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/workflow.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# roles\n' },
+    { kind: 'role', repository: 'syllik/ai-workflow', path: 'global/executor.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# executor\n' },
+    { kind: 'target', repository: 'ChipIn-one/chipin-frontend', path: 'AGENTS.md', revisionSha: headSha, expectedRevisionSha: headSha, content: '# rules\n' },
+    { kind: 'target', repository: 'ChipIn-one/chipin-frontend', path: '.ai/context.md', revisionSha: headSha, expectedRevisionSha: headSha, content: '# context\n' },
+    { kind: 'dependency', repository: 'ChipIn-one/chipin-knowledge-base', path: 'common/specs/dashboard.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: '**DSH-001** behavior\n' }
+  ];
+}
+
+function expectedSources(sources) {
+  return sources.map(({ kind, repository, path, revisionSha }) => ({ kind, repository, path, revisionSha }));
+}
+
+function input(overrides = {}) {
+  const { targetRecord, ...rest } = overrides;
+  const sources = canonicalSources(targetRecord);
+  return {
+    role: 'executor',
+    policySha,
+    baseSha,
+    headSha,
+    acceptance: { text: 'Use exact-SHA context and fail closed.' },
+    requirementIds: ['DSH-001'],
+    expectedSources: expectedSources(sources),
+    dependencies: [{ repository: 'ChipIn-one/chipin-knowledge-base', revisionSha: dependencySha, expectedRevisionSha: dependencySha }],
+    sources,
+    ...rest
+  };
+}
+
+function v2BindingFields() {
+  return {
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2
+  };
+}
+
+function sourceByPath(value, path) {
+  return value.sources.find((source) => source.path === path);
+}
+
+function expectedSourceByPath(value, path) {
+  return value.expectedSources.find((source) => source.path === path);
+}
+
+function testBlobSha(content) {
+  const bytes = Buffer.byteLength(content, 'utf8');
+  return createHash('sha1').update(`blob ${bytes}\0${content}`, 'utf8').digest('hex');
+}
+
+function testSourceLoader(source) {
+  const content = source.content ?? '';
+  return { content, blobSha: testBlobSha(content) };
+}
+
+function testIntegrationBranchResolver(dependency) {
+  if (
+    dependency.repository.toLowerCase() === 'chipin-one/chipin-knowledge-base'
+    && dependency.integrationBranch === 'master'
+  ) {
+    return dependencySha;
+  }
+  throw new Error('unexpected dependency branch');
+}
+
+function build(value, options = {}) {
+  return buildTaskContextPackage(value, {
+    sourceLoader: options.sourceLoader ?? testSourceLoader,
+    integrationBranchResolver: options.integrationBranchResolver ?? testIntegrationBranchResolver
+  });
+}
+
+function materializeContextRepo(root, directoryName, repository, files) {
+  const repositoryRoot = path.join(root, directoryName);
+  initFixtureRepo(repositoryRoot, `https://github.com/${repository}.git`);
+  for (const [filePath, content] of Object.entries(files)) {
+    const absolutePath = path.join(repositoryRoot, filePath);
+    mkdirSync(path.dirname(absolutePath), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+  git(repositoryRoot, 'add', '.');
+  git(repositoryRoot, 'commit', '--quiet', '-m', 'context source');
+  return { repositoryRoot, revisionSha: git(repositoryRoot, 'rev-parse', 'HEAD') };
+}
+
+test('loads source bodies from exact Git revisions on the production loader path', () => {
+  const root = makeFixtureRoot();
+  try {
+    const workspaceContent = [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      '    access: managed',
+      '    status: active',
+      '    contextDependencies:',
+      '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
+      ''
+    ].join('\n');
+
+    const policyFiles = {
+      'AI.md': '# entry\n',
+      'FLOW.md': '# flow\n',
+      'workspace.yaml': workspaceContent,
+      'projects/index.md': '# projects\n',
+      'global/workflow.md': '# roles\n',
+      'global/executor.md': '# executor\n'
+    };
+    const targetFiles = {
+      'AGENTS.md': '# rules\n',
+      '.ai/context.md': '# context\n'
+    };
+    const dependencyFiles = {
+      'common/specs/dashboard.md': '**DSH-001** behavior\n'
+    };
+
+    const policy = materializeContextRepo(root, 'policy', 'syllik/ai-workflow', policyFiles);
+    const target = materializeContextRepo(root, 'target', 'ChipIn-one/chipin-frontend', targetFiles);
+    const dependency = materializeContextRepo(root, 'dependency', 'ChipIn-one/chipin-knowledge-base', dependencyFiles);
+
+    const sources = [
+      ...Object.entries(policyFiles).map(([filePath, content]) => ({
+        kind: filePath === 'global/executor.md' ? 'role' : 'policy',
+        repository: 'syllik/ai-workflow',
+        path: filePath,
+        revisionSha: policy.revisionSha,
+        expectedRevisionSha: policy.revisionSha,
+        content
+      })),
+      ...Object.entries(targetFiles).map(([filePath, content]) => ({
+        kind: 'target',
+        repository: 'ChipIn-one/chipin-frontend',
+        path: filePath,
+        revisionSha: target.revisionSha,
+        expectedRevisionSha: target.revisionSha,
+        content
+      })),
+      {
+        kind: 'dependency',
+        repository: 'ChipIn-one/chipin-knowledge-base',
+        path: 'common/specs/dashboard.md',
+        revisionSha: dependency.revisionSha,
+        expectedRevisionSha: dependency.revisionSha,
+        content: dependencyFiles['common/specs/dashboard.md']
+      }
+    ];
+
+    const value = {
+      role: 'executor',
+      policySha: policy.revisionSha,
+      baseSha,
+      headSha: target.revisionSha,
+      acceptance: { text: 'Use exact-SHA context and fail closed.' },
+      requirementIds: ['DSH-001'],
+      expectedSources: expectedSources(sources),
+      dependencies: [{
+        repository: 'ChipIn-one/chipin-knowledge-base',
+        revisionSha: dependency.revisionSha,
+        expectedRevisionSha: dependency.revisionSha
+      }],
+      repositoryRoots: {
+        'syllik/ai-workflow': policy.repositoryRoot,
+        'ChipIn-one/chipin-frontend': target.repositoryRoot,
+        'ChipIn-one/chipin-knowledge-base': dependency.repositoryRoot
+      },
+      sources
+    };
+
+    const valid = buildTaskContextPackage(value);
+    assert.equal(valid.passed, true);
+    assert.equal(valid.manifest.sources.every(({ blobSha }) => /^[0-9a-f]{40}$/u.test(blobSha)), true);
+
+    sourceByPath(value, 'AI.md').content = '# forged policy\n';
+    const forged = buildTaskContextPackage(value);
+    assert.equal(forged.passed, false);
+    assert.equal(forged.findings.some(({ code }) => code === 'CONTEXT_SOURCE_CONTENT_MISMATCH'), true);
+    assert.equal(forged.assembledContext.includes('# forged policy'), false);
+    assert.equal(forged.assembledContext.includes('# entry'), true);
+
+    sourceByPath(value, 'AI.md').content = policyFiles['AI.md'];
+    const dependencySource = sourceByPath(value, 'common/specs/dashboard.md');
+    const expectedDependency = expectedSourceByPath(value, 'common/specs/dashboard.md');
+    dependencySource.path = 'common/specs';
+    delete dependencySource.content;
+    expectedDependency.path = 'common/specs';
+    value.requirementIds = ['dashboard.md'];
+
+    const directorySource = buildTaskContextPackage(value);
+    assert.equal(directorySource.passed, false);
+    assert.equal(directorySource.findings.some(({ code }) => code === 'CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE'), true);
+  } finally {
+    removeFixtureRoot(root);
+  }
+});
+
+test('builds a deterministic minimal handoff with complete expected sources, exact dependency SHA and UTF-8 byte provenance', () => {
+  const first = build(input());
+  const second = build(input());
+  assert.equal(first.passed, true);
+  assert.deepEqual(second, first);
+  assert.equal(first.manifest.expectedSources.length, 9);
+  assert.equal(first.manifest.dependencies[0].revisionSha, dependencySha);
+  assert.equal(first.handoffProvenance.contextPolicyVersion, 1);
+  assert.equal(Object.hasOwn(first.handoffProvenance, 'assembledContextBudgetBytes'), false);
+  assert.equal(first.handoffProvenance.assembledContextActualBytes, Buffer.byteLength(first.assembledContext, 'utf8'));
+  assert.equal(first.handoffProvenance.assembledContextCheck, 'PASSED');
+  assert.match(first.manifest.assembledContextSha256, /^[0-9a-f]{64}$/u);
+});
+
+test('assembles a verified v2 context of any size without a byte cap', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+    acceptance: { text: 'x'.repeat(200000) }
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.contextPolicyVersion, 2);
+  assert.equal(Object.hasOwn(result.manifest, 'assembledContextBudgetBytes'), false);
+  assert.equal(result.manifest.assembledContextActualBytes > 200000, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+test('binds target sources to the handoff repository even when a fork shares the commit', () => {
+  let calls = 0;
+  const result = build(input({
+    repository: 'evil/fork',
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+  }), {
+    sourceLoader: source => {
+      if (source.kind === 'target') calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(calls, 0);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_REPOSITORY_MISMATCH'), true);
+});
+
+test('records the handoff repository in the v2 manifest', () => {
+  const result = build(input({
+    repository: 'ChipIn-one/chipin-frontend',
+    taskId: 'ChipIn-one/chipin-frontend#1',
+    approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+    contractVersion: 2,
+    contextPolicyVersion: 2,
+  }));
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.repository, 'ChipIn-one/chipin-frontend');
+});
+
+test('does not load target sources when a verified v2 target is not an active managed project', () => {
+  for (const targetRecord of [{ status: 'onboarding' }, { access: 'read-only' }]) {
+    const loadedKinds = [];
+    const result = build(input({ ...v2BindingFields(), targetRecord }), {
+      sourceLoader: source => {
+        loadedKinds.push(source.kind);
+        return testSourceLoader(source);
+      }
+    });
+    assert.equal(loadedKinds.some((kind) => !['policy', 'role'].includes(kind)), false);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_NOT_MANAGED'), true);
+  }
+});
+
+test('does not call the source loader for an undeclared source', () => {
+  let calls = 0;
+  const result = build(input({
+    sources: [
+      ...canonicalSources(),
+      { kind: 'dependency', repository: 'evil.example/impersonator', path: 'secret.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'forged\n' }
+    ]
+  }), {
+    sourceLoader: source => {
+      calls += 1;
+      return testSourceLoader(source);
+    }
+  });
+  assert.equal(calls, canonicalSources().length);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+});
+
+test('blocks a missing mandatory source from the explicit expected-source set', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ path }) => path !== 'AI.md');
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expected }) =>
+    code === 'CONTEXT_EXPECTED_SOURCE_UNAVAILABLE' && expected?.path === 'AI.md'), true);
+});
+
+test('requires a non-empty explicit expected-source set', () => {
+  const result = build(input({ expectedSources: [] }));
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_EXPECTED_SOURCES_UNAVAILABLE'), true);
+});
+
+test('rejects whitespace-only requirement identifiers', () => {
+  const result = build(input({ requirementIds: ['   '] }));
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_REQUIREMENT_IDS'), true);
+});
+
+test('rejects a caller-declared subset that omits a canonical mandatory identity', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ path }) => path !== 'AI.md');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'AI.md');
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_CANONICAL_SOURCE_UNAVAILABLE' && path === 'canonical.policy.AI.md'), true);
+});
+
+test('requires one selected role and one coherent target instruction pair', () => {
+  const missingRole = input();
+  missingRole.sources = missingRole.sources.filter(({ kind }) => kind !== 'role');
+  missingRole.expectedSources = missingRole.expectedSources.filter(({ kind }) => kind !== 'role');
+  const roleResult = build(missingRole);
+  assert.equal(roleResult.passed, false);
+  assert.equal(roleResult.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+
+  const mixedTarget = input();
+  expectedSourceByPath(mixedTarget, '.ai/context.md').revisionSha = baseSha;
+  sourceByPath(mixedTarget, '.ai/context.md').revisionSha = baseSha;
+  sourceByPath(mixedTarget, '.ai/context.md').expectedRevisionSha = baseSha;
+  const targetResult = build(mixedTarget);
+  assert.equal(targetResult.passed, false);
+  assert.equal(targetResult.findings.some(({ code }) => code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'), true);
+});
+
+test('binds both target instruction sources to the handoff head SHA', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  for (const path of ['AGENTS.md', '.ai/context.md']) {
+    expectedSourceByPath(value, path).revisionSha = stale;
+    sourceByPath(value, path).revisionSha = stale;
+    sourceByPath(value, path).expectedRevisionSha = stale;
+  }
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expectedRevisionSha }) =>
+    code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH' && expectedRevisionSha === headSha), true);
+});
+
+test('rejects an arbitrary policy-revision file as the selected role', () => {
+  const value = input();
+  sourceByPath(value, 'global/executor.md').path = 'README.md';
+  expectedSourceByPath(value, 'global/executor.md').path = 'README.md';
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
+test('rejects canonical policy and role identities from a non-canonical repository', () => {
+  const value = input();
+  for (const source of value.sources) {
+    if (source.kind === 'policy' || source.kind === 'role') source.repository = 'evil/fork';
+  }
+  for (const source of value.expectedSources) {
+    if (source.kind === 'policy' || source.kind === 'role') source.repository = 'evil/fork';
+  }
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_CANONICAL_SOURCE_UNAVAILABLE' && path === 'canonical.policy.AI.md'), true);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
+test('rejects additional policy sources outside the canonical policy set', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'instructions.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# conflicting policy\n'
+  });
+  value.expectedSources.push({
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'instructions.md',
+    revisionSha: policySha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_POLICY_INVALID'), true);
+});
+
+test('requires contextDependencies declared by the pinned target workspace record', () => {
+  const value = input();
+  value.dependencies = [];
+  value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.expectedSources = value.expectedSources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.requirementIds = [];
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
+    && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
+});
+
+test('blocks normal handoff for onboarding or read-only target records', () => {
+  for (const registryState of [
+    { access: 'managed', status: 'onboarding' },
+    { access: 'read-only', status: 'active' }
+  ]) {
+    const value = input();
+    const workspace = sourceByPath(value, 'workspace.yaml');
+    workspace.content = [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      `    access: ${registryState.access}`,
+      `    status: ${registryState.status}`,
+      '    contextDependencies:',
+      '      - repository: ChipIn-one/chipin-knowledge-base',
+      '        integrationBranch: master',
+      '        access: read-only',
+      ''
+    ].join('\n');
+
+    const result = build(value);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_TARGET_NOT_ACTIVE_MANAGED'), true);
+  }
+});
+
+test('resolves contextDependencies only from the canonical workspace source at policySha', () => {
+  const value = input();
+  value.dependencies = [];
+  value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.expectedSources = value.expectedSources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  value.requirementIds = [];
+
+  const forkWorkspace = {
+    kind: 'policy',
+    repository: 'evil/fork',
+    path: 'workspace.yaml',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: [
+      'schemaVersion: 2',
+      'projects:',
+      '  - id: ChipIn-one/chipin-frontend',
+      '    repository: ChipIn-one/chipin-frontend',
+      ''
+    ].join('\n')
+  };
+  value.sources.unshift(forkWorkspace);
+  value.expectedSources.unshift({
+    kind: forkWorkspace.kind,
+    repository: forkWorkspace.repository,
+    path: forkWorkspace.path,
+    revisionSha: forkWorkspace.revisionSha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'
+    && path === 'workspace.contextDependencies.ChipIn-one/chipin-knowledge-base'), true);
+});
+
+test('rejects dependencies that are not declared by the canonical target workspace record', () => {
+  const value = input();
+  const extraSha = 'f'.repeat(40);
+  value.dependencies.push({
+    repository: 'Other/approved-looking-repo',
+    revisionSha: extraSha,
+    expectedRevisionSha: extraSha
+  });
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'Other/approved-looking-repo',
+    path: 'README.md',
+    revisionSha: extraSha,
+    expectedRevisionSha: extraSha,
+    content: 'extra dependency context\n'
+  });
+  value.expectedSources.push({
+    kind: 'dependency',
+    repository: 'Other/approved-looking-repo',
+    path: 'README.md',
+    revisionSha: extraSha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_DEPENDENCY_UNEXPECTED'
+    && path === 'dependencies.Other/approved-looking-repo'), true);
+});
+
+test('rejects additional non-canonical role sources even when the canonical role is present', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'role',
+    repository: 'evil/fork',
+    path: 'global/executor.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# conflicting role\n'
+  });
+  value.expectedSources.push({
+    kind: 'role',
+    repository: 'evil/fork',
+    path: 'global/executor.md',
+    revisionSha: policySha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+});
+
+test('treats dependency repository casing aliases as one exact dependency identity', () => {
+  const value = input();
+  value.dependencies.push({
+    repository: 'chipin-one/chipin-knowledge-base',
+    revisionSha: 'e'.repeat(40),
+    expectedRevisionSha: 'e'.repeat(40)
+  });
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_DUPLICATE'), true);
+});
+
+test('binds the selected role source to the Executor handoff role', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ path }) => path !== 'global/executor.md');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'global/executor.md');
+  value.sources.push({
+    kind: 'role',
+    repository: 'syllik/ai-workflow',
+    path: 'global/reviewer.md',
+    revisionSha: policySha,
+    expectedRevisionSha: policySha,
+    content: '# reviewer\n'
+  });
+  value.expectedSources.push({
+    kind: 'role',
+    repository: 'syllik/ai-workflow',
+    path: 'global/reviewer.md',
+    revisionSha: policySha
+  });
+
+  const wrongRoleFile = build(value);
+  assert.equal(wrongRoleFile.passed, false);
+  assert.equal(wrongRoleFile.findings.some(({ code }) => code === 'CONTEXT_CANONICAL_ROLE_INVALID'), true);
+
+  const wrongHandoffRole = build(input({ role: 'reviewer' }));
+  assert.equal(wrongHandoffRole.passed, false);
+  assert.equal(wrongHandoffRole.findings.some(({ code }) => code === 'INVALID_CONTEXT_ROLE'), true);
+});
+
+test('binds dependency revision to the workspace-declared integration branch head', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  value.dependencies[0].revisionSha = stale;
+  value.dependencies[0].expectedRevisionSha = stale;
+  const source = sourceByPath(value, 'common/specs/dashboard.md');
+  source.revisionSha = stale;
+  source.expectedRevisionSha = stale;
+  expectedSourceByPath(value, 'common/specs/dashboard.md').revisionSha = stale;
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, integrationBranch, expected, actual }) =>
+    code === 'CONTEXT_DEPENDENCY_BRANCH_SHA_MISMATCH'
+    && integrationBranch === 'master'
+    && expected === dependencySha
+    && actual === stale), true);
+});
+
+test('fails closed when dependency integration-branch provenance is unavailable', () => {
+  const result = build(input(), {
+    integrationBranchResolver: () => {
+      throw new Error('branch unavailable');
+    }
+  });
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) =>
+    code === 'CONTEXT_DEPENDENCY_BRANCH_PROVENANCE_UNAVAILABLE'), true);
+});
+
+test('binds central policy and role sources to policySha without forcing target sources onto that SHA', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  sourceByPath(value, 'global/executor.md').revisionSha = stale;
+  sourceByPath(value, 'global/executor.md').expectedRevisionSha = stale;
+  expectedSourceByPath(value, 'global/executor.md').revisionSha = stale;
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expected, actual }) =>
+    code === 'CONTEXT_POLICY_SHA_MISMATCH' && expected === policySha && actual === stale), true);
+
+  const target = input();
+  assert.equal(sourceByPath(target, 'AGENTS.md').revisionSha, headSha);
+  assert.equal(build(target).passed, true);
+});
+
+test('rejects duplicate actual sources even when their metadata key is identical', () => {
+  const value = input();
+  const duplicate = { ...sourceByPath(value, 'common/specs/dashboard.md'), content: '**DSH-001** conflicting body\n' };
+  value.sources.push(duplicate);
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_DUPLICATE'), true);
+  assert.equal(result.manifest.sources.filter(({ path }) => path === 'common/specs/dashboard.md').length, 1);
+});
+
+test('treats GitHub repository casing aliases as the same source identity', () => {
+  const value = input();
+  const original = sourceByPath(value, 'common/specs/dashboard.md');
+  value.sources.push({
+    ...original,
+    repository: original.repository.toLowerCase(),
+    content: '**DSH-001** conflicting case-alias body\n'
+  });
+  value.expectedSources.push({
+    ...expectedSourceByPath(value, 'common/specs/dashboard.md'),
+    repository: original.repository.toLowerCase()
+  });
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) =>
+    code === 'CONTEXT_EXPECTED_SOURCE_DUPLICATE' || code === 'CONTEXT_SOURCE_DUPLICATE'), true);
+});
+
+test('rejects undeclared actual sources outside the expected-source set', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'Other/repository',
+    path: 'README.md',
+    revisionSha: 'f'.repeat(40),
+    expectedRevisionSha: 'f'.repeat(40),
+    content: 'undeclared context\n'
+  });
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+});
+
+test('rejects unrecognized expected and actual source kinds', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'garbage',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'notes.md',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: 'unrecognized context\n'
+  });
+  value.expectedSources.push({
+    kind: 'garbage',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'notes.md',
+    revisionSha: headSha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'INVALID_CONTEXT_SOURCE_KIND'), true);
+});
+
+test('binds every target-kind source to the selected target repository and headSha', () => {
+  const value = input();
+  value.sources.push({
+    kind: 'target',
+    repository: 'Other/repository',
+    path: '.ai/decisions.md',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: '# foreign target context\n'
+  });
+  value.expectedSources.push({
+    kind: 'target',
+    repository: 'Other/repository',
+    path: '.ai/decisions.md',
+    revisionSha: headSha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, expectedRepository }) =>
+    code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'
+    && expectedRepository === 'ChipIn-one/chipin-frontend'), true);
+});
+
+test('uses collision-safe source identities when fields contain NUL characters', () => {
+  const value = input();
+  value.expectedSources.push({
+    kind: 'target',
+    repository: 'ChipIn-one/chipin-frontend',
+    path: 'foo\0bar',
+    revisionSha: headSha
+  });
+  value.sources.push({
+    kind: 'target',
+    repository: 'ChipIn-one/chipin-frontend\0foo',
+    path: 'bar',
+    revisionSha: headSha,
+    expectedRevisionSha: headSha,
+    content: '# collision attempt\n'
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+});
+
+test('binds every dependency-kind source to a declared dependency revision', () => {
+  const value = input();
+  const staleSha = 'e'.repeat(40);
+  value.sources.push({
+    kind: 'dependency',
+    repository: 'ChipIn-one/chipin-knowledge-base',
+    path: 'common/specs/extra.md',
+    revisionSha: staleSha,
+    expectedRevisionSha: staleSha,
+    content: 'mixed dependency revision\n'
+  });
+  value.expectedSources.push({
+    kind: 'dependency',
+    repository: 'ChipIn-one/chipin-knowledge-base',
+    path: 'common/specs/extra.md',
+    revisionSha: staleSha
+  });
+
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, repository, revisionSha }) =>
+    code === 'CONTEXT_DEPENDENCY_SOURCE_UNDECLARED'
+    && repository === 'ChipIn-one/chipin-knowledge-base'
+    && revisionSha === staleSha), true);
+});
+
+test('blocks unavailable required dependency context', () => {
+  const value = input();
+  value.sources = value.sources.filter(({ repository }) => repository !== 'ChipIn-one/chipin-knowledge-base');
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNAVAILABLE'), true);
+});
+
+test('blocks whitespace-only required source content', () => {
+  const value = input();
+  sourceByPath(value, 'common/specs/dashboard.md').content = ' \n\t ';
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_SOURCE_PROVENANCE_UNAVAILABLE' && path.startsWith('sources.')), true);
+});
+
+test('preserves original whitespace for valid source hashing and assembly', () => {
+  const value = input();
+  sourceByPath(value, 'common/specs/dashboard.md').content = ' \n**DSH-001** behavior\n\t ';
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.assembledContext.includes(sourceByPath(value, 'common/specs/dashboard.md').content), true);
+  const manifestSource = result.manifest.sources.find(({ path }) => path === 'common/specs/dashboard.md');
+  assert.equal(manifestSource.bytes, Buffer.byteLength(sourceByPath(value, 'common/specs/dashboard.md').content, 'utf8'));
+});
+
+test('blocks whitespace-only acceptance while preserving valid acceptance verbatim', () => {
+  const blank = build(input({ acceptance: { text: ' \n\t ' } }));
+  assert.equal(blank.passed, false);
+  assert.equal(blank.findings.some(({ code }) => code === 'CONTEXT_ACCEPTANCE_UNAVAILABLE'), true);
+
+  const original = ' \nKeep this exact acceptance text.\n\t ';
+  const valid = build(input({ acceptance: { text: original } }));
+  assert.equal(valid.passed, true);
+  assert.equal(valid.assembledContext.includes(original), true);
+  assert.equal(valid.manifest.acceptance.bytes, Buffer.byteLength(original, 'utf8'));
+});
+
+test('blocks stale source and dependency revisions', () => {
+  const stale = 'e'.repeat(40);
+  const value = input();
+  value.dependencies[0].revisionSha = stale;
+  sourceByPath(value, 'common/specs/dashboard.md').revisionSha = stale;
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_STALE'), true);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_SOURCE_STALE'), true);
+});
+
+test('blocks a required requirement id that is not represented by selected content', () => {
+  const value = input();
+  sourceByPath(value, 'common/specs/dashboard.md').content = 'behavior without the required identifier\n';
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
+});
+
+test('assembles large context in full without a byte cap or truncation', () => {
+  const value = input();
+  const marker = 'REQUIRED_DOCUMENT_TAIL';
+  sourceByPath(value, 'common/specs/dashboard.md').content = `**DSH-001** ${'x'.repeat(40000)}${marker}`;
+  const result = build(value);
+  assert.equal(result.passed, true, JSON.stringify(result.findings));
+  assert.equal(result.handoffProvenance.assembledContextActualBytes > 40000, true);
+  assert.equal(result.assembledContext.includes(marker), true);
+});
+
+test('counts multibyte context as UTF-8 bytes rather than characters', () => {
+  const value = input({ acceptance: { text: '🙂' } });
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.manifest.acceptance.bytes, 4);
+  assert.equal(result.handoffProvenance.assembledContextActualBytes, Buffer.byteLength(result.assembledContext, 'utf8'));
+});
+
+test('keeps a large pinned PRODUCT as a verified reference instead of inlining it', () => {
+  const value = input();
+  const product = '| DSH-001 | Normative ID row |\n| HIST-001 | Convert history | source | acceptance |\n' + 'x'.repeat(40000);
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: product
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha});
+  value.requirementIds.push('HIST-001');
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+  assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').bytes, Buffer.byteLength(product));
+  assert.equal(result.manifest.sources.find((s) => s.kind === 'reference').assembly, 'verified-reference');
+  assert.equal(result.assembledContext.includes(product), false);
+  assert.match(result.assembledContext, /verified Git reference/);
+});
+
+test('rejects reference in place of mandatory instructions, arbitrary docs, stale SHA', () => {
+  for (const change of [{path: 'AGENTS.md'}, {path: 'docs/OTHER.md'}, {revisionSha: baseSha}]) {
+    const value = input();
+    const reference = {
+      kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+      path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+      content: '| HIST-001 | provenance |\n', ...change
+    };
+    value.sources.push(reference);
+    value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: reference.revisionSha});
+    const result = build(value);
+    assert.equal(result.passed, false);
+    assert.equal(result.findings.some((f) => f.code === 'CONTEXT_CANONICAL_REFERENCE_INVALID'), true);
+  }
+});
+
+test('reference requires exact expected identity and source integrity; IDs match actual PRODUCT rows', () => {
+  const value = input();
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| HIST-001 | Original |\n'
+  };
+  value.sources.push(reference);
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_SOURCE_UNEXPECTED'), true);
+  value.expectedSources.push({kind: 'reference', repository: reference.repository, path: reference.path, revisionSha: headSha});
+  const mismatched = build(value, {sourceLoader: (source) => source.kind === 'reference'
+    ? { content: '| HIST-001 | Modified |\n', blobSha: testBlobSha('| HIST-001 | Modified |\n') }
+    : testSourceLoader(source)});
+  assert.equal(mismatched.passed, false);
+  assert.equal(mismatched.findings.some((f) => f.code === 'CONTEXT_SOURCE_CONTENT_MISMATCH'), true);
+  value.requirementIds.push('HIST-002');
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
+  reference.content += 'HIST-002 appears in a non-row comment.\n';
+  assert.equal(build(value).findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'), true);
+});
+
+
+test('PRODUCT reference owns requirement IDs even when missing rows appear in AGENTS or dependencies', () => {
+  const value = input();
+  // A loose scan would incorrectly accept HIST-002 from this inline AGENTS mention.
+  sourceByPath(value, 'AGENTS.md').content += '\nHIST-002 is referenced in prose.\n';
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| HIST-001 | Valid row |\nA note mentions HIST-002 without its table row.\n'
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({ kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha });
+  value.requirementIds.push('HIST-002');
+  const result = build(value);
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some((f) => f.code === 'CONTEXT_REQUIREMENT_UNAVAILABLE'
+    && f.path === 'requirementIds.HIST-002'), true);
+});
+
+test('PRODUCT reference rejects missing IDs in AGENTS but allows all IDs when PRODUCT rows are present', () => {
+  const value = input();
+  const reference = {
+    kind: 'reference', repository: 'ChipIn-one/chipin-frontend',
+    path: 'docs/PRODUCT.md', revisionSha: headSha, expectedRevisionSha: headSha,
+    content: '| DSH-001 | Real row |\n| HIST-002 | Real row |\n'
+  };
+  value.sources.push(reference);
+  value.expectedSources.push({ kind: reference.kind, repository: reference.repository, path: reference.path, revisionSha: headSha });
+  value.requirementIds.push('HIST-002');
+  const result = build(value);
+  assert.equal(result.passed, true);
+  assert.equal(result.handoffProvenance.assembledContextCheck, 'PASSED');
+});
+
+const v2Binding = {
+  repository: 'ChipIn-one/chipin-frontend',
+  taskId: 'ChipIn-one/chipin-frontend#1',
+  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+  contractVersion: 2,
+  contextPolicyVersion: 2
+};
+
+test('a dependency absent from the pinned workspace registry is denied before any Git read', () => {
+  const loaded = [];
+  const value = input();
+  const rogue = { kind: 'dependency', repository: 'evil-org/private-secrets', path: 'creds.md', revisionSha: dependencySha, expectedRevisionSha: dependencySha, content: 'secret\n' };
+  value.sources.push(rogue);
+  value.expectedSources.push({ kind: 'dependency', repository: rogue.repository, path: rogue.path, revisionSha: dependencySha });
+  value.dependencies.push({ repository: rogue.repository, revisionSha: dependencySha, expectedRevisionSha: dependencySha });
+  const result = build(value, { sourceLoader: source => { loaded.push(source.repository); return testSourceLoader(source); } });
+  assert.equal(result.passed, false);
+  assert.equal(loaded.includes('evil-org/private-secrets'), false);
+  assert.equal(result.findings.some(({ code }) => code === 'CONTEXT_DEPENDENCY_UNEXPECTED'), true);
+});
+
+test('verified v2 needs the target record in the pinned workspace.yaml', () => {
+  const fromWorkspace = build(input(v2Binding));
+  assert.equal(fromWorkspace.passed, true, JSON.stringify(fromWorkspace.findings));
+  assert.equal(fromWorkspace.manifest.contextPolicyVersion, 2);
+  assert.equal(Object.hasOwn(fromWorkspace.manifest, 'contextPolicy'), false);
+
+  const value = input(v2Binding);
+  value.sources = value.sources.filter(({ path }) => path !== 'workspace.yaml');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== 'workspace.yaml');
+  const unpinned = build(value);
+  assert.equal(unpinned.passed, false);
+  assert.equal(unpinned.findings.some(({ code }) => ['CONTEXT_POLICY_UNPINNED', 'CONTEXT_CANONICAL_SOURCE_MISSING'].includes(code)), true, JSON.stringify(unpinned.findings));
+});
+
+test('v2 manifests are bound to one task and its approved scope', () => {
+  const bound = build(input(v2Binding));
+  assert.equal(bound.manifest.taskId, 'ChipIn-one/chipin-frontend#1');
+  assert.equal(bound.manifest.approval.reference, 'owner-approval');
+  assert.match(bound.manifest.approval.scopeSha256, /^[0-9a-f]{64}$/u);
+  const unbound = build(input({ ...v2Binding, taskId: undefined }));
+  assert.equal(unbound.passed, false);
+  assert.equal(unbound.findings.some(({ code }) => code === 'CONTEXT_TASK_BINDING_UNAVAILABLE'), true);
+});
+
+test('new Task Contract v2 tasks default to verified v2; a legacy contract stays basic v1', () => {
+  const { contextPolicyVersion: _v, ...binding } = v2Binding;
+  const verified = build(input({ ...binding, newTask: true }));
+  assert.equal(verified.manifest.contextPolicyVersion, 2);
+  assert.equal(verified.passed, true, JSON.stringify(verified.findings));
+  const legacyContract = build(input({ ...binding, contractVersion: 1, newTask: true }));
+  assert.equal(legacyContract.manifest.contextPolicyVersion, 1)
+});

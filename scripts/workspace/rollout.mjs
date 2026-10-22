@@ -1,0 +1,298 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { parse } from 'yaml';
+import { validateManagedTarget } from './operations.mjs';
+import { renderAgentsBlock } from './render.mjs';
+
+export const ROLLOUT_POLICY_PATH = 'rollout.yaml';
+
+const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const EXPECTED_MODE = 'read-only-verify';
+const EXPECTED_AUTH_TYPE = 'github-app-installation';
+const EXPECTED_SCHEMA_VERSION = 2;
+
+function finding(code, findingPath, details = {}) {
+  return { code, path: findingPath, ...details };
+}
+
+function normalizedRepository(repository) {
+  return typeof repository === 'string' ? repository.toLowerCase() : repository;
+}
+
+function normalizeRemote(value) {
+  if (!value) return null;
+  let remote = String(value).trim();
+  if (remote.startsWith('git@github.com:')) remote = `https://github.com/${remote.slice('git@github.com:'.length)}`;
+  remote = remote.replace(/^ssh:\/\/git@github\.com\//u, 'https://github.com/');
+  return remote.replace(/\/+$/u, '').replace(/\.git$/u, '').toLowerCase();
+}
+
+function git(directory, args, { allowStatusOne = false } = {}) {
+  try {
+    return execFileSync('git', ['-C', directory, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+  } catch (error) {
+    if (allowStatusOne && error?.status === 1) return null;
+    return null;
+  }
+}
+
+function isDirectory(directoryPath) {
+  try {
+    return lstatSync(directoryPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export function immutableSha(value) {
+  return typeof value === 'string' && SHA_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+export function loadRolloutPolicy(policyPath = ROLLOUT_POLICY_PATH) {
+  return parse(readFileSync(policyPath, 'utf8'));
+}
+
+function resolveCoverage(policy, manifest, findings = []) {
+  const projects = new Map((manifest?.projects ?? []).map((project) => [normalizedRepository(project.repository), project]));
+  const roots = Array.isArray(policy?.roots) ? policy.roots : [];
+  const rootKeys = new Set();
+  const entries = new Map();
+
+  for (const [index, repository] of roots.entries()) {
+    if (typeof repository !== 'string' || repository.trim().length === 0 || !repository.includes('/')) {
+      findings.push(finding('ROLLOUT_ROOT_INVALID', `rollout.roots.${index}`));
+      continue;
+    }
+    const repositoryKey = normalizedRepository(repository);
+    if (rootKeys.has(repositoryKey)) {
+      findings.push(finding('ROLLOUT_ROOT_DUPLICATE', `rollout.roots.${index}`, { repository }));
+      continue;
+    }
+    rootKeys.add(repositoryKey);
+
+    const project = projects.get(repositoryKey);
+    if (!project) {
+      findings.push(finding('ROLLOUT_ROOT_NOT_REGISTERED', `rollout.roots.${repository}`));
+      continue;
+    }
+    if (
+      project.id !== project.repository
+      || project.repository !== repository
+      || project.status !== 'active'
+      || project.access !== 'managed'
+      || typeof project.integrationBranch !== 'string'
+      || project.integrationBranch.length === 0
+      || typeof project.contextPath !== 'string'
+      || project.contextPath.length === 0
+    ) {
+      findings.push(finding('ROLLOUT_ROOT_RECORD_INVALID', `rollout.roots.${repository}`));
+      continue;
+    }
+    entries.set(repositoryKey, { ...project, rolloutAccess: 'managed', requiredBy: [] });
+  }
+
+  for (const rootKey of rootKeys) {
+    const root = projects.get(rootKey);
+    if (!root || root.status !== 'active' || root.access !== 'managed') continue;
+    const dependencies = root.contextDependencies ?? [];
+    if (!Array.isArray(dependencies)) {
+      findings.push(finding('ROLLOUT_CONTEXT_DEPENDENCIES_INVALID', `workspace.projects.${root.repository}.contextDependencies`));
+      continue;
+    }
+
+    for (const [index, dependency] of dependencies.entries()) {
+      const repository = dependency?.repository;
+      if (
+        typeof repository !== 'string'
+        || repository.trim().length === 0
+        || dependency.access !== 'read-only'
+        || typeof dependency.integrationBranch !== 'string'
+        || dependency.integrationBranch.length === 0
+      ) {
+        findings.push(finding('ROLLOUT_REQUIRED_CONTEXT_MISMATCH', `workspace.projects.${root.repository}.contextDependencies.${index}`));
+        continue;
+      }
+
+      const dependencyKey = normalizedRepository(repository);
+      const project = projects.get(dependencyKey);
+      if (
+        !project
+        || project.status !== 'active'
+        || project.repository !== repository
+        || project.integrationBranch !== dependency.integrationBranch
+      ) {
+        findings.push(finding('ROLLOUT_REQUIRED_CONTEXT_MISMATCH', `workspace.projects.${root.repository}.contextDependencies.${repository}`));
+        continue;
+      }
+
+      const existing = entries.get(dependencyKey);
+      if (existing?.rolloutAccess === 'managed') continue;
+      const requiredBy = new Set(existing?.requiredBy ?? []);
+      requiredBy.add(root.repository);
+      entries.set(dependencyKey, {
+        ...project,
+        access: 'read-only',
+        rolloutAccess: 'read-only',
+        workspaceAccess: project.access,
+        requiredBy: [...requiredBy]
+      });
+    }
+  }
+
+  return [...entries.values()];
+}
+
+export function validateRolloutPolicy(policy, manifest) {
+  const findings = [];
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+    return [finding('ROLLOUT_POLICY_INVALID', ROLLOUT_POLICY_PATH)];
+  }
+  if (policy.schemaVersion !== EXPECTED_SCHEMA_VERSION) findings.push(finding('ROLLOUT_SCHEMA_UNSUPPORTED', 'rollout.schemaVersion'));
+  if (policy.mode !== EXPECTED_MODE) findings.push(finding('ROLLOUT_MODE_INVALID', 'rollout.mode'));
+  if (policy.authentication?.type !== EXPECTED_AUTH_TYPE) findings.push(finding('ROLLOUT_AUTH_INVALID', 'rollout.authentication.type'));
+  const permissions = policy.authentication?.permissions;
+  if (!permissions || Object.keys(permissions).length !== 1 || permissions.contents !== 'read') {
+    findings.push(finding('ROLLOUT_AUTH_NOT_LEAST_PRIVILEGE', 'rollout.authentication.permissions'));
+  }
+
+  if (!Array.isArray(policy.roots) || policy.roots.length === 0) {
+    findings.push(finding('ROLLOUT_ROOTS_INVALID', 'rollout.roots'));
+    return findings;
+  }
+
+  resolveCoverage(policy, manifest, findings);
+  return findings;
+}
+
+export function resolveRolloutProjects(policy, manifest) {
+  return resolveCoverage(policy, manifest, []);
+}
+
+export function routingBlockSha256(manifest) {
+  return createHash('sha256').update(renderAgentsBlock(manifest), 'utf8').digest('hex');
+}
+
+function incompleteReceipt(project, policySha, blockSha256, reason, targetSha = null, findings = undefined) {
+  const receipt = {
+    repository: project.repository,
+    integrationBranch: project.integrationBranch,
+    access: project.access,
+    policySha,
+    policyBlockSha256: blockSha256,
+    targetSha: immutableSha(targetSha),
+    outcome: 'incomplete',
+    reason
+  };
+  if (findings?.length) receipt.findings = findings;
+  return receipt;
+}
+
+export function inspectMaterializedTarget({ repositoryRoot, project, manifest, policySha, targetSha }) {
+  const exactPolicySha = immutableSha(policySha);
+  const exactTargetSha = immutableSha(targetSha);
+  const blockSha256 = routingBlockSha256(manifest);
+  if (!exactPolicySha) return incompleteReceipt(project, policySha ?? null, blockSha256, 'POLICY_SHA_INVALID');
+  if (!exactTargetSha) return incompleteReceipt(project, exactPolicySha, blockSha256, 'TARGET_SHA_UNRESOLVED');
+  if (!repositoryRoot || !existsSync(repositoryRoot) || !isDirectory(repositoryRoot)) {
+    return incompleteReceipt(project, exactPolicySha, blockSha256, 'TARGET_ABSENT', exactTargetSha);
+  }
+
+  const findings = [];
+  const gitPath = path.join(repositoryRoot, '.git');
+  try {
+    const stat = lstatSync(gitPath);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) findings.push(finding('TARGET_GIT_METADATA_UNSAFE', project.localPath));
+  } catch {
+    findings.push(finding('TARGET_GIT_METADATA_MISSING', project.localPath));
+  }
+
+  const expectedRemote = `https://github.com/${project.repository}.git`;
+  const origin = git(repositoryRoot, ['config', '--get', 'remote.origin.url']);
+  if (normalizeRemote(origin) !== normalizeRemote(expectedRemote)) {
+    findings.push(finding('TARGET_ORIGIN_MISMATCH', project.localPath, { expected: expectedRemote, actual: origin || null }));
+  }
+
+  const symbolicHead = git(repositoryRoot, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowStatusOne: true });
+  if (symbolicHead !== null) findings.push(finding('TARGET_HEAD_NOT_DETACHED', project.localPath, { actual: symbolicHead }));
+
+  const headSha = immutableSha(git(repositoryRoot, ['rev-parse', 'HEAD']));
+  if (headSha !== exactTargetSha) findings.push(finding('TARGET_HEAD_SHA_MISMATCH', project.localPath, { expected: exactTargetSha, actual: headSha }));
+
+  const branchSha = immutableSha(git(repositoryRoot, ['rev-parse', '--verify', `refs/heads/${project.integrationBranch}^{commit}`]));
+  if (branchSha !== exactTargetSha) {
+    findings.push(finding('TARGET_BRANCH_SHA_MISMATCH', project.localPath, { expected: exactTargetSha, actual: branchSha }));
+  }
+
+  const worktreeStatus = git(repositoryRoot, ['status', '--porcelain', '--untracked-files=all']);
+  if (worktreeStatus === null) findings.push(finding('TARGET_GIT_STATUS_UNAVAILABLE', project.localPath));
+  else if (worktreeStatus.length > 0) findings.push(finding('TARGET_WIP', project.localPath));
+
+  if (findings.length === 0 && project.access === 'managed') {
+    validateManagedTarget(repositoryRoot, project, manifest, findings, { validateTaskArtifacts: true });
+  }
+  if (findings.length > 0) {
+    const stale = findings.some(({ code }) => code === 'GENERATED_DRIFT');
+    const wip = findings.some(({ code }) => code === 'TARGET_WIP');
+    const reason = stale ? 'TARGET_STALE' : wip ? 'TARGET_WIP' : 'TARGET_UNVERIFIED';
+    return incompleteReceipt(project, exactPolicySha, blockSha256, reason, exactTargetSha, findings);
+  }
+
+  return {
+    repository: project.repository,
+    integrationBranch: project.integrationBranch,
+    access: project.access,
+    policySha: exactPolicySha,
+    policyBlockSha256: blockSha256,
+    targetSha: exactTargetSha,
+    outcome: 'complete'
+  };
+}
+
+export function evaluatePilotRollout({ manifest, policy, policySha, materializeTarget }) {
+  const policyFindings = validateRolloutPolicy(policy, manifest);
+  const exactPolicySha = immutableSha(policySha);
+  if (!exactPolicySha) policyFindings.push(finding('POLICY_SHA_INVALID', 'policy.sha'));
+  if (policyFindings.length > 0) return { passed: false, findings: policyFindings, receipts: [] };
+  if (typeof materializeTarget !== 'function') {
+    return { passed: false, findings: [finding('ROLLOUT_MATERIALIZER_MISSING', 'materializeTarget')], receipts: [] };
+  }
+
+  const blockSha256 = routingBlockSha256(manifest);
+  const projects = resolveRolloutProjects(policy, manifest);
+  const receipts = projects.map((project) => {
+    let materialized;
+    try {
+      materialized = materializeTarget(project);
+    } catch {
+      return incompleteReceipt(
+        project,
+        exactPolicySha,
+        blockSha256,
+        project.access === 'read-only' ? 'REQUIRED_CONTEXT_UNAVAILABLE' : 'TARGET_PRIVATE_UNAVAILABLE'
+      );
+    }
+    if (!materialized?.repositoryRoot) {
+      return incompleteReceipt(
+        project,
+        exactPolicySha,
+        blockSha256,
+        materialized?.reason ?? 'TARGET_ABSENT',
+        materialized?.targetSha ?? null
+      );
+    }
+    return inspectMaterializedTarget({
+      repositoryRoot: materialized.repositoryRoot,
+      project,
+      manifest,
+      policySha: exactPolicySha,
+      targetSha: materialized.targetSha
+    });
+  });
+
+  return { passed: receipts.every(({ outcome }) => outcome === 'complete'), findings: [], receipts };
+}

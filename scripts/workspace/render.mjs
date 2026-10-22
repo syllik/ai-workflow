@@ -1,4 +1,3 @@
-import { BUDGETS } from './budgets.mjs';
 
 const CANONICAL_WORKFLOW_ROOT = 'https://github.com/syllik/ai-workflow/blob/HEAD';
 
@@ -12,6 +11,13 @@ function lf(text) {
 
 function finalNewline(text) {
   return `${lf(text).replace(/\n+$/u, '')}\n`;
+}
+
+function markdownTableCell(value) {
+  return lf(value)
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replaceAll('\n', '<br>');
 }
 
 export function renderManagedBlock(name, body) {
@@ -42,6 +48,15 @@ export function renderProjectIndex(manifest) {
         .join('<br>') || '—';
       return `| ${project.repository} | ${project.group} | ${project.access} | ${project.status} | ${project.integrationBranch} | ${link} | ${dependencies} |`;
     });
+  const lifecycleRows = [...(manifest.gitLifecycle?.repositories ?? [])]
+    .sort((left, right) => left.repository.localeCompare(right.repository))
+    .map((entry) => {
+      const exception = entry.exception
+        ? markdownTableCell(`${entry.exception.reason} Follow-up: ${entry.exception.followUp}`)
+        : '—';
+      return `| ${entry.repository} | ${entry.deploymentProfile} | ${entry.branchState} | ${entry.defaultBranch} | ${entry.integrationBranch} | ${entry.promotionBranch ?? '—'} | ${exception} |`;
+    });
+
   return finalNewline([
     '# Workspace project index',
     '',
@@ -49,7 +64,17 @@ export function renderProjectIndex(manifest) {
     '',
     '| Repository | Group | Access | Status | Integration branch | GitHub source | Context dependencies |',
     '| --- | --- | --- | --- | --- | --- | --- |',
-    ...rows
+    ...rows,
+    '',
+    '## Audited Git lifecycle',
+    '',
+    `Canonical source branch: \`${manifest.gitLifecycle.canonicalBranch}\`. Normal PR merge: \`${manifest.gitLifecycle.normalMergeMethod}\`. Production promotion: \`${manifest.gitLifecycle.productionPromotion}\`.`,
+    '',
+    'Only repositories listed below were audited for this policy task. Other workspace records remain unverified for Git lifecycle state.',
+    '',
+    '| Repository | Deployment profile | Branch state | Default branch | Integration branch | Promotion branch | Exception / follow-up |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...lifecycleRows
   ].join('\n'));
 }
 
@@ -63,7 +88,7 @@ export function renderLegacyProfileNavigation(manifest) {
     '',
     `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
-    `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
+    `3. Read the role index ${canonicalWorkflowFile('global/workflow.md')}, then only the selected role file.`,
     '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md` and task files.',
     '',
@@ -81,14 +106,13 @@ export function renderProfileNavigation(manifest) {
     '',
     `1. Read the canonical workflow entry: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Read one matching record from ${canonicalWorkflowFile('workspace.yaml')} and ${canonicalWorkflowFile('projects/index.md')}.`,
-    `3. Read only the current role: ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
+    `3. Read the role index ${canonicalWorkflowFile('global/workflow.md')}, then only the selected role file.`,
     '4. On that record\'s `integrationBranch`, read target AGENTS.md and `.ai/context.md`.',
     '5. Read only relevant `.ai/decisions.md`, task files, and explicitly declared `contextDependencies` when required.',
     '',
     'GitHub records are authoritative. Do not auto-discover repositories or route into legacy central contexts.'
   ].join('\n');
   const rendered = renderManagedBlock('profile-navigation', body);
-  if (Buffer.byteLength(rendered, 'utf8') > BUDGETS['AI.md']) throw new Error('Rendered profile AI entry exceeds budget');
   return rendered;
 }
 
@@ -101,15 +125,14 @@ export function renderAgentsBlock(manifest) {
     'Canonical AI routing:',
     `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
-    `3. Read role rules from ${canonicalWorkflowFile('global/architect.md')}, ${canonicalWorkflowFile('global/executor.md')}, or ${canonicalWorkflowFile('global/reviewer.md')}.`,
+    `3. Read the role index ${canonicalWorkflowFile('global/workflow.md')}, then only the selected role file.`,
     '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
     finalRoute,
     '',
-    'Use GitHub records only. Legacy `projects/<project>/` contexts are migration-only; do not auto-discover repositories.',
+    'GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.',
     `Canonical root: ${manifest.canonicalRoot}`
   ].join('\n');
   const rendered = renderManagedBlock('agents-routing', body);
-  if (Buffer.byteLength(rendered, 'utf8') > BUDGETS['managed AGENTS block']) throw new Error('Rendered AGENTS block exceeds budget');
   return rendered;
 }
 
@@ -121,6 +144,12 @@ export function renderContextScaffold(project) {
     project.repository,
     '',
     '## Purpose',
+    '',
+    '## Git lifecycle',
+    '',
+    '- Deployment profile: none | staging | production | unverified',
+    '- Canonical long-lived branch target: master',
+    '- Temporary exception: none, or reason + bounded follow-up recorded in `workspace.yaml`',
     '',
     '## Current state',
     '',

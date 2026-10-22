@@ -11,12 +11,19 @@ on:
 permissions:
   contents: read
 
+env:
+  # PR-head CI never receives private-repository credentials; trusted activation is separate.
+  WORKSPACE_ACTIVATION_BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -24,5 +31,22 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Mint scoped read token for private activation
+        if: github.event_name == 'push'
+        id: private-activation-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ secrets.WORKSPACE_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.WORKSPACE_READ_APP_PRIVATE_KEY }}
+          owner: syllik
+          repositories: Zero-Touch-DCA
+          permission-contents: read
+      - name: Configure Git credentials for private activation
+        if: steps.private-activation-token.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.private-activation-token.outputs.token }}
+        run: gh auth setup-git
       - name: Verify canonical workflow
+        env:
+          GH_TOKEN: ${{ steps.private-activation-token.outputs.token }}
         run: npm run verify

@@ -1,0 +1,444 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import {
+  resolveContextPolicy,
+  evaluateContextBytes, validateContextCoverage, assessRuntime, chooseCompaction,
+  signContextCheckpoint, verifyContextCheckpoint
+} from '../scripts/workspace/context-policy.mjs';
+
+const sha40 = 'a'.repeat(40);
+const sha64 = s => createHash('sha256').update(s).digest('hex');
+const source = (overrides = {}) => ({
+  kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: sha40,
+  blobSha: 'b'.repeat(40), sha256: sha64('entire-source'), content: 'entire-source',
+  verifiedByGit: true, state: 'COVERED', consumption: { fullSource: true, sourceSha256: sha64('entire-source') },
+  coveredRequirements: ['REQ-1'], coveredAcceptance: ['ACC-1'], ...overrides
+});
+const id = 'syllik/ai-workflow@' + sha40 + ':FLOW.md';
+// Trusted runner evidence is independent from untrusted source receipt claims.
+// Never derive these fields from s.consumption or s.covered*.
+const trustedSource = s => ({
+  repository: s.repository, path: s.path, revisionSha: s.revisionSha, blobSha: s.blobSha, content: 'entire-source',
+  consumption: { fullSource: true, sourceSha256: sha64('entire-source') },
+  coveredRequirements: ['REQ-1'], coveredAcceptance: ['ACC-1']
+});
+const verifyCoverage = data => validateContextCoverage(data, trustedSource);
+const coverage = (overrides = {}) => ({ sources: [source()], expectedSources: [source()], mandatorySourceIds: [id], requirementIds: ['REQ-1'], acceptanceIds: ['ACC-1'], declaredDependencies: [], ...overrides });
+const handoff = { contractVersion: 2, repository: 'syllik/life-ops-bot' };
+const checkpointPayload = () => ({
+  contractVersion: 2, contextPolicyVersion: 2, policySha: sha40, baseSha: sha40, headSha: sha40,
+  repository: handoff.repository, approval: { reference: 'owner-record' }, allowedPaths: ['FLOW.md'],
+  sources: [source()], requirementCoverage: ['REQ-1'], completedWork: [], pendingWork: ['task'], validationEvidence: []
+});
+const checkpointRuntime = p => ({ ...p, freshAuthorityValidated: true, allMandatorySourcesRehydrated: true, coverageRevalidated: true });
+const secret = 'trusted runtime storage secret never provided to agent';
+const has = (xs, code) => xs.some(x => x.code === code);
+
+test('absent context policy version means basic v1; verified v2 needs Task Contract v2', () => {
+  assert.equal(resolveContextPolicy(handoff).version, 1);
+  assert.equal(resolveContextPolicy(handoff).admitted, true);
+  assert.equal(resolveContextPolicy({ ...handoff, contextPolicyVersion: 2 }).admitted, true);
+  assert.ok(has(resolveContextPolicy({ ...handoff, contractVersion: 1, contextPolicyVersion: 2 }).findings, 'TASK_CONTEXT_VERSION_MISMATCH'));
+  assert.ok(has(resolveContextPolicy({ ...handoff, contextPolicyVersion: 3 }).findings, 'UNSUPPORTED_CONTEXT_POLICY_VERSION'));
+});
+test('no context mode has a fixed byte cap; measurement is UTF-8 bytes', () => {
+  const r = evaluateContextBytes('✓'.repeat(200000));
+  assert.equal(r.valid, true);
+  assert.equal(r.actualBytes, 600000);
+  assert.ok(has(evaluateContextBytes('').findings, 'INVALID_ASSEMBLED_CONTEXT'));
+});
+test('source coverage happy path', () => assert.deepEqual(verifyCoverage(coverage()), []));
+test('source receipt flag without authoritative Git loader cannot pass', () => assert.ok(has(validateContextCoverage(coverage()), 'UNVERIFIED_GIT_SOURCE')));
+test('mandatory source absent and expected source missing', () => {
+  const findings = verifyCoverage(coverage({ sources: [] }));
+  assert.ok(has(findings, 'MISSING_MANDATORY_SOURCE'));
+  assert.ok(has(findings, 'MISSING_EXPECTED_SOURCE'));
+});
+test('SHA/content mismatch is detected against the independent Git loader', () => {
+  const findings = verifyCoverage(coverage({ sources: [source({ content: 'tampered', verifiedByGit: false })] }));
+  assert.ok(has(findings, 'CONTEXT_HASH_MISMATCH'));
+  assert.ok(!has(findings, 'UNVERIFIED_GIT_SOURCE')); // Self-reported flags have no authority when the trusted loader succeeds.
+});
+test('wrong expected Git revision fails closed', () => {
+  const findings = verifyCoverage(coverage({ expectedSources: [source({ revisionSha: 'c'.repeat(40) })] }));
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+  assert.ok(has(findings, 'MISSING_EXPECTED_SOURCE'));
+});
+test('duplicate, undeclared dependency and wrong requirement binding detected', () => {
+  const dependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md', coveredRequirements: [] });
+  const findings = verifyCoverage(coverage({ sources: [source(), source(), dependency], expectedSources: [source(), dependency], requirementIds: ['REQ-1', 'REQ-2'] }));
+  assert.ok(has(findings, 'DUPLICATE_CONTEXT_SOURCE'));
+  assert.ok(has(findings, 'UNDECLARED_CONTEXT_DEPENDENCY'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+});
+test('receipt-only or partially read normative sources cannot count as consumed', () => {
+  const findings = verifyCoverage(coverage({ sources: [source({ state: 'RETRIEVED', consumption: {} })] }));
+  assert.ok(has(findings, 'MANDATORY_SOURCE_NOT_CONSUMED'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+test('false full-source consumption evidence is rejected', () => {
+  const findings = verifyCoverage(coverage({ sources: [source({ consumption: { fullSource: true, sourceSha256: 'f'.repeat(64) } })] }));
+  assert.ok(has(findings, 'INCOMPLETE_SOURCE_CONSUMPTION'));
+});
+test('runtime missing -> UNMEASURED and progressive checkpoint', () => {
+  assert.deepEqual(assessRuntime(), { status: 'UNMEASURED', decision: 'PROGRESSIVE_CHECKPOINT', findings: [] });
+});
+test('runtime unreliable -> UNRELIABLE', () => assert.equal(assessRuntime({ status: 'MEASURED', capacityTokens: 100, usedTokens: 50, reserveTokens: 10, reliable: false }).status, 'UNRELIABLE'));
+test('runtime near capacity uses runtime-specific reserve not a universal token gate', () => {
+  assert.equal(assessRuntime({ status: 'MEASURED', capacityTokens: 400, usedTokens: 350, reserveTokens: 51, reliable: true, trustedAdapter: true }).decision, 'BLOCKED_CAPACITY');
+  assert.equal(assessRuntime({ status: 'MEASURED', capacityTokens: 400000, usedTokens: 350, reserveTokens: 51, reliable: true, trustedAdapter: true }).decision, 'CONTINUE');
+});
+test('checkpoint valid only after fresh authority and source revalidation', () => {
+  const p = checkpointPayload();
+  const ckpt = signContextCheckpoint(p, secret);
+  assert.deepEqual(verifyContextCheckpoint(ckpt, secret, checkpointRuntime(p)), { valid: true, findings: [] });
+  assert.ok(has(verifyContextCheckpoint(ckpt, secret, p).findings, 'CHECKPOINT_REVALIDATION_REQUIRED'));
+});
+test('forged checkpoint fails MAC', () => {
+  const p = checkpointPayload(); const ckpt = signContextCheckpoint(p, secret);
+  const fake = { ...ckpt, payload: { ...p, allowedPaths: ['**'] } };
+  assert.ok(has(verifyContextCheckpoint(fake, secret, checkpointRuntime(fake.payload)).findings, 'FORGED_CHECKPOINT'));
+});
+test('malformed and partial checkpoints fail', () => {
+  assert.ok(has(verifyContextCheckpoint({}, secret, {}).findings, 'INVALID_CHECKPOINT'));
+  const p = checkpointPayload(); delete p.validationEvidence;
+  const ckpt = signContextCheckpoint(p, secret);
+  assert.ok(has(verifyContextCheckpoint(ckpt, secret, checkpointRuntime(p)).findings, 'INCOMPLETE_CHECKPOINT'));
+});
+test('stale checkpoint on repository drift or v2/v1 mismatch fails', () => {
+  const p = checkpointPayload(); const ckpt = signContextCheckpoint(p, secret);
+  assert.ok(has(verifyContextCheckpoint(ckpt, secret, checkpointRuntime({ ...p, headSha: 'f'.repeat(40) })).findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
+  assert.ok(has(verifyContextCheckpoint(ckpt, secret, checkpointRuntime({ ...p, contextPolicyVersion: 1 })).findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
+});
+test('unsupported compaction falls back to checkpoints unless required', () => {
+  assert.equal(chooseCompaction({ nativeCompaction: 'UNSUPPORTED' }).action, 'VERIFIED_CHECKPOINT_RESTART');
+  assert.equal(chooseCompaction({ nativeCompaction: 'UNSUPPORTED' }, { required: true }).blocked, true);
+  assert.equal(chooseCompaction({ nativeCompaction: 'SUPPORTED', trustedAdapter: false }).action, 'VERIFIED_CHECKPOINT_RESTART');
+});
+
+test('runtime cannot claim trust with a self-reported reliable flag alone', () => {
+  assert.equal(assessRuntime({ status: 'MEASURED', capacityTokens: 1000, usedTokens: 100, reserveTokens: 100, reliable: true }).status, 'UNRELIABLE');
+});
+test('malformed source input returns findings, not a false pass', () => {
+  const findings = validateContextCoverage(coverage({ sources: [null] }), trustedSource);
+  assert.ok(has(findings, 'INVALID_CONTEXT_SOURCE'));
+  assert.ok(has(findings, 'MISSING_MANDATORY_SOURCE'));
+});
+
+// Consolidated Codex review findings for PR #63, commit e372db6.
+test('source kind cannot impersonate trusted expected dependency authorization', () => {
+  const expectedDependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md' });
+  const relabeled = { ...expectedDependency, kind: 'policy' };
+  const findings = verifyCoverage(coverage({
+    sources: [source(), relabeled], expectedSources: [source(), expectedDependency], declaredDependencies: []
+  }));
+  assert.ok(has(findings, 'CONTEXT_SOURCE_KIND_MISMATCH'));
+  assert.ok(has(findings, 'UNDECLARED_CONTEXT_DEPENDENCY'));
+});
+
+test('invalid expected source kind fails closed', () => {
+  const findings = verifyCoverage(coverage({ expectedSources: [source({ kind: 'made-up' })] }));
+  assert.ok(has(findings, 'INVALID_EXPECTED_SOURCE'));
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+});
+
+test('checkpoint contract version drift is rejected even with same context policy', () => {
+  const payload = { ...checkpointPayload(), contextPolicyVersion: 1 };
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const findings = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, contractVersion: 1 })).findings;
+  assert.ok(has(findings, 'CHECKPOINT_REPOSITORY_DRIFT'));
+});
+
+test('explicit null context policy version is not an omitted legacy field', () => {
+  const result = resolveContextPolicy({ ...handoff, contextPolicyVersion: null });
+  assert.equal(result.admitted, false);
+  assert.ok(has(result.findings, 'UNSUPPORTED_CONTEXT_POLICY_VERSION'));
+});
+
+test('non-string trusted repository identity fails closed', () => {
+  const findings = validateContextCoverage(coverage(), sourceRecord => ({
+    ...trustedSource(sourceRecord), repository: 123
+  }));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+});
+
+// Codex second-review findings on commit d9b93a6; first additional owner-authorized correction batch.
+test('coverage requires unique arrays and never uses substring membership', () => {
+  const malformed = source({ coveredRequirements: 'REQ-10', coveredAcceptance: 'ACC-10' });
+  const findings = verifyCoverage(coverage({ sources: [malformed] }));
+  assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_CLAIMS'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('coverage rejects duplicate or absent claims even when receipt state is COVERED', () => {
+  for (const bad of [source({ coveredRequirements: ['REQ-1', 'REQ-1'] }), source({ coveredAcceptance: ['ACC-1', 'ACC-1'] }), source({ coveredAcceptance: undefined })]) {
+    const findings = verifyCoverage(coverage({ sources: [bad] }));
+    assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_CLAIMS'));
+  }
+});
+
+test('signed checkpoint rejects malformed required values even when current mirrors them', () => {
+  const invalid = [
+    { contractVersion: null }, { contextPolicyVersion: null }, { policySha: null },
+    { baseSha: '0'.repeat(39) }, { headSha: 123 }, { repository: null },
+    { approval: { reference: '' } }, { approval: null },
+    { allowedPaths: null }, { allowedPaths: ['../escape'] },
+    { sources: null }, { sources: [null] }, { requirementCoverage: null },
+    { completedWork: null }, { pendingWork: null }, { validationEvidence: null }
+  ];
+  for (const overrides of invalid) {
+    const payload = { ...checkpointPayload(), ...overrides };
+    const ckpt = signContextCheckpoint(payload, secret);
+    const result = verifyContextCheckpoint(ckpt, secret, checkpointRuntime(payload));
+    assert.equal(result.valid, false, JSON.stringify(overrides));
+    assert.ok(has(result.findings, 'INVALID_CHECKPOINT_PAYLOAD'), JSON.stringify(overrides));
+  }
+});
+
+test('checkpoint resume binds approval, scope, manifest and coverage', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { approval: { reference: 'different-approval' } },
+    { allowedPaths: ['**'] },
+    { sources: [source({ blobSha: 'c'.repeat(40) })] },
+    { requirementCoverage: ['REQ-2'] }
+  ]) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, ...changed }));
+    assert.equal(result.valid, false);
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'));
+  }
+});
+
+// Codex third-review finding on e0d0af8; second owner-authorized extra correction batch.
+test('checkpoint scope, coverage and source manifests ignore collection order', () => {
+  const payload = checkpointPayload();
+  payload.allowedPaths = ['FLOW.md', 'AI.md'];
+  payload.requirementCoverage = ['REQ-1', 'REQ-2'];
+  payload.sources = [source(), source({ path: 'AI.md' })];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const current = checkpointRuntime({
+    ...payload,
+    allowedPaths: [...payload.allowedPaths].reverse(),
+    requirementCoverage: [...payload.requirementCoverage].reverse(),
+    sources: [...payload.sources].reverse()
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('checkpoint approval and source record property key order are semantic, not authority drift', () => {
+  const payload = checkpointPayload();
+  payload.approval = { reference: 'owner-record', publicationAllowed: false, nested: { role: 'executor', batches: 1 } };
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const reverseKeys = object => Object.fromEntries(Object.entries(object).reverse());
+  const current = checkpointRuntime({
+    ...payload,
+    approval: { nested: reverseKeys(payload.approval.nested), publicationAllowed: false, reference: 'owner-record' },
+    sources: payload.sources.map(reverseKeys)
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('semantic checkpoint comparison still rejects changed and duplicated authority', () => {
+  const payload = checkpointPayload();
+  payload.allowedPaths = ['FLOW.md', 'AI.md'];
+  payload.sources = [source(), source({ path: 'AI.md' })];
+  payload.requirementCoverage = ['REQ-1', 'REQ-2'];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { allowedPaths: ['AI.md', 'DIFFERENT.md'] },
+    { allowedPaths: ['AI.md', 'AI.md'] },
+    { sources: [source({ path: 'AI.md' }), source({ path: 'AI.md' })] },
+    { requirementCoverage: ['REQ-2', 'REQ-2'] },
+    { approval: { reference: 'another-approval' } }
+  ]) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, ...changed }));
+    assert.equal(result.valid, false, JSON.stringify(changed));
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
+  }
+});
+
+
+// Codex fourth-review finding on 737fcaf; first of two newly authorized correction batches.
+test('checkpoint resume accepts GitHub repository casing differences in top-level and source manifest', () => {
+  const payload = checkpointPayload();
+  payload.sources = [source(), source({ repository: 'ChipIn-one/chipin-frontend', path: 'AGENTS.md' })];
+  const checkpoint = signContextCheckpoint(payload, secret);
+  const current = checkpointRuntime({
+    ...payload,
+    repository: 'SYLLIK/LIFE-OPS-BOT',
+    sources: payload.sources.map(entry => ({ ...entry, repository: entry.repository.toUpperCase() })).reverse()
+  });
+  assert.deepEqual(verifyContextCheckpoint(checkpoint, secret, current), { valid: true, findings: [] });
+});
+
+test('checkpoint resume continues to reject changed GitHub repository identities and malformed repositories', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const repository of ['syllik/different-repo', 123, null, 'invalid']) {
+    const result = verifyContextCheckpoint(checkpoint, secret, checkpointRuntime({ ...payload, repository }));
+    assert.equal(result.valid, false, String(repository));
+    assert.ok(has(result.findings, 'CHECKPOINT_REPOSITORY_DRIFT'), String(repository));
+  }
+});
+
+test('source repository casing alone is normalized but SHA, path and identity drift remain blocked', () => {
+  const payload = checkpointPayload();
+  const checkpoint = signContextCheckpoint(payload, secret);
+  for (const changed of [
+    { repository: 'syllik/unapproved-repo' },
+    { repository: null },
+    { revisionSha: 'f'.repeat(40) },
+    { blobSha: 'f'.repeat(40) },
+    { sha256: 'e'.repeat(64) },
+    { path: 'DIFFERENT.md' }
+  ]) {
+    const current = checkpointRuntime({ ...payload, sources: [source({ ...changed, repository: Object.hasOwn(changed, 'repository') ? changed.repository : 'SYLLIK/AI-WORKFLOW' })] });
+    const result = verifyContextCheckpoint(checkpoint, secret, current);
+    assert.equal(result.valid, false, JSON.stringify(changed));
+    assert.ok(has(result.findings, 'CHECKPOINT_AUTHORITY_DRIFT'), JSON.stringify(changed));
+  }
+});
+
+// Codex fifth-review findings on f391cf5; first of three owner-authorized batches.
+test('null and invalid context coverage envelope fails closed without throwing', () => {
+  for (const bad of [null, 0, [], 'invalid']) {
+    const findings = validateContextCoverage(bad, trustedSource);
+    assert.ok(has(findings, 'INVALID_CONTEXT_COVERAGE_INPUT'));
+  }
+});
+
+test('verified Git blob without independently attested full consumption cannot authorize coverage', () => {
+  const claims = coverage();
+  const gitOnly = s => ({ repository: s.repository, path: s.path, revisionSha: s.revisionSha, blobSha: s.blobSha, content: 'entire-source' });
+  const findings = validateContextCoverage(claims, gitOnly);
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_CONSUMPTION'));
+  assert.ok(has(findings, 'MANDATORY_SOURCE_NOT_CONSUMED'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('a self-reported coverage claim cannot exceed trusted requirement or acceptance evidence', () => {
+  const claimed = source({ coveredRequirements: ['REQ-FAKE'], coveredAcceptance: ['ACC-FAKE'] });
+  const findings = verifyCoverage(coverage({
+    sources: [claimed], requirementIds: ['REQ-FAKE'], acceptanceIds: ['ACC-FAKE']
+  }));
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_COVERAGE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('trusted consumption without independently attested coverage does not establish coverage', () => {
+  const gitWithReadOnly = s => {
+    const { coveredRequirements, coveredAcceptance, ...evidence } = trustedSource(s);
+    return evidence;
+  };
+  const findings = validateContextCoverage(coverage(), gitWithReadOnly);
+  assert.ok(!has(findings, 'UNVERIFIED_SOURCE_CONSUMPTION'));
+  assert.ok(has(findings, 'UNVERIFIED_SOURCE_COVERAGE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+});
+
+test('trusted coverage requires the independently attested Git blob and expected source kind', () => {
+  const wrongKind = source({ kind: 'reference' });
+  const findings = verifyCoverage(coverage({ sources: [wrongKind] }));
+  assert.ok(has(findings, 'CONTEXT_SOURCE_KIND_MISMATCH'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  assert.ok(has(findings, 'UNCOVERED_ACCEPTANCE'));
+  const tampered = verifyCoverage(coverage({ sources: [source({ content: 'tampered' })] }));
+  assert.ok(has(tampered, 'CONTEXT_HASH_MISMATCH'));
+  assert.ok(has(tampered, 'UNCOVERED_REQUIREMENT'));
+});
+
+// Codex review finding on dc92d2a; second of three owner-authorized batches.
+test('unapproved source never reaches the trusted Git loader', () => {
+  const rejected = source({ repository: 'attacker/foreign', path: 'injected.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({ sources: [rejected] }), s => {
+    called.push(s.repository);
+    return trustedSource(s);
+  });
+  assert.deepEqual(called, []);
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+  assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+});
+
+test('undeclared dependency cannot cause a Git-object read', () => {
+  const dependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({
+    sources: [dependency], expectedSources: [dependency], declaredDependencies: []
+  }), s => { called.push(s.repository); return trustedSource(s); });
+  assert.deepEqual(called, []);
+  assert.ok(has(findings, 'UNDECLARED_CONTEXT_DEPENDENCY'));
+  assert.ok(has(findings, 'UNVERIFIED_GIT_SOURCE'));
+});
+
+test('kind impersonation and manifest hash drift cannot invoke the Git loader', () => {
+  for (const tampered of [source({ kind: 'reference' }), source({ blobSha: 'c'.repeat(40) }), source({ sha256: 'c'.repeat(64) })]) {
+    const called = [];
+    const findings = validateContextCoverage(coverage({ sources: [tampered] }), s => {
+      called.push(s.path);
+      return trustedSource(s);
+    });
+    assert.deepEqual(called, []);
+    assert.ok(has(findings, tampered.kind === 'reference' ? 'CONTEXT_SOURCE_KIND_MISMATCH' : 'CONTEXT_SOURCE_MANIFEST_MISMATCH'));
+    assert.ok(has(findings, 'UNCOVERED_REQUIREMENT'));
+  }
+});
+
+test('malformed and ambiguous authorization inputs never trigger Git lookups', () => {
+  const cases = [
+    { expectedSources: [source(), source()] },
+    { expectedSources: [source({ blobSha: 'not-a-sha' })] },
+    { declaredDependencies: ['invalid'] },
+    { declaredDependencies: ['vendor/foreign', 'not-a-repo'] },
+    { sources: [source(), source()] }
+  ];
+  for (const overrides of cases) {
+    const called = [];
+    const findings = validateContextCoverage(coverage(overrides), s => {
+      called.push(s.path);
+      return trustedSource(s);
+    });
+    assert.ok(findings.length > 0, JSON.stringify(overrides));
+    // Duplicate source records permit at most the first authorized read;
+    // invalid manifests and declarations permit none.
+    assert.equal(called.length, Object.hasOwn(overrides, 'sources') ? 1 : 0, JSON.stringify(overrides));
+  }
+});
+
+test('mixed receipts invoke trusted Git loader only for authorized sources', () => {
+  const unapproved = source({ repository: 'attacker/foreign', path: 'bad.md' });
+  const called = [];
+  const findings = validateContextCoverage(coverage({ sources: [source(), unapproved] }), s => {
+    called.push(s.repository);
+    return trustedSource(s);
+  });
+  assert.deepEqual(called, ['syllik/ai-workflow']);
+  assert.ok(has(findings, 'UNEXPECTED_CONTEXT_SOURCE'));
+  assert.ok(!has(findings, 'UNCOVERED_REQUIREMENT'));
+});
+
+test('declared expected dependency is allowed to reach the Git loader', () => {
+  const dependency = source({ kind: 'dependency', repository: 'vendor/foreign', revisionSha: 'd'.repeat(40), path: 'policy.md', coveredRequirements: [], coveredAcceptance: [] });
+  const called = [];
+  const findings = validateContextCoverage(coverage({
+    sources: [source(), dependency], expectedSources: [source(), dependency], declaredDependencies: ['vendor/foreign']
+  }), s => { called.push(s.repository); return trustedSource(s); });
+  assert.deepEqual(called, ['syllik/ai-workflow', 'vendor/foreign']);
+  assert.deepEqual(findings, []);
+});
+
+test('a new Task Contract v2 task defaults to verified v2; otherwise basic v1', () => {
+  assert.equal(resolveContextPolicy(handoff, { newTask: true }).version, 2);
+  const basic = resolveContextPolicy({ ...handoff, contractVersion: 1 }, { newTask: true });
+  assert.equal(basic.version, 1);
+  assert.equal(basic.admitted, true);
+  assert.equal(resolveContextPolicy(handoff).version, 1);
+});

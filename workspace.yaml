@@ -1,17 +1,22 @@
 schemaVersion: 2
 canonicalRoot: ~/Desktop/WORK
-budgets:
-  AI.md: 1024
-  FLOW.md: 2048
-  global role file: 6144
-  managed AGENTS block: 1024
-  .ai/context.md: 8192
-  one decision record: 4096
-  prompt.md: 8192
-  state.md: 2048
-  assembled execution context: 32768
-  result.md: 4096
-  human plan.md: 16384
+executionPolicy:
+  contractVersion: 2
+  roles: [planner, architect, executor, reviewer, auditor]
+  modelSelection: risk-capability
+  publisher:
+    kind: trusted
+    publicationBatchesPerRevision: 1
+    historyRewrite: forbidden
+  review:
+    reviewsPerHeadSha: 1
+    requiresGreenCi: true
+    findings: consolidated
+    reviewerMutations: forbidden
+  corrections:
+    authorization: upfront-or-legacy-human
+    maxBatches: 2
+  merge: human-only
 gitLifecycle:
   canonicalBranch: master
   normalMergeMethod: squash
@@ -28,6 +33,11 @@ gitLifecycle:
       branchState: canonical
       defaultBranch: master
       integrationBranch: master
+    - repository: syllik/Zero-Touch-DCA
+      deploymentProfile: none
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
     - repository: ChipIn-one/.github
       deploymentProfile: none
       branchState: canonical
@@ -40,13 +50,9 @@ gitLifecycle:
       integrationBranch: master
     - repository: ChipIn-one/chipin-frontend
       deploymentProfile: production
-      branchState: temporary-exception
-      defaultBranch: main
-      integrationBranch: dev
-      promotionBranch: main
-      exception:
-        reason: Preserve the enforced dev-to-main ancestry promotion until exact-commit promotion replaces it.
-        followUp: Replace dev-to-main promotion, then migrate the canonical long-lived source to master.
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
     - repository: ChipIn-one/chipin-backend
       deploymentProfile: production
       branchState: migration
@@ -87,7 +93,7 @@ projects:
     group: products/chipin
     access: managed
     status: active
-    integrationBranch: dev
+    integrationBranch: master
     contextPath: .ai/context.md
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
@@ -127,14 +133,6 @@ projects:
     status: active
     integrationBranch: main
     contextPath: .ai/context.md
-  - id: syllik/codex-local-runner
-    repository: syllik/codex-local-runner
-    localPath: tools/ai/codex-local-runner
-    group: tools/ai
-    access: managed
-    status: onboarding
-    integrationBranch: master
-    contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
     localPath: tools/content/youtube-metadata-translator
@@ -166,4 +164,12 @@ projects:
     access: managed
     status: active
     integrationBranch: main
+    contextPath: .ai/context.md
+  - id: syllik/Zero-Touch-DCA
+    repository: syllik/Zero-Touch-DCA
+    localPath: products/Zero-Touch-DCA
+    group: products
+    access: managed
+    status: active
+    integrationBranch: master
     contextPath: .ai/context.md
