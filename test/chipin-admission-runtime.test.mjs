@@ -352,7 +352,7 @@ test('actual CLI ignores forged workspace locations and reads canonical master m
       cwd: root, env: f.env, encoding: 'utf8'
     }));
     assert.equal(good.status, 'INTAKE_COMPLETE');
-    assert.equal(good.integrationBranch, 'dev');
+    assert.equal(good.integrationBranch, 'master');
     assert.equal(good.policySourceSha, f.env.FIXTURE_POLICY_SHA);
     assert.throws(() => execFileSync(process.execPath, [...args, '--manifest', forgedPath], {
       cwd: root, env: f.env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']

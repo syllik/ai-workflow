@@ -6,7 +6,7 @@ Generated from `workspace.yaml`. Active managed projects route to context on the
 | --- | --- | --- | --- | --- | --- | --- |
 | ChipIn-one/.github | products/chipin | managed | active | master | [.ai/context.md](https://github.com/ChipIn-one/.github/blob/master/.ai/context.md) | — |
 | ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
-| ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/.ai/context.md) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
+| ChipIn-one/chipin-frontend | products/chipin | managed | active | master | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/master/.ai/context.md) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
 | ChipIn-one/chipin-knowledge-base | products/chipin | read-only | active | master | [repository source of truth](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) | — |
 | syllik/ai-workflow | workflows/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/ai-workflow/blob/master/.ai/context.md) | — |
 | syllik/chatgpt-archive-cleanup | tools/ai | managed | active | main | [.ai/context.md](https://github.com/syllik/chatgpt-archive-cleanup/blob/main/.ai/context.md) | — |
@@ -27,7 +27,7 @@ Only repositories listed below were audited for this policy task. Other workspac
 | --- | --- | --- | --- | --- | --- | --- |
 | ChipIn-one/.github | none | canonical | master | master | — | — |
 | ChipIn-one/chipin-backend | production | migration | develop | develop | — | — |
-| ChipIn-one/chipin-frontend | production | temporary-exception | main | dev | main | Preserve the enforced dev-to-main ancestry promotion until exact-commit promotion replaces it. Follow-up: Replace dev-to-main promotion, then migrate the canonical long-lived source to master. |
+| ChipIn-one/chipin-frontend | production | canonical | master | master | — | — |
 | ChipIn-one/chipin-knowledge-base | none | canonical | master | master | — | — |
 | syllik/ai-workflow | none | canonical | master | master | — | — |
 | syllik/syllik | none | canonical | master | master | — | — |
