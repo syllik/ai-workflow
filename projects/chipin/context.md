@@ -15,7 +15,7 @@ Release: the owner promotes the exact tested `master` commit's Vercel
 deployment to Production; there is no release branch. `dev` and `main` are
 frozen rollback refs only, until 2026-11-05.
 
-Luna may:
+The orchestrator holding the Trusted Publisher capability may:
 
 - create task branches;
 - stage task-owned files;
@@ -23,7 +23,7 @@ Luna may:
 - push;
 - open or update PRs.
 
-Luna never merges.
+No agent merges.
 
 Full local completion gate: `npm run verify:full`
 
@@ -34,8 +34,7 @@ GitHub Actions `frontend-ci` is the authoritative deterministic PR gate.
 For integration readiness, a task branch must have a PR into `master` with required
 `frontend-ci` green; local green is not sufficient.
 
-Luna never pushes directly to `master` and never merges; human performs the
-merge.
+No agent pushes directly to `master` or merges; human performs the merge.
 
 Vercel is a preview/deployment signal, not a replacement for `frontend-ci`.
 
