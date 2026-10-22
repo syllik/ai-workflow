@@ -5,7 +5,9 @@ import { parse } from 'yaml';
 import { validateExecutionPolicyConfig } from './task-policy.mjs';
 
 export const DEFAULT_MANIFEST_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../workspace.yaml');
-const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'executionPolicy', 'gitLifecycle', 'projects']);
+// Deprecated and ignored: kept only until the trusted activation base no longer requires them.
+const DEPRECATED_MANIFEST_KEYS = ['budgets', 'contextPolicy'];
+const MANIFEST_KEYS = new Set(['schemaVersion', 'canonicalRoot', 'executionPolicy', 'gitLifecycle', 'projects', ...DEPRECATED_MANIFEST_KEYS]);
 const PROJECT_KEYS = new Set(['id', 'repository', 'localPath', 'group', 'access', 'status', 'integrationBranch', 'contextPath', 'contextDependencies']);
 const DEPENDENCY_KEYS = new Set(['repository', 'integrationBranch', 'access']);
 const GIT_LIFECYCLE_KEYS = new Set(['canonicalBranch', 'normalMergeMethod', 'productionPromotion', 'temporaryIssueBranchPattern', 'repositories']);
