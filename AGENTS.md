@@ -36,7 +36,7 @@ project, prompt, task, or history file without a concrete reason.
 * Conversation context must not be the only execution state for a persisted task.
 * Task context is optional and must not duplicate the human-only planning record.
 * Do not change the architecture without an explicit reason in the supplied task prompt.
-* Do not use subagents, repeat broad research, or expand scope.
+* The main session may orchestrate subagents only under the delegation rules in `global/core.md`; do not repeat broad research or expand scope.
 * Executor does not self-review, publish, merge, or mutate GitHub/Trello. Trusted Publisher performs one final commit + one push per completed revision only when explicitly authorized; published history is never rewritten.
 * Reviewer runs only after required CI is green for the exact current head, at most once per SHA, in an independent read-only context, and returns one consolidated findings package.
 * Any head change invalidates prior CI/review. v2 may pre-authorize up to two bounded correction batches; legacy v1/unspecified handoffs require human authorization per batch. After the limit, escalate to a human. Only a human merges.

@@ -212,7 +212,8 @@ bounded corrections, and human-only merge.
 Planner supplies a self-contained Executor handoff; persisted task state
 supports continuation without depending on conversation history.
 
-Do not use subagents; minimize repeated research and context/token usage.
+Use subagents only under the delegation rules in `global/core.md`; minimize
+repeated research and context/token usage.
 The task prompt plus this GitHub repository are sufficient bootstrap.
 ```
 

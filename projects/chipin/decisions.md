@@ -8,19 +8,21 @@
   is the owner's Vercel "Promote to Production" of an exact tested `master`
   commit.
 * Human performs all merges; auto-merge is disabled.
-* No subagents. Luna implements and reviews task-owned changes according to the
-  canonical bounded review workflow.
+* Implementation goes through the orchestrator and Executor subagents under
+  `global/core.md` delegation rules; the orchestrator checks admission at every
+  boundary; its subagents do not re-check; Reviewer checks stay as defined. Review runs in a separate session according to the canonical
+  bounded review workflow.
 * Copilot Code Review is not part of the required/default workflow.
 * Deterministic CI is the merge gate.
-* Luna may stage task-owned files, commit, push task branches, and create/update
-  PRs.
+* The orchestrator holding the Trusted Publisher capability may stage task-owned
+  files, commit, push task branches, and create/update PRs.
 * The local completion gate is `npm run verify:full`; tracked Husky `pre-push`
   repeats it and blocks non-zero results.
 * Required remote `frontend-ci` must be green on the PR into `master` before
   reporting readiness for integration; local green is not sufficient for remote
   readiness.
 * Vercel is a preview/deployment signal, not a replacement for `frontend-ci`.
-* Luna never pushes directly to `master`; human performs merges and
-  production promotion.
+* No agent pushes directly to `master`; human performs merges and production
+  promotion.
 * Dependabot updates target the default branch `master`.
 * Backend is outside the frontend agent workflow scope.
