@@ -5,8 +5,10 @@
   explicitly target integration branch `dev`.
 * Normal work is `task/*` → `dev`; normal release is `dev` → `main`.
 * Human performs all merges; auto-merge is disabled.
-* No subagents. Luna implements and reviews task-owned changes according to the
-  canonical bounded review workflow.
+* Implementation goes through the orchestrator and Executor subagents under
+  `global/core.md` delegation rules; only the orchestrator checks ChipIn
+  admission. Review runs in a separate session according to the canonical
+  bounded review workflow.
 * Copilot Code Review is not part of the required/default workflow.
 * Deterministic CI is the merge gate.
 * Luna may stage task-owned files, commit, push task branches, and create/update
