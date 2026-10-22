@@ -125,14 +125,6 @@ projects:
     status: active
     integrationBranch: master
     contextPath: .ai/context.md
-  - id: syllik/chatgpt-archive-cleanup
-    repository: syllik/chatgpt-archive-cleanup
-    localPath: tools/ai/chatgpt-archive-cleanup
-    group: tools/ai
-    access: managed
-    status: active
-    integrationBranch: main
-    contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
     localPath: tools/content/youtube-metadata-translator
