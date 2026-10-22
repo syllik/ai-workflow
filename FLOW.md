@@ -6,7 +6,7 @@ Roles are provider-independent: Planner scopes, Architect handles risks, Executo
 
 v2 pins policy/base/head plus approval (paths, publication, 0–2 corrections). Legacy v1/unspecified remains human-gated; no automatic publication/correction. Context has no fixed byte cap: basic v1 (default) or verified v2 (Task Contract v2, trusted source/coverage/integrity evidence); see `global/executor.md`.
 
-Publish one final commit + one push; never rewrite published history. Review only after required CI green for current head; one review per SHA and consolidated findings. Head changes stale CI/review. v2 corrections require upfront authority; legacy requires human approval per batch. After two correction batches, escalate. Human merges.
+Publish one final commit + one push; never rewrite published history. Review only after required CI green for current head; one review per SHA and consolidated findings. Head changes stale CI/review. v2 corrections require upfront authority; legacy requires human approval per batch. After two correction batches, escalate. Human merges (temporary exemption: Zero-Touch-DCA only, `.ai/decisions.md` 2026-10-23).
 
 New `workspace.yaml` projects sync `syllik/syllik` `docs/workspace.md` and `docs/repositories.md`; `README.md` stays a stable workspace link. No deployment/merge settings change.
 

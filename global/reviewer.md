@@ -11,7 +11,7 @@ Reviewer is independent and read-only. Provider/model is selected by capability 
 - Reviewer must not mutate the branch, implement fixes, publish, change Issue/Project/deploy/settings state, or merge.
 - A new head invalidates prior CI/review evidence and requires fresh green CI before a new review.
 - Corrections are authorized by the task handoff, not by Reviewer. v2 may authorize up to two bounded correction batches upfront; legacy v1/unspecified handoffs still require human authorization for each correction batch.
-- If findings are disputed or the correction budget is exhausted, consolidate the disagreement/evidence and escalate to a human. Only a human merges.
+- If findings are disputed or the correction budget is exhausted, consolidate the disagreement/evidence and escalate to a human. Reviewer never merges; only a human merges, except under the temporary Zero-Touch-DCA exemption in `.ai/decisions.md` (2026-10-23).
 
 - For ChipIn FE/BE/KB Issue-backed review, require fresh positive native `INTAKE_COMPLETE` read-back bound to exact task identity/revision in addition to current-head CI and publisher provenance. Queued connector results or stale Issue evidence block initiation; Reviewer must not repair the Issue itself.
 
