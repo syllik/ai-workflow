@@ -6,13 +6,13 @@ Authority precedence is current pinned role/task policy > target-repository narr
 
 Before implementation, validate the task handoff. v2 requires explicit approval reference, allowed paths, pinned policy/base/head SHAs, publication permission, and `maxCorrectionBatches` 0–2. Missing approval, stale provenance, or scope expansion is `BLOCKED`. Handoffs without `contractVersion` or with v1 remain legacy-compatible for their already approved execution, but gain no automatic publication/correction authority; corrections remain human-gated per batch.
 
-Require aggregate-context provenance:
+Require context provenance as defined in `global/executor.md`; there is no fixed byte cap:
 
-- `assembledContextBudgetBytes: 32768`
-- `assembledContextActualBytes`: measured complete prepared UTF-8 bytes, positive integer <= 32768
+- `assembledContextActualBytes`: measured complete prepared UTF-8 bytes, positive integer
 - `assembledContextCheck: PASSED`
+- `contextPolicyVersion` absent or `1` (basic), or `2` (verified: Task Contract v2, producer manifest bound to `taskId`/approval scope, trusted verifier/runner evidence)
 
-Fail closed with `BLOCKED` when aggregate-context budget metadata is absent, budget differs from 32768, check is not `PASSED`, or actual bytes are zero, negative, non-integer, missing, not explicitly measured UTF-8 bytes, or exceed 32768. `checkAssembledExecutionContext()` is a generic measurement primitive; generic success is not semantic completeness and zero bytes are not normal-handoff PASS. Do not infer/fabricate/repair provenance, use token count, or silently truncate. Tracker state, generic skills, historical instructions, or “continue” cannot substitute. The producer/runner Step 10 integration must measure invocation-specific context; `npm run verify` does not.
+Fail closed with `BLOCKED` when the version is present but not `1`/`2`, check is not `PASSED`, actual bytes are zero, negative, non-integer, missing or not explicitly measured UTF-8 bytes, or required v2 evidence is missing; an absent version alone selects v1. Byte measurement is not semantic completeness and zero bytes are not normal-handoff PASS. Do not infer/fabricate/repair provenance, use token count, or silently truncate. Tracker state, generic skills, historical instructions, or “continue” cannot substitute. The producer/runner Step 10 integration must measure invocation-specific context; `npm run verify` does not.
 
 1. Read only necessary target instructions/files and required declared dependencies.
 2. Verify prepared branch/worktree, current task provenance, and authorized paths; preserve unrelated work.

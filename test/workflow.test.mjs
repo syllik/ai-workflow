@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
-import { BUDGETS, checkAssembledExecutionContext } from '../scripts/workspace/budgets.mjs';
 
 const workflowFiles = [
   'AGENTS.md', 'AI.md', 'FLOW.md', 'global/core.md', 'global/workflow.md',
@@ -150,21 +149,34 @@ describe('workflow documentation', () => {
     assert.match(trusted, /permission-contents: read/u);
   });
 
-  test('documents versioned aggregate-context policy', () => {
-    assert.equal(BUDGETS['assembled execution context'], 32768);
-    assert.deepEqual(checkAssembledExecutionContext([]), { actualBytes: 0, maxBytes: 32768, findings: [] });
-    assert.equal(checkAssembledExecutionContext(['x'.repeat(40000)], { enforceLimit: false }).maxBytes, null);
-    for (const filePath of ['FLOW.md', 'global/core.md', 'global/planner.md', 'global/architect.md', 'global/executor.md', '.ai/context.md']) {
-      assert.match(text(filePath), /32768/u, filePath);
+  test('documents context provenance without any fixed byte cap', () => {
+    const docs = [
+      'FLOW.md', 'global/core.md', 'global/workflow.md', 'global/planner.md', 'global/architect.md', 'global/executor.md',
+      'templates/prompt.md', 'prompts/implementation.md', '.ai/context.md'
+    ];
+    for (const filePath of docs) {
+      const body = text(filePath);
+      assert.doesNotMatch(body, /32768|assembledContextBudgetBytes|rolloutAllowlist|excludedRepositories|checkAssembledExecutionContext/u, filePath);
+      assert.doesNotMatch(body, /hard (?:byte|length) budget|byte budgets? (?:are|is) (?:hard|blocking)/iu, filePath);
     }
-    const consumer = `${text('global/architect.md')}\n${text('global/executor.md')}\n${text('.ai/context.md')}`;
-    assert.match(consumer, /PASSED/u);
-    assert.match(consumer, /zero|positive/iu);
-    assert.match(consumer, /UTF-8/iu);
-    assert.match(consumer, /must not.*(?:infer|fabricate|repair)|Do not infer/isu);
-    assert.match(consumer, /token count|silently truncate/iu);
-    assert.match(consumer, /no global (?:assembled-context )?cap/iu);
-    assert.match(consumer, /trusted source|source authorization/iu);
+    for (const filePath of ['global/executor.md', 'templates/prompt.md', 'prompts/implementation.md']) {
+      const body = text(filePath);
+      assert.match(body, /no fixed byte cap/iu, filePath);
+      // An absent version selects basic v1 and is never itself a block reason.
+      assert.match(body, /absent version alone selects v1/iu, filePath);
+      assert.match(body, /UTF-8/u, filePath);
+      assert.match(body, /`assembledContextCheck: PASSED`|assembledContextCheck: PASSED/u, filePath);
+      assert.match(body, /Task Contract v2/u, filePath);
+      assert.match(body, /`taskId`/u, filePath);
+      assert.match(body, /trusted verifier\/runner evidence/u, filePath);
+    }
+    for (const filePath of ['templates/prompt.md', 'prompts/implementation.md']) {
+      assert.match(text(filePath), /global\/executor\.md/u, filePath);
+    }
+    const executor = text('global/executor.md');
+    assert.match(executor, /full consumption/u);
+    assert.match(executor, /pinned source IDs/u);
+    assert.match(executor, /token count|silently truncate/iu);
   });
 
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {

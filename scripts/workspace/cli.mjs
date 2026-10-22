@@ -78,10 +78,7 @@ function run(args, dependencies = {}) {
     if (options.manifestOnly) return 0;
     let findings;
     try {
-      const advisories = [];
-      findings = checkGeneratedFiles(options.root, manifest, options.manifestPath, { advisories });
-      // Advisory (Context Policy v2) length findings are reported but never fail the check.
-      if (advisories.length > 0) process.stderr.write(`${JSON.stringify({ advisories })}\n`);
+      findings = checkGeneratedFiles(options.root, manifest, options.manifestPath);
     } catch (error) {
       printFindings([{ code: 'CHECK_FAILED', path: options.root, message: error.message }]);
       return 2;

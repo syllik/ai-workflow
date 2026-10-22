@@ -27,13 +27,14 @@ For ChipIn tasks, canonical identity is `owner/repository#issue`, and the task b
 
 ## Aggregate prepared-context provenance
 
-Every normal implementation handoff must supply:
+Normative rule: `global/executor.md`. There is no fixed byte cap. Every normal implementation handoff supplies:
 
-- `assembledContextBudgetBytes: 32768`
-- `assembledContextActualBytes`: `<positive measured UTF-8 byte count>`
+- `contextPolicyVersion: 1 | 2` (absent means basic v1; v2 is verified and needs Task Contract v2)
+- `assembledContextActualBytes`: `<positive measured UTF-8 byte count of the complete prepared context>`
 - `assembledContextCheck: PASSED`
+- for v2 only: the `scripts/workspace/context-producer.mjs` manifest bound to `taskId` and approval scope, and trusted verifier/runner evidence
 
-Executor fails closed with `BLOCKED` if budget metadata is missing, budget is not exactly 32768, check is not `PASSED`, actual bytes are zero/negative/non-integer/missing, or actual bytes exceed 32768. `checkAssembledExecutionContext()` is a generic measurement primitive; zero-byte generic success is not normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
+Executor fails closed with `BLOCKED` if the version is present but not `1`/`2`, check is not `PASSED`, actual bytes are zero/negative/non-integer/missing, or required v2 evidence is missing; an absent version alone selects v1. Zero bytes are never a normal-handoff PASS. Do not infer, fabricate, reinterpret, repair, use token count, or silently truncate the prepared context. The producer/runner must invoke the checker at the Step 10 integration point; `npm run verify` does not validate invocation-specific runtime assembled context.
 
 ## Task
 

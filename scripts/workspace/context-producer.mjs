@@ -2,8 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { checkAssembledExecutionContext, utf8Bytes } from './budgets.mjs';
-import { approvalScopeDigest, canonicalContextPolicy, DEFAULT_CONTEXT_POLICY, evaluateContextBytes, LEGACY_CONTEXT_MAX_BYTES, resolveContextPolicy } from './context-policy.mjs';
+import { approvalScopeDigest, CONTEXT_POLICY_VERIFIED, evaluateContextBytes, resolveContextPolicy } from './context-policy.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
@@ -15,6 +14,10 @@ const CANONICAL_HANDOFF_ROLE_PATH = 'global/executor.md';
 
 function finding(code, path, details = {}) {
   return { code, path, ...details };
+}
+
+function utf8Bytes(text) {
+  return Buffer.byteLength(String(text), 'utf8');
 }
 
 function sha256(text) {
@@ -460,7 +463,7 @@ function renderSection(source) {
 }
 
 function renderReferenceSection(source) {
-  // The receipt counts against the execution budget. The entire source remains
+  // The receipt stands in for the inline source. The entire source remains
   // Git-hydrated, authenticated, hashed and independently readable.
   return `=== verified Git reference ${source.repository}@${source.revisionSha}:${source.path} blob=${source.blobSha} sha256=${sha256(source.content)} bytes=${utf8Bytes(source.content)} (read full source at pinned SHA before decisions) ===\n`;
 }
@@ -475,18 +478,17 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     return { passed: false, findings: [finding('INVALID_CONTEXT_INPUT', 'input')] };
   }
 
-  // Activation is pinned by workspace.yaml at policySha. A caller-supplied policy
-  // may only short-circuit (deny before any load) and must equal the pinned one.
-  const callerContextPolicy = input.contextPolicy;
-  let resolvedContextPolicy = resolveContextPolicy(input, callerContextPolicy ?? DEFAULT_CONTEXT_POLICY, { newTask: input.newTask === true });
-  if (callerContextPolicy !== undefined) findings.push(...resolvedContextPolicy.findings);
-  let contextPolicyVersion = resolvedContextPolicy.version;
+  // The mode/contract check needs no sources and denies before any load. Verified (v2)
+  // additionally requires an active managed target in workspace.yaml pinned at policySha.
+  const resolvedContextPolicy = resolveContextPolicy(input, { newTask: input.newTask === true });
+  findings.push(...resolvedContextPolicy.findings);
+  const contextPolicyVersion = resolvedContextPolicy.version;
   const blockedResult = () => ({
     passed: false,
     findings,
     manifest: { contextPolicyVersion, expectedSources },
     handoffProvenance: {
-      assembledContextBudgetBytes: contextPolicyVersion === 2 ? null : LEGACY_CONTEXT_MAX_BYTES,
+      contextPolicyVersion,
       assembledContextActualBytes: 0,
       assembledContextCheck: 'BLOCKED'
     },
@@ -524,7 +526,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
   }
 
   validateCanonicalExpectedSources(expectedSources, input.policySha, input.headSha, input.role, findings);
-  if (callerContextPolicy !== undefined && !resolvedContextPolicy.admitted) return blockedResult();
+  if (!resolvedContextPolicy.admitted) return blockedResult();
 
   const dependencies = input.dependencies ?? [];
   if (!Array.isArray(dependencies)) {
@@ -600,7 +602,6 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     );
   };
   let registryDependencies = new Set();
-  let pinnedPolicyForManifest = null;
   const hydratedByIndex = [];
   const processSource = (source, index) => {
       const normalized = normalizeSource(source, index, findings);
@@ -652,14 +653,16 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       && normalizeRepository(source.repository) === CANONICAL_POLICY_REPOSITORY
       && source.path === 'workspace.yaml'
       && source.revisionSha === input.policySha);
-    let pinnedContextPolicy = null;
+    let workspacePinned = false;
+    let targetManaged = false;
     if (workspaceSource) {
       try {
         const workspace = parse(workspaceSource.content);
-        pinnedContextPolicy = workspace?.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
+        workspacePinned = true;
         const targetRepository = handoffRepository ?? targetAgentSource?.repository;
         const records = (Array.isArray(workspace?.projects) ? workspace.projects : [])
           .filter((project) => normalizeRepository(project?.repository) === normalizeRepository(targetRepository));
+        targetManaged = records.length === 1 && records[0].access === 'managed' && records[0].status === 'active';
         if (records.length === 1 && Array.isArray(records[0].contextDependencies)) {
           registryDependencies = new Set(records[0].contextDependencies
             .map((dependency) => normalizeRepository(dependency?.repository))
@@ -669,22 +672,16 @@ export function buildTaskContextPackage(input = {}, options = {}) {
         findings.push(finding('CONTEXT_WORKSPACE_REGISTRY_UNAVAILABLE', 'sources.workspace.yaml'));
       }
     }
-    if (pinnedContextPolicy === null) {
+    if (!workspacePinned) {
       findings.push(finding('CONTEXT_POLICY_UNPINNED', 'sources.workspace.yaml'));
       return blockedResult();
     }
-    if (callerContextPolicy !== undefined
-      && canonicalContextPolicy(callerContextPolicy) !== canonicalContextPolicy(pinnedContextPolicy)) {
-      findings.push(finding('CONTEXT_POLICY_NOT_PINNED', 'contextPolicy'));
+    if (contextPolicyVersion === CONTEXT_POLICY_VERIFIED && !targetManaged) {
+      findings.push(finding('CONTEXT_TARGET_NOT_MANAGED', 'repository'));
       return blockedResult();
     }
-    resolvedContextPolicy = resolveContextPolicy(input, pinnedContextPolicy, { newTask: input.newTask === true });
-    if (callerContextPolicy === undefined) findings.push(...resolvedContextPolicy.findings);
-    contextPolicyVersion = resolvedContextPolicy.version;
-    if (!resolvedContextPolicy.admitted) return blockedResult();
-    pinnedPolicyForManifest = pinnedContextPolicy;
-    // v2 evidence must be bound to exactly one task and its approved scope.
-    if (contextPolicyVersion === 2 && (typeof input.taskId !== 'string' || input.taskId.trim() === '' || !approvalScopeDigest(input.approval))) {
+    // Verified evidence must be bound to exactly one task and its approved scope.
+    if (contextPolicyVersion === CONTEXT_POLICY_VERIFIED && (typeof input.taskId !== 'string' || input.taskId.trim() === '' || !approvalScopeDigest(input.approval))) {
       findings.push(finding('CONTEXT_TASK_BINDING_UNAVAILABLE', 'taskId'));
       return blockedResult();
     }
@@ -793,16 +790,13 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     source.kind === 'reference' ? renderReferenceSection(source) : renderSection(source)
   ));
   const assembledContext = sections.join('\n');
-  const measured = contextPolicyVersion === 2
-    ? evaluateContextBytes(contextPolicyVersion, assembledContext)
-    : checkAssembledExecutionContext([assembledContext]);
+  const measured = evaluateContextBytes(assembledContext);
   findings.push(...measured.findings);
 
   const passed = findings.length === 0 && measured.actualBytes > 0;
   const manifest = {
     role: input.role === CANONICAL_HANDOFF_ROLE ? input.role : null,
     contextPolicyVersion,
-    contextPolicy: pinnedPolicyForManifest,
     repository: handoffRepository,
     taskId: typeof input.taskId === 'string' && input.taskId.trim() !== '' ? input.taskId : null,
     approval: approvalScopeDigest(input.approval)
@@ -832,8 +826,7 @@ export function buildTaskContextPackage(input = {}, options = {}) {
       assembly: source.kind === 'reference' ? 'verified-reference' : 'inline'
     })),
     assembledContextSha256: sha256(assembledContext),
-    assembledContextBudgetBytes: measured.maxBytes,
-    assembledContextActualBytes: measured.actualBytes,
+    assembledContextActualBytes: measured.actualBytes ?? 0,
     assembledContextCheck: passed ? 'PASSED' : 'BLOCKED'
   };
 
@@ -842,10 +835,8 @@ export function buildTaskContextPackage(input = {}, options = {}) {
     findings,
     manifest,
     handoffProvenance: {
-      // A new task may resolve to v2 from the pinned default; the handoff must say so.
-      ...(contextPolicyVersion === 2 ? { contextPolicyVersion } : {}),
-      assembledContextBudgetBytes: measured.maxBytes,
-      assembledContextActualBytes: measured.actualBytes,
+      contextPolicyVersion,
+      assembledContextActualBytes: measured.actualBytes ?? 0,
       assembledContextCheck: manifest.assembledContextCheck
     },
     assembledContext
