@@ -1,4 +1,3 @@
-import { BUDGETS } from './budgets.mjs';
 
 const CANONICAL_WORKFLOW_ROOT = 'https://github.com/syllik/ai-workflow/blob/HEAD';
 
@@ -114,7 +113,6 @@ export function renderProfileNavigation(manifest) {
     'GitHub records are authoritative. Do not auto-discover repositories or route into legacy central contexts.'
   ].join('\n');
   const rendered = renderManagedBlock('profile-navigation', body);
-  if (Buffer.byteLength(rendered, 'utf8') > BUDGETS['AI.md']) throw new Error('Rendered profile AI entry exceeds budget');
   return rendered;
 }
 
@@ -135,7 +133,6 @@ export function renderAgentsBlock(manifest) {
     `Canonical root: ${manifest.canonicalRoot}`
   ].join('\n');
   const rendered = renderManagedBlock('agents-routing', body);
-  if (Buffer.byteLength(rendered, 'utf8') > BUDGETS['managed AGENTS block']) throw new Error('Rendered AGENTS block exceeds budget');
   return rendered;
 }
 

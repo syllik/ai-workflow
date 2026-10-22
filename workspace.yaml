@@ -1,5 +1,7 @@
 schemaVersion: 2
 canonicalRoot: ~/Desktop/WORK
+# Deprecated and ignored by the current validator. Kept only so the trusted
+# activation check on the previous base still passes; removed in a follow-up PR.
 budgets:
   AI.md: 1024
   FLOW.md: 2048

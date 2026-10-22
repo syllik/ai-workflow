@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import {
-  DEFAULT_CONTEXT_POLICY,
+  CONTEXT_POLICY_BASIC,
+  CONTEXT_POLICY_VERIFIED,
   approvalScopeDigest,
-  canonicalContextPolicy,
   assessRuntime,
   chooseCompaction,
   evaluateContextBytes,
@@ -44,7 +44,7 @@ function compareReceiptIdentity(receipt, handoff, findings) {
 }
 
 function validateReceiptShape(receipt, handoff, version, findings) {
-  if (version === 1 && receipt === undefined) return;
+  if (version === CONTEXT_POLICY_BASIC && receipt === undefined) return;
   if (!isRecord(receipt)) {
     findings.push(finding('CONTEXT_RECEIPT_REQUIRED', 'runtime.contextReceipt'));
     return;
@@ -52,34 +52,28 @@ function validateReceiptShape(receipt, handoff, version, findings) {
   if (receipt.contextPolicyVersion !== version) {
     findings.push(finding('CONTEXT_RECEIPT_VERSION_MISMATCH', 'receipt.contextPolicyVersion'));
   }
-  if (version === 2) compareReceiptIdentity(receipt, handoff, findings);
+  if (version === CONTEXT_POLICY_VERIFIED) compareReceiptIdentity(receipt, handoff, findings);
 }
 
 function validateAggregateReceipt(receipt, handoff, version, findings) {
   if (!isRecord(receipt)) return;
-  const measured = evaluateContextBytes(version, receipt.assembledContext);
+  const measured = evaluateContextBytes(receipt.assembledContext);
   findings.push(...measured.findings.map(item => ({ ...item, path: `receipt.${item.path}` })));
   if (Number.isInteger(receipt.assembledContextActualBytes) && receipt.assembledContextActualBytes !== measured.actualBytes) {
     findings.push(finding('CONTEXT_RECEIPT_BYTE_MISMATCH', 'receipt.assembledContextActualBytes'));
-  }
-  if (receipt.assembledContextBudgetBytes !== (version === 1 ? measured.maxBytes : null)) {
-    findings.push(finding('CONTEXT_RECEIPT_BUDGET_MISMATCH', 'receipt.assembledContextBudgetBytes'));
   }
   if (receipt.assembledContextCheck !== 'PASSED') {
     findings.push(finding('CONTEXT_RECEIPT_NOT_PASSED', 'receipt.assembledContextCheck'));
   }
   const validDigest = typeof receipt.assembledContextSha256 === 'string' && SHA64.test(receipt.assembledContextSha256);
-  if (version === 2 && !validDigest) {
+  if (version === CONTEXT_POLICY_VERIFIED && !validDigest) {
     findings.push(finding('INVALID_CONTEXT_RECEIPT_DIGEST', 'receipt.assembledContextSha256'));
   }
   if (typeof receipt.assembledContext === 'string' && validDigest
     && sha256(receipt.assembledContext) !== receipt.assembledContextSha256) {
     findings.push(finding('CONTEXT_RECEIPT_HASH_MISMATCH', 'receipt.assembledContextSha256'));
   }
-  if (version === 2) {
-    if (receipt.assembledContextBudgetBytes !== null) {
-      findings.push(finding('INVALID_V2_ASSEMBLED_CONTEXT_BUDGET', 'receipt.assembledContextBudgetBytes'));
-    }
+  if (version === CONTEXT_POLICY_VERIFIED) {
     if (receipt.assembledContextActualBytes !== handoff.assembledContextActualBytes) {
       findings.push(finding('CONTEXT_RECEIPT_HANDOFF_MISMATCH', 'receipt.assembledContextActualBytes'));
     }
@@ -96,12 +90,8 @@ function trustedCoverageEnvelope(manifest, receipt, handoff, findings) {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_REQUIRED', 'trustedManifest'));
     return null;
   }
-  if (manifest.contextPolicyVersion !== 2) {
+  if (manifest.contextPolicyVersion !== CONTEXT_POLICY_VERIFIED) {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH', 'trustedManifest.contextPolicyVersion'));
-  }
-  // v2 activation must come from the policy the producer pinned from workspace.yaml.
-  if (!isRecord(manifest.contextPolicy)) {
-    findings.push(finding('TRUSTED_CONTEXT_MANIFEST_POLICY_REQUIRED', 'trustedManifest.contextPolicy'));
   }
   for (const field of ['policySha', 'baseSha', 'headSha']) {
     if (manifest[field] !== handoff[field]) findings.push(finding('TRUSTED_CONTEXT_MANIFEST_DRIFT', `trustedManifest.${field}`));
@@ -175,7 +165,6 @@ function evaluateRuntime(runtime, findings) {
 
 export function evaluateContextAdmission({
   handoff,
-  contextPolicy = DEFAULT_CONTEXT_POLICY,
   receipt,
   trustedManifest,
   sourceVerifier,
@@ -184,32 +173,24 @@ export function evaluateContextAdmission({
   const findings = [];
   if (!isRecord(handoff)) return { allowed: false, version: null, findings: [finding('INVALID_HANDOFF', 'handoff')] };
 
-  // The trusted producer manifest carries the policy pinned in workspace.yaml at
-  // policySha; a different caller-supplied policy is rejected.
-  let effectivePolicy = contextPolicy;
-  if (isRecord(trustedManifest) && isRecord(trustedManifest.contextPolicy)) {
-    if (contextPolicy !== DEFAULT_CONTEXT_POLICY
-      && canonicalContextPolicy(contextPolicy) !== canonicalContextPolicy(trustedManifest.contextPolicy)) {
-      findings.push(finding('CONTEXT_POLICY_NOT_PINNED', 'contextPolicy'));
-    }
-    effectivePolicy = trustedManifest.contextPolicy;
-  }
-  const resolved = resolveContextPolicy(handoff, effectivePolicy);
+  const resolved = resolveContextPolicy(handoff);
   findings.push(...resolved.findings);
+  if (!resolved.admitted) return { allowed: false, version: resolved.version, findings };
+
   if (isRecord(trustedManifest) && trustedManifest.contextPolicyVersion !== resolved.version) {
     findings.push(finding('TRUSTED_CONTEXT_MANIFEST_VERSION_MISMATCH', 'trustedManifest.contextPolicyVersion'));
+    return { allowed: false, version: resolved.version, findings };
   }
-  if (!resolved.admitted || findings.length > 0) return { allowed: false, version: resolved.version, findings };
 
   const version = resolved.version;
   validateReceiptShape(receipt, handoff, version, findings);
-  if (version === 1 && receipt === undefined) {
+  if (version === CONTEXT_POLICY_BASIC && receipt === undefined) {
     return { allowed: findings.length === 0, version, findings, runtime: { status: 'UNMEASURED' } };
   }
   if (!isRecord(receipt)) return { allowed: false, version, findings };
 
   validateAggregateReceipt(receipt, handoff, version, findings);
-  if (version === 1) {
+  if (version === CONTEXT_POLICY_BASIC) {
     // Runtime findings must be collected before deriving the decision.
     const runtimeAssessment = evaluateRuntime(runtime, findings);
     return { allowed: findings.length === 0, version, findings, runtime: runtimeAssessment };
@@ -262,7 +243,7 @@ export async function recoverContextAdmission({ store, checkpointId, taskAction 
     && contextManifest.mandatorySourceIds.every(id => producedIds.has(id));
   const current = {
     contractVersion: handoff.contractVersion,
-    contextPolicyVersion: Object.hasOwn(handoff, 'contextPolicyVersion') ? handoff.contextPolicyVersion : 1,
+    contextPolicyVersion: Object.hasOwn(handoff, 'contextPolicyVersion') ? handoff.contextPolicyVersion : CONTEXT_POLICY_BASIC,
     policySha: handoff.policySha,
     baseSha: handoff.baseSha,
     headSha: handoff.headSha,

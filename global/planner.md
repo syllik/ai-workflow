@@ -8,7 +8,7 @@ The Planner is read-only. It creates the bounded task envelope; it does not impl
 - For task contract v2, capture the human approval reference, whether publication is allowed, and `maxCorrectionBatches` from 0 to 2. Approval must be explicit; Project/Issue state is not approval.
 - Use Architect only for a new interface, architecture/security/release risk, or another explicit risk trigger.
 - Select model/runtime capabilities by risk and task needs. A provider/model name never grants a role or stronger authority.
-- Ensure v1/unspecified handoffs have complete prepared textual context measured against the canonical 32768-byte UTF-8 aggregate gate. An explicitly allowlisted v2 handoff instead carries trusted source/coverage/integrity evidence and runtime status; it has no global assembled-context cap.
+- Ensure every handoff has complete prepared textual context with measured UTF-8 bytes; there is no fixed byte cap. A verified v2 handoff also carries trusted source/coverage/integrity evidence and runtime status (`global/executor.md`).
 - Produce one self-contained executor handoff. Do not grant Reviewer or Publisher authority to the Executor.
 
 - Before turning a ChipIn FE/BE/KB Issue into an executable plan or Executor handoff, require a fresh positive canonical Issue admission receipt; otherwise scope intake remediation only, with status BLOCKED. Capture exact Issue identity/revision in the handoff. Do not infer missing Type/Priority/Severity/owners from prose.
