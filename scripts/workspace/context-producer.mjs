@@ -8,7 +8,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const POLICY_BOUND_KINDS = new Set(['policy', 'role']);
 const SUPPORTED_SOURCE_KINDS = new Set(['policy', 'role', 'target', 'dependency', 'reference']);
 const CANONICAL_POLICY_REPOSITORY = 'syllik/ai-workflow';
-const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
+const CANONICAL_POLICY_PATHS = Object.freeze(['AI.md', 'FLOW.md', 'global/documentation.md', 'workspace.yaml', 'projects/index.md', 'global/workflow.md']);
 const CANONICAL_HANDOFF_ROLE = 'executor';
 const CANONICAL_HANDOFF_ROLE_PATH = 'global/executor.md';
 

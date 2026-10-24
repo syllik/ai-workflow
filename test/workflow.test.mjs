@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 const workflowFiles = [
-  'AGENTS.md', 'AI.md', 'FLOW.md', 'global/core.md', 'global/workflow.md',
+  'AGENTS.md', 'AI.md', 'FLOW.md', 'global/documentation.md', 'global/core.md', 'global/workflow.md',
   'global/planner.md', 'global/architect.md', 'global/executor.md',
   'global/reviewer.md', 'global/auditor.md', 'global/publisher.md', 'global/context.md'
 ];
@@ -177,6 +177,14 @@ describe('workflow documentation', () => {
     assert.match(executor, /full consumption/u);
     assert.match(executor, /pinned source IDs/u);
     assert.match(executor, /token count|silently truncate/iu);
+  });
+
+  test('defines the canonical documentation contract', () => {
+    const contract = text('global/documentation.md');
+    assert.match(contract, /same change/i);
+    assert.match(contract, /semantic emoji/i);
+    assert.match(contract, /documentationDelta/);
+    assert.match(contract, /guides \| product-spec \| knowledge-base \| workflow-policy/);
   });
 
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {

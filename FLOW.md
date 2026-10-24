@@ -1,6 +1,6 @@
 # Canonical workflow
 
-GitHub authority: `AI.md -> FLOW.md -> workspace record -> global/workflow.md -> selected role -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`. Use `integrationBranch`; no repo auto-discovery. Active managed work; onboarding only onboarding/alignment; read-only projects are never write targets. `contextDependencies` are task-scoped read-only. Missing required context blocks work; Issue/PR entry does not bypass this route.
+GitHub authority: `AI.md -> FLOW.md -> workspace record -> global/workflow.md -> selected role -> global/documentation.md -> target AGENTS.md/.ai/context.md -> relevant decisions/tasks`. After the selected role file and before target `AGENTS.md`, read `global/documentation.md`. Use `integrationBranch`; no repo auto-discovery. Active managed work; onboarding only onboarding/alignment; read-only projects are never write targets. `contextDependencies` are task-scoped read-only. Missing required context blocks work; Issue/PR entry does not bypass this route.
 
 Roles are provider-independent: Planner scopes, Architect handles risks, Executor implements, Reviewer independently reviews pinned SHA without mutations, Auditor checks evidence. Select capability/risk, not provider. Trusted Publisher is separate. The main session may orchestrate role subagents under `global/core.md`.
 

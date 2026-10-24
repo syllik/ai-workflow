@@ -273,6 +273,7 @@ const e2eBaseSha = '3'.repeat(40);
 const e2eFiles = [
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', content: '# entry\n' },
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', content: '# flow\n' },
+  { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/documentation.md', content: '# documentation\n' },
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', content: [
     'schemaVersion: 2', 'projects:',
     '  - id: syllik/life-ops-bot', '    repository: syllik/life-ops-bot', '    access: managed', '    status: active', ''
