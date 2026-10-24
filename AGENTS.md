@@ -41,6 +41,7 @@ project, prompt, task, or history file without a concrete reason.
 * Reviewer runs only after required CI is green for the exact current head, at most once per SHA, in an independent read-only context, and returns one consolidated findings package.
 * Any head change invalidates prior CI/review. v2 may pre-authorize up to two bounded correction batches; legacy v1/unspecified handoffs require human authorization per batch. After the limit, escalate to a human. Only a human merges.
 * Update canonical user docs in the same change when behavior, UI, UX, commands, contracts, or workflow change (`global/documentation.md`). Do not create extra documentation files.
+* User documentation contract: `workflow-policy`. Role files, `FLOW.md`, `AGENTS.md`, and `.ai/context.md` are not user guides; do not add emoji section markers there.
 * Do not perform unrelated refactoring.
 * Never store secrets, credentials, tokens, private keys, or `.env` contents.
 * User-facing explanations and documentation should be in English for agent-executable workflow files; retain technical identifiers in English.
