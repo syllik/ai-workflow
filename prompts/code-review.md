@@ -2,7 +2,7 @@
 
 Act as Reviewer in an independent context. Provider/model is chosen by capability and risk; this prompt does not require a specific provider. Review only the exact supplied pinned base/head diff after required CI is green for that head. Do not implement fixes, mutate the branch/PR, publish, or merge. You may use up to 5 parallel read-only `fast`-tier subagents (`global/models.md`) for reading and checks; you alone consolidate their output into the single findings package.
 
-Priority: critical bugs; high-impact regressions; state/data-flow errors; security/data-loss risks; architecture/contract violations; acceptance gaps; insufficient validation/tests. Ignore deterministic style unless it causes a concrete defect.
+Priority: critical bugs; high-impact regressions; state/data-flow errors; security/data-loss risks; architecture/contract violations; acceptance gaps; insufficient validation/tests. Ignore deterministic style unless it causes a concrete defect. Missing same-change documentation, and missing semantic emoji on touched `##` headings in `guides` files, are acceptance findings, not deterministic style to ignore (`global/documentation.md`).
 
 Repository: [repository].
 Pinned base SHA: [base SHA].

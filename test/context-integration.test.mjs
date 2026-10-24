@@ -27,7 +27,7 @@ const handoff = {
   contractVersion: 2, taskId: 'syllik/ai-workflow#64', repository: 'syllik/ai-workflow',
   taskBranch, integrationBranch: 'master', requiredCiChecks: ['verify'], role: 'executor',
   policySha: sha, baseSha, headSha, contextPolicyVersion: 2,
-  approval: { reference: 'https://github.com/syllik/ai-workflow/issues/64#issuecomment-6273710738', allowedPaths: ['scripts/workspace/**', 'test/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+  approval: { reference: 'https://github.com/syllik/ai-workflow/issues/64#issuecomment-6273710738', allowedPaths: ['scripts/workspace/**', 'test/**'], publication: 'allowed', maxCorrectionBatches: 2, documentationDelta: 'none', documentationDeltaReason: 'internal-only' },
   assembledContextActualBytes: 40000, assembledContextCheck: 'PASSED'
 };
 const trustedSource = current => ({
@@ -248,6 +248,25 @@ test('evidence produced for one task, approval or scope never admits another', (
   assert.equal(codes(byReceipt).includes('CONTEXT_RECEIPT_DRIFT'), true);
 });
 
+test('flipping a sealed documentationDelta from required to none drifts the trusted approval', () => {
+  const sealedApproval = { ...handoff.approval, documentationDelta: 'required' };
+  delete sealedApproval.documentationDeltaReason;
+  const waived = {
+    ...handoff,
+    approval: { ...sealedApproval, documentationDelta: 'none', documentationDeltaReason: 'internal-only' }
+  };
+  const byDelta = evaluateContextAdmission({
+    handoff: waived,
+    trustedManifest: trustedManifest({
+      approval: { reference: sealedApproval.reference, scopeSha256: approvalScopeDigest(sealedApproval) }
+    }),
+    receipt: receipt(),
+    sourceVerifier: trustedSource
+  });
+  assert.equal(byDelta.allowed, false);
+  assert.equal(byDelta.findings.some(({ code, path }) => code === 'TRUSTED_CONTEXT_MANIFEST_DRIFT' && path === 'trustedManifest.approval'), true);
+});
+
 
 test('receipt-claimed runtime capacity and compaction are ignored', () => {
   const claimed = evaluateContextAdmission({
@@ -273,6 +292,7 @@ const e2eBaseSha = '3'.repeat(40);
 const e2eFiles = [
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', content: '# entry\n' },
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', content: '# flow\n' },
+  { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/documentation.md', content: '# documentation\n' },
   { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', content: [
     'schemaVersion: 2', 'projects:',
     '  - id: syllik/life-ops-bot', '    repository: syllik/life-ops-bot', '    access: managed', '    status: active', ''
@@ -293,7 +313,7 @@ const e2eHandoffBase = {
   contractVersion: 2, taskId: 'syllik/life-ops-bot#1', repository: 'syllik/life-ops-bot',
   taskBranch: 'feat/bot-1', integrationBranch: 'master', requiredCiChecks: ['verify'], role: 'executor',
   policySha: e2ePolicySha, baseSha: e2eBaseSha, headSha: e2eHeadSha, contextPolicyVersion: 2,
-  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 }
+  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2, documentationDelta: 'none', documentationDeltaReason: 'internal-only' }
 };
 function produceE2E(overrides = {}) {
   const input = {

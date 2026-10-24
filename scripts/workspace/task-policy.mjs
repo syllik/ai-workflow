@@ -35,7 +35,10 @@ const HANDOFF_V2_KEYS = new Set([
   'policySha', 'baseSha', 'headSha', 'approval',
   'contextPolicyVersion', 'assembledContextActualBytes', 'assembledContextCheck'
 ]);
-const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches']);
+const APPROVAL_KEYS = new Set(['reference', 'allowedPaths', 'publication', 'maxCorrectionBatches', 'documentationDelta', 'documentationDeltaReason']);
+const DOCUMENTATION_DELTA_REASONS = new Set(['docs-not-behavior', 'internal-only', 'generated-only']);
+const CODE_LIKE_PREFIXES = ['src/', 'scripts/', 'app/', 'lib/'];
+const CODE_LIKE_EXTENSION = /\.(js|mjs|cjs|ts|tsx|jsx|kt|kts|py|go|rs)$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const DIFF_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
@@ -173,6 +176,18 @@ function validAllowedPath(value) {
   return /^[A-Za-z0-9._\/-]+$/u.test(base);
 }
 
+function isCodeLikePath(changedPath) {
+  if (typeof changedPath !== 'string') return false;
+  if (changedPath.startsWith('test/') || changedPath.startsWith('tests/') || changedPath.split('/').includes('test')) return false;
+  return CODE_LIKE_PREFIXES.some((prefix) => changedPath.startsWith(prefix)) || CODE_LIKE_EXTENSION.test(changedPath);
+}
+
+function isDocLikePath(changedPath) {
+  if (typeof changedPath !== 'string') return false;
+  if (changedPath === 'README.md' || changedPath === '.ai/context.md') return true;
+  return changedPath.startsWith('docs/') && !changedPath.startsWith('docs/superpowers/') && !changedPath.startsWith('docs/codex/');
+}
+
 function pathAllowed(changedPath, allowedPaths) {
   return allowedPaths.some((allowed) => {
     if (allowed === '**') return true;
@@ -266,6 +281,7 @@ export function validateTaskHandoff(value, policy = CANONICAL_EXECUTION_POLICY) 
     if (!Number.isInteger(value.approval.maxCorrectionBatches) || value.approval.maxCorrectionBatches < 0 || value.approval.maxCorrectionBatches > policy.corrections.maxBatches) {
       findings.push(finding('INVALID_CORRECTION_APPROVAL', 'handoff.approval.maxCorrectionBatches'));
     }
+    validateDocumentationDelta(value.approval, findings);
   }
 
   return { ...normalized, valid: findings.length === 0, findings };
@@ -383,6 +399,34 @@ function scopeFindings(handoff, runtime, action) {
     .map((changedPath) => finding('SCOPE_EXPANSION', changedPath));
 }
 
+function validateDocumentationDelta(approval, findings) {
+  const delta = approval.documentationDelta;
+  if (delta !== 'required' && delta !== 'none') {
+    findings.push(finding('INVALID_DOCUMENTATION_DELTA', 'handoff.approval.documentationDelta'));
+  }
+  if (delta === 'none') {
+    if (!DOCUMENTATION_DELTA_REASONS.has(approval.documentationDeltaReason)) {
+      findings.push(finding('INVALID_DOCUMENTATION_DELTA', 'handoff.approval.documentationDeltaReason'));
+    }
+    return;
+  }
+  if (delta === 'required' && Object.hasOwn(approval, 'documentationDeltaReason')) {
+    findings.push(finding('INVALID_DOCUMENTATION_DELTA', 'handoff.approval.documentationDeltaReason'));
+  }
+}
+
+function documentationDeltaFindings(handoff, action, observedScopeFindings) {
+  if (observedScopeFindings.length > 0) return [];
+  if (handoff.contractVersion !== TASK_CONTRACT_VERSION) return [];
+  if (action.kind !== 'execute' && action.kind !== 'publish') return [];
+  if (!isObject(handoff.approval) || handoff.approval.documentationDelta === 'none') return [];
+  const changedPaths = Array.isArray(action.changedPaths) ? action.changedPaths : [];
+  if (changedPaths.some(isCodeLikePath) && !changedPaths.some(isDocLikePath)) {
+    return [finding('DOCS_DELTA_MISSING', 'handoff.approval.documentationDelta')];
+  }
+  return [];
+}
+
 export function evaluateTaskAction(input = {}) {
   if (!isObject(input)) {
     return { allowed: false, findings: [finding('INVALID_POLICY_EVALUATION_INPUT', 'input')], compatibility: 'invalid' };
@@ -397,9 +441,11 @@ export function evaluateTaskAction(input = {}) {
     return { allowed: false, findings: [finding('INVALID_ACTION_INPUT', 'action')], compatibility: validation.compatibility };
   }
   const handoff = validation;
+  const observedScopeFindings = scopeFindings(handoff, runtime, action);
   const findings = [
     ...currentShaFindings(handoff, runtime, action),
-    ...scopeFindings(handoff, runtime, action)
+    ...observedScopeFindings,
+    ...documentationDeltaFindings(handoff, action, observedScopeFindings)
   ];
   const contextAdmission = evaluateContextAdmission({
     handoff,

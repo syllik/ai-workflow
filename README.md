@@ -94,12 +94,14 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 * `.ai/tasks/` — persisted task state for this repository.
 * `prompts/` — короткие reusable prompts.
 * `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
+* [`templates/guide.md`](templates/guide.md) — English scaffold for a user-facing docs hub.
 * [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь; [`CLAUDE.md`](CLAUDE.md) импортирует его для Claude Code.
 
 ### Reusable prompts
 
 * [`implementation.md`](prompts/implementation.md) — базовые execution rules для роли Executor.
 * [`code-review.md`](prompts/code-review.md) — provider-independent prompt для независимого Reviewer.
+* [`documentation-review.md`](prompts/documentation-review.md) — compare documentation to actual behavior and `global/documentation.md` within scope.
 * [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
 
 ## Как работать

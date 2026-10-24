@@ -16,6 +16,7 @@ function canonicalSources(targetRecord = {}) {
   return [
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
+    { kind: 'policy', repository: 'syllik/ai-workflow', path: 'global/documentation.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# documentation\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'workspace.yaml', revisionSha: policySha, expectedRevisionSha: policySha, content: [
       'schemaVersion: 2',
       'projects:',
@@ -137,6 +138,7 @@ test('loads source bodies from exact Git revisions on the production loader path
     const policyFiles = {
       'AI.md': '# entry\n',
       'FLOW.md': '# flow\n',
+      'global/documentation.md': '# documentation\n',
       'workspace.yaml': workspaceContent,
       'projects/index.md': '# projects\n',
       'global/workflow.md': '# roles\n',
@@ -234,7 +236,7 @@ test('builds a deterministic minimal handoff with complete expected sources, exa
   const second = build(input());
   assert.equal(first.passed, true);
   assert.deepEqual(second, first);
-  assert.equal(first.manifest.expectedSources.length, 9);
+  assert.equal(first.manifest.expectedSources.length, 10);
   assert.equal(first.manifest.dependencies[0].revisionSha, dependencySha);
   assert.equal(first.handoffProvenance.contextPolicyVersion, 1);
   assert.equal(Object.hasOwn(first.handoffProvenance, 'assembledContextBudgetBytes'), false);

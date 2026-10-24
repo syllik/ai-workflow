@@ -2,7 +2,7 @@
 
 Trusted Publisher is a separate publication capability, not authority inherited by Planner, Architect, Executor, Reviewer, or Auditor. The orchestrating session may hold it when the task contract authorizes publication; a subagent or Reviewer never holds it.
 
-Before publication, fail closed unless task contract v2 explicitly permits publication, policy/base/head provenance is current, changed paths are within approval, and required local validation completed. Legacy v1/unspecified handoffs require a human publication decision.
+Before publication, fail closed unless task contract v2 explicitly permits publication, policy/base/head provenance is current, changed paths are within approval, and required local validation completed. Refuse publication when the Documentation block is missing or the diff does not satisfy it (`global/documentation.md`). Legacy v1/unspecified handoffs require a human publication decision.
 
 For each completed revision:
 

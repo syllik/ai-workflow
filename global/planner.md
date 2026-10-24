@@ -10,6 +10,7 @@ The Planner role is read-only. It creates the bounded task envelope; it does not
 - Select model/runtime capabilities by risk and task needs. A provider/model name never grants a role or stronger authority.
 - Ensure every handoff has complete prepared textual context with measured UTF-8 bytes; there is no fixed byte cap. A verified v2 handoff also carries trusted source/coverage/integrity evidence and runtime status (`global/executor.md`).
 - Produce one self-contained executor handoff. Do not grant Reviewer or Publisher authority to the Executor.
+- A handoff without a Documentation block is incomplete. That block must name the documentation paths (also listed in allowed paths) or state `Documentation: no delta` plus one closed reason, per `global/documentation.md`.
 
 - Before turning a ChipIn FE/BE/KB Issue into an executable plan or Executor handoff, require a fresh positive canonical Issue admission receipt; otherwise scope intake remediation only, with status BLOCKED. Capture exact Issue identity/revision in the handoff. Do not infer missing Type/Priority/Severity/owners from prose.
 

@@ -40,8 +40,8 @@ project, prompt, task, or history file without a concrete reason.
 * Executor does not self-review, publish, merge, or mutate GitHub/Trello. Trusted Publisher performs one final commit + one push per completed revision only when explicitly authorized; published history is never rewritten.
 * Reviewer runs only after required CI is green for the exact current head, at most once per SHA, in an independent read-only context, and returns one consolidated findings package.
 * Any head change invalidates prior CI/review. v2 may pre-authorize up to two bounded correction batches; legacy v1/unspecified handoffs require human authorization per batch. After the limit, escalate to a human. Only a human merges.
-* Do not create unnecessary documentation or perform unrelated refactoring.
-* Update canonical project context only when durable knowledge appears.
+* Update canonical user docs in the same change when behavior, UI, UX, commands, contracts, or workflow change (`global/documentation.md`). Do not create extra documentation files.
+* Do not perform unrelated refactoring.
 * Never store secrets, credentials, tokens, private keys, or `.env` contents.
 * User-facing explanations and documentation should be in English for agent-executable workflow files; retain technical identifiers in English.
 

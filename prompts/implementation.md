@@ -17,7 +17,7 @@ Fail closed with `BLOCKED` when the version is present but not `1`/`2`, check is
 1. Read only necessary target instructions/files and required declared dependencies.
 2. Verify prepared branch/worktree, current task provenance, and authorized paths; preserve unrelated work.
 3. For persisted tasks, read prompt/state, never human-only `plan.md`, and checkpoint only meaningful boundaries.
-4. Implement the smallest correct change; add/update regression tests when required.
+4. The smallest correct change includes the required documentation delta from `global/documentation.md`. Implement that change; add/update regression tests when required.
 5. Run targeted checks and the exact local completion gate.
 6. Use one bounded failure-diagnosis pass when necessary.
 7. Stop `IMPLEMENTATION_COMPLETE` or `BLOCKED`.

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 const workflowFiles = [
-  'AGENTS.md', 'AI.md', 'FLOW.md', 'global/core.md', 'global/workflow.md',
+  'AGENTS.md', 'AI.md', 'FLOW.md', 'global/documentation.md', 'global/core.md', 'global/workflow.md',
   'global/planner.md', 'global/architect.md', 'global/executor.md',
   'global/reviewer.md', 'global/auditor.md', 'global/publisher.md', 'global/context.md'
 ];
@@ -177,6 +177,42 @@ describe('workflow documentation', () => {
     assert.match(executor, /full consumption/u);
     assert.match(executor, /pinned source IDs/u);
     assert.match(executor, /token count|silently truncate/iu);
+  });
+
+  test('defines the canonical documentation contract', () => {
+    const contract = text('global/documentation.md');
+    assert.match(contract, /same change/i);
+    assert.match(contract, /semantic emoji/i);
+    assert.match(contract, /documentationDelta/);
+    assert.match(contract, /guides \| product-spec \| knowledge-base \| workflow-policy/);
+  });
+
+  test('wires the documentation contract into role handoffs and prompts', () => {
+    const executor = text('global/executor.md');
+    assert.match(executor, /documentation delta/i);
+    assert.match(executor, /global\/documentation\.md/);
+
+    const prompt = text('templates/prompt.md');
+    assert.match(prompt, /## Documentation/);
+    assert.match(prompt, /no delta/i);
+
+    const codeReview = text('prompts/code-review.md');
+    assert.match(codeReview, /documentation[\s\S]{0,200}acceptance|acceptance[\s\S]{0,200}documentation/i);
+
+    const agents = text('AGENTS.md');
+    assert.doesNotMatch(agents, /Do not create unnecessary documentation/);
+    assert.match(agents, /same change/i);
+
+    assert.match(text('README.md'), /documentation-review\.md/);
+  });
+
+  test('provides a short English user-guide scaffold', () => {
+    assert.ok(reusableAgentFiles.includes('templates/guide.md'));
+    const guide = text('templates/guide.md');
+    assert.match(guide, /📚/);
+    assert.match(guide, /🧭/);
+    assert.match(guide, /📖/);
+    assert.match(guide, /same change/i);
   });
 
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {
