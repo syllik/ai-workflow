@@ -94,6 +94,7 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 * `.ai/tasks/` — persisted task state for this repository.
 * `prompts/` — короткие reusable prompts.
 * `templates/` — минимальные заготовки для contexts, prompts, task state и результатов.
+* [`templates/guide.md`](templates/guide.md) — English scaffold for a user-facing docs hub.
 * [`AGENTS.md`](AGENTS.md) — правила для агентов, работающих непосредственно здесь; [`CLAUDE.md`](CLAUDE.md) импортирует его для Claude Code.
 
 ### Reusable prompts

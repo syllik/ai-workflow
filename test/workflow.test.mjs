@@ -206,6 +206,15 @@ describe('workflow documentation', () => {
     assert.match(text('README.md'), /documentation-review\.md/);
   });
 
+  test('provides a short English user-guide scaffold', () => {
+    assert.ok(reusableAgentFiles.includes('templates/guide.md'));
+    const guide = text('templates/guide.md');
+    assert.match(guide, /📚/);
+    assert.match(guide, /🧭/);
+    assert.match(guide, /📖/);
+    assert.match(guide, /same change/i);
+  });
+
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {
     const policy = `${text('global/architect.md')}\n${text('global/executor.md')}\n${text('prompts/implementation.md')}\n${text('templates/prompt.md')}`;
     assert.match(policy, /Step 10/iu);
