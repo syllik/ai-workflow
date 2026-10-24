@@ -25,7 +25,9 @@ export function approvalScopeDigest(approval) {
     reference: approval.reference ?? null,
     allowedPaths,
     publication: approval.publication ?? null,
-    maxCorrectionBatches: approval.maxCorrectionBatches ?? null
+    maxCorrectionBatches: approval.maxCorrectionBatches ?? null,
+    documentationDelta: approval.documentationDelta ?? null,
+    documentationDeltaReason: approval.documentationDeltaReason ?? null
   }));
 }
 

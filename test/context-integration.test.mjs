@@ -248,6 +248,25 @@ test('evidence produced for one task, approval or scope never admits another', (
   assert.equal(codes(byReceipt).includes('CONTEXT_RECEIPT_DRIFT'), true);
 });
 
+test('flipping a sealed documentationDelta from required to none drifts the trusted approval', () => {
+  const sealedApproval = { ...handoff.approval, documentationDelta: 'required' };
+  delete sealedApproval.documentationDeltaReason;
+  const waived = {
+    ...handoff,
+    approval: { ...sealedApproval, documentationDelta: 'none', documentationDeltaReason: 'internal-only' }
+  };
+  const byDelta = evaluateContextAdmission({
+    handoff: waived,
+    trustedManifest: trustedManifest({
+      approval: { reference: sealedApproval.reference, scopeSha256: approvalScopeDigest(sealedApproval) }
+    }),
+    receipt: receipt(),
+    sourceVerifier: trustedSource
+  });
+  assert.equal(byDelta.allowed, false);
+  assert.equal(byDelta.findings.some(({ code, path }) => code === 'TRUSTED_CONTEXT_MANIFEST_DRIFT' && path === 'trustedManifest.approval'), true);
+});
+
 
 test('receipt-claimed runtime capacity and compaction are ignored', () => {
   const claimed = evaluateContextAdmission({

@@ -1124,4 +1124,37 @@ describe('documentation delta', () => {
     });
     assert.equal(result.allowed, true);
   });
+
+  test('rejects an unknown documentationDeltaReason when documentationDelta is none', () => {
+    const result = execute(['scripts/workspace/task-policy.mjs'], {
+      ...handoff().approval,
+      documentationDelta: 'none',
+      documentationDeltaReason: 'because'
+    });
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code, path }) => code === 'INVALID_DOCUMENTATION_DELTA' && path === 'handoff.approval.documentationDeltaReason'), true);
+  });
+
+  test('allows a test-only diff when documentationDelta is required', () => {
+    const result = execute(['test/task-policy.test.mjs'], requiredApproval({ allowedPaths: ['test/**'] }));
+    assert.equal(result.allowed, true);
+  });
+
+  test('rejects code plus docs/superpowers when documentationDelta is required', () => {
+    const result = execute(
+      ['scripts/workspace/task-policy.mjs', 'docs/superpowers/plans/x.md'],
+      requiredApproval({ allowedPaths: ['scripts/workspace/**', 'docs/**'] })
+    );
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code, path }) => code === 'DOCS_DELTA_MISSING' && path === 'handoff.approval.documentationDelta'), true);
+  });
+
+  test('rejects code plus docs/codex when documentationDelta is required', () => {
+    const result = execute(
+      ['scripts/workspace/task-policy.mjs', 'docs/codex/rules/x.md'],
+      requiredApproval({ allowedPaths: ['scripts/workspace/**', 'docs/**'] })
+    );
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code, path }) => code === 'DOCS_DELTA_MISSING' && path === 'handoff.approval.documentationDelta'), true);
+  });
 });
