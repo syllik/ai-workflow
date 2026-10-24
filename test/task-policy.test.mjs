@@ -33,7 +33,9 @@ function handoff(overrides = {}) {
       reference: 'user-message:2026-10-04',
       allowedPaths: ['FLOW.md', 'global/**', 'scripts/workspace/**', 'test/**'],
       publication: 'allowed',
-      maxCorrectionBatches: 2
+      maxCorrectionBatches: 2,
+      documentationDelta: 'none',
+      documentationDeltaReason: 'internal-only'
     },
     assembledContextActualBytes: 12000,
     assembledContextCheck: 'PASSED',
@@ -1083,4 +1085,43 @@ test('permits correction publication from the current published revision head', 
     }
   });
   assert.equal(result.allowed, true);
+});
+
+describe('documentation delta', () => {
+  function execute(changedPaths, approval) {
+    return evaluateTaskAction({
+      handoff: handoff({ approval }),
+      runtime: runtime({ diffEvidence: { baseSha, headSha, changedPaths, digest: diffDigest } }),
+      action: { kind: 'execute', actorRole: 'executor', expectedHeadSha: headSha, changedPaths }
+    });
+  }
+
+  function requiredApproval(extra = {}) {
+    const approval = { ...handoff().approval, ...extra, documentationDelta: 'required' };
+    delete approval.documentationDeltaReason;
+    return approval;
+  }
+
+  test('allows code and docs when documentationDelta is required', () => {
+    const changedPaths = ['scripts/workspace/task-policy.mjs', 'docs/guide.md'];
+    const result = execute(changedPaths, requiredApproval({ allowedPaths: ['scripts/workspace/**', 'docs/**'] }));
+    assert.equal(result.allowed, true);
+  });
+
+  test('rejects code without docs when documentationDelta is required', () => {
+    const changedPaths = ['scripts/workspace/task-policy.mjs'];
+    const result = execute(changedPaths, requiredApproval());
+    assert.equal(result.allowed, false);
+    assert.equal(result.findings.some(({ code, path }) => code === 'DOCS_DELTA_MISSING' && path === 'handoff.approval.documentationDelta'), true);
+  });
+
+  test('allows code without docs when documentationDelta is none and the reason is internal-only', () => {
+    const changedPaths = ['scripts/workspace/task-policy.mjs'];
+    const result = execute(changedPaths, {
+      ...handoff().approval,
+      documentationDelta: 'none',
+      documentationDeltaReason: 'internal-only'
+    });
+    assert.equal(result.allowed, true);
+  });
 });

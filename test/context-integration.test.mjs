@@ -27,7 +27,7 @@ const handoff = {
   contractVersion: 2, taskId: 'syllik/ai-workflow#64', repository: 'syllik/ai-workflow',
   taskBranch, integrationBranch: 'master', requiredCiChecks: ['verify'], role: 'executor',
   policySha: sha, baseSha, headSha, contextPolicyVersion: 2,
-  approval: { reference: 'https://github.com/syllik/ai-workflow/issues/64#issuecomment-6273710738', allowedPaths: ['scripts/workspace/**', 'test/**'], publication: 'allowed', maxCorrectionBatches: 2 },
+  approval: { reference: 'https://github.com/syllik/ai-workflow/issues/64#issuecomment-6273710738', allowedPaths: ['scripts/workspace/**', 'test/**'], publication: 'allowed', maxCorrectionBatches: 2, documentationDelta: 'none', documentationDeltaReason: 'internal-only' },
   assembledContextActualBytes: 40000, assembledContextCheck: 'PASSED'
 };
 const trustedSource = current => ({
@@ -294,7 +294,7 @@ const e2eHandoffBase = {
   contractVersion: 2, taskId: 'syllik/life-ops-bot#1', repository: 'syllik/life-ops-bot',
   taskBranch: 'feat/bot-1', integrationBranch: 'master', requiredCiChecks: ['verify'], role: 'executor',
   policySha: e2ePolicySha, baseSha: e2eBaseSha, headSha: e2eHeadSha, contextPolicyVersion: 2,
-  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2 }
+  approval: { reference: 'owner-approval', allowedPaths: ['src/**'], publication: 'allowed', maxCorrectionBatches: 2, documentationDelta: 'none', documentationDeltaReason: 'internal-only' }
 };
 function produceE2E(overrides = {}) {
   const input = {
