@@ -48,6 +48,10 @@ Executor fails closed with `BLOCKED` if the version is present but not `1`/`2`, 
 
 ## Relevant files / areas
 
+## Documentation
+
+Follow `global/documentation.md`. Name the canonical documentation paths this change updates; each of those paths must also be listed in Allowed paths. Otherwise write `Documentation: no delta` and exactly one closed reason: `docs-not-behavior`, `internal-only`, or `generated-only`.
+
 ## Risk level / risk triggers
 
 ## Persistence / resume policy

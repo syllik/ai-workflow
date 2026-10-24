@@ -100,6 +100,7 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 
 * [`implementation.md`](prompts/implementation.md) — базовые execution rules для роли Executor.
 * [`code-review.md`](prompts/code-review.md) — provider-independent prompt для независимого Reviewer.
+* [`documentation-review.md`](prompts/documentation-review.md) — compare documentation to actual behavior and `global/documentation.md` within scope.
 * [`youtube-zen-source-calibration.md`](prompts/youtube-zen-source-calibration.md) — semantic calibration title и description перед массовой локализацией YouTube.
 
 ## Как работать

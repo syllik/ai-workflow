@@ -1,7 +1,7 @@
 # Documentation review prompt
 
-Compare the documentation with the project's actual state within the specified
-scope.
+Compare the documentation with the project's actual behavior and with
+`global/documentation.md`, within the specified scope.
 
 Call out outdated, missing, or contradictory information, naming the file and
 the proposed correction. Do not add documentation outside the scope.

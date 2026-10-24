@@ -22,7 +22,7 @@ For task contract v2, Executor verifies the supplied approval reference, allowed
 For ChipIn tasks, canonical task identity is `ChipIn-one/<repository>#<issue-number>`; Issue title/body specifies work/dependencies, Organization Issue Fields structured metadata, and Project #5 workflow status. Trello is historical/read-only. Tracker state never authorizes execution.
 
 1. Verify the prepared branch/worktree, current provenance, clean state, task files, and authorized scope.
-2. Implement the smallest correct change and run targeted checks.
+2. The smallest correct change includes the required documentation delta from `global/documentation.md`. Implement that change and run targeted checks.
 3. Run the task's local completion gate and one bounded failure-diagnosis pass when needed.
 4. Checkpoint concise execution state/evidence without reviewer findings. v2 checkpoints are local durable HMAC-protected state; resume requires fresh authority, source rehydration and coverage revalidation. `UNMEASURED` permits progressive checkpoints; unreliable or insufficient capacity blocks or requires trusted compaction.
 5. Stop `IMPLEMENTATION_COMPLETE` or `BLOCKED`.

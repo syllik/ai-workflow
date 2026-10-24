@@ -187,6 +187,25 @@ describe('workflow documentation', () => {
     assert.match(contract, /guides \| product-spec \| knowledge-base \| workflow-policy/);
   });
 
+  test('wires the documentation contract into role handoffs and prompts', () => {
+    const executor = text('global/executor.md');
+    assert.match(executor, /documentation delta/i);
+    assert.match(executor, /global\/documentation\.md/);
+
+    const prompt = text('templates/prompt.md');
+    assert.match(prompt, /## Documentation/);
+    assert.match(prompt, /no delta/i);
+
+    const codeReview = text('prompts/code-review.md');
+    assert.match(codeReview, /documentation[\s\S]{0,200}acceptance|acceptance[\s\S]{0,200}documentation/i);
+
+    const agents = text('AGENTS.md');
+    assert.doesNotMatch(agents, /Do not create unnecessary documentation/);
+    assert.match(agents, /same change/i);
+
+    assert.match(text('README.md'), /documentation-review\.md/);
+  });
+
   test('records runtime assembly boundary without pretending npm verify checks invocation context', () => {
     const policy = `${text('global/architect.md')}\n${text('global/executor.md')}\n${text('prompts/implementation.md')}\n${text('templates/prompt.md')}`;
     assert.match(policy, /Step 10/iu);
