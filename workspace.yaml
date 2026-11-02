@@ -79,10 +79,9 @@ projects:
     repository: ChipIn-one/chipin-frontend
     localPath: products/chipin/chipin-frontend
     group: products/chipin
-    access: managed
+    access: read-only
     status: active
     integrationBranch: master
-    contextPath: .ai/context.md
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
         integrationBranch: master
@@ -109,10 +108,9 @@ projects:
     repository: ChipIn-one/.github
     localPath: products/chipin/.github
     group: products/chipin
-    access: managed
+    access: read-only
     status: active
     integrationBranch: master
-    contextPath: .ai/context.md
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
     localPath: tools/content/youtube-metadata-translator
