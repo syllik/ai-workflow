@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, test } from 'node:test';
 import { applyOperations, checkActivatedTargetRouting, checkGeneratedFiles, planWorkspace } from '../scripts/workspace/operations.mjs';
 import { run as runWorkspaceCli } from '../scripts/workspace/cli.mjs';
+import { loadManifest } from '../scripts/workspace/manifest.mjs';
 import { renderAgentsBlock, renderClaudeBlock, renderContextScaffold, renderLegacyProfileNavigation, renderManagedBlock, renderProfileNavigation, renderProjectIndex } from '../scripts/workspace/render.mjs';
 import { fixtureManifest, git, initCentralManifestRepo, initFixtureRepo, makeFixtureRoot, removeFixtureRoot, writeFixtureManifest } from './helpers.mjs';
 
@@ -49,6 +50,25 @@ describe('workspace operations', () => {
       removeFixtureRoot(remoteRoot);
     }
   }
+
+  test('the real workspace manifest does not manage ChipIn routing', () => {
+    const manifest = loadManifest(path.resolve('workspace.yaml'));
+    const chipin = manifest.projects.filter(({ repository }) => repository.startsWith('ChipIn-one/'));
+    assert.deepEqual(chipin.filter(({ access }) => access === 'managed').map(({ repository }) => repository), []);
+
+    const root = makeFixtureRoot();
+    try {
+      for (const project of chipin) {
+        initFixtureRepo(path.join(root, project.localPath), `https://github.com/${project.repository}.git`, project.integrationBranch);
+      }
+      const result = planWorkspace({ root, manifestPath: path.resolve('workspace.yaml'), manifest });
+      const chipinPaths = chipin.map(({ localPath }) => `${localPath}/`);
+      const writes = result.operations.filter((operation) => chipinPaths.some((prefix) => `${operation.path}/`.startsWith(prefix)));
+      assert.deepEqual(writes.map(({ kind, path: operationPath }) => ({ kind, path: operationPath })), []);
+    } finally {
+      removeFixtureRoot(root);
+    }
+  });
 
   test('defaults direct workspace options to the checkout manifest, not the target root', () => {
     const root = makeFixtureRoot();

@@ -100,11 +100,10 @@ test('rollout workflow mints private-repository tokens only for trusted master r
   assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'[\s\S]*github\.ref == 'refs\/heads\/master'/u);
   assert.match(workflow, /client-id:\s*\$\{\{ secrets\.WORKSPACE_READ_APP_CLIENT_ID \}\}/u);
-  assert.match(workflow, /rollout-ci\.mjs auth-scope ChipIn-one/u);
-  assert.match(workflow, /repositories:\s*\$\{\{ steps\.rollout-scopes\.outputs\.chipin_one \}\}/u);
+  assert.match(workflow, /rollout-ci\.mjs auth-scope syllik/u);
+  assert.match(workflow, /repositories:\s*\$\{\{ steps\.rollout-scopes\.outputs\.syllik \}\}/u);
   assert.match(workflow, /if:\s*steps\.rollout-scopes\.outputs\.syllik != ''/u);
-  assert.match(workflow, /if:\s*steps\.rollout-scopes\.outputs\.chipin_one != ''/u);
-  assert.doesNotMatch(workflow, /chipin-frontend|chipin-knowledge-base/u);
+  assert.doesNotMatch(workflow, /ChipIn|chipin/iu);
   assert.match(workflow, /permission-contents:\s*read/u);
   assert.match(workflow, /persist-credentials:\s*false/u);
 });
