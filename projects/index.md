@@ -6,7 +6,7 @@ Generated from `workspace.yaml`. Active managed projects route to context on the
 | --- | --- | --- | --- | --- | --- | --- |
 | ChipIn-one/.github | products/chipin | managed | active | master | [.ai/context.md](https://github.com/ChipIn-one/.github/blob/master/.ai/context.md) | — |
 | ChipIn-one/chipin-backend | products/chipin | read-only | active | develop | [repository source of truth](https://github.com/ChipIn-one/chipin-backend/tree/develop) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
-| ChipIn-one/chipin-frontend | products/chipin | managed | active | master | [AGENTS.md](https://github.com/ChipIn-one/chipin-frontend/blob/master/AGENTS.md) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
+| ChipIn-one/chipin-frontend | products/chipin | managed | active | master | [.ai/context.md](https://github.com/ChipIn-one/chipin-frontend/blob/master/.ai/context.md) | [ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) |
 | ChipIn-one/chipin-knowledge-base | products/chipin | read-only | active | master | [repository source of truth](https://github.com/ChipIn-one/chipin-knowledge-base/tree/master) | — |
 | syllik/ai-workflow | workflows/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/ai-workflow/blob/master/.ai/context.md) | — |
 | syllik/deep-dark-factory | infrastructure/ai | managed | active | master | [.ai/context.md](https://github.com/syllik/deep-dark-factory/blob/master/.ai/context.md) | — |
