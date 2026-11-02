@@ -614,6 +614,32 @@ describe('workspace CLI', () => {
     }
   });
 
+  test('apply does not scaffold .ai context files for a managed repository without contextPath', () => {
+    const root = makeFixtureRoot();
+    const remoteRoot = makeFixtureRoot();
+    try {
+      const project = { ...fixtureManifest().projects[0] };
+      delete project.contextPath;
+      const manifest = fixtureManifest({ projects: [project] });
+      const remote = path.join(remoteRoot, 'syllik');
+      initFixtureRepo(remote, `https://github.com/${project.repository}.git`, project.integrationBranch);
+      const manifestPath = writeFixtureManifest(root, manifest);
+      const status = runWorkspaceCli(['apply', '--root', root, '--manifest', manifestPath], {
+        cloneSource: () => remote,
+        expectedRemote: () => remote
+      });
+      const repositoryPath = path.join(root, project.localPath);
+
+      assert.equal(status, 0);
+      assert.equal(readFileSync(path.join(repositoryPath, 'AGENTS.md'), 'utf8'), renderAgentsBlock(manifest));
+      assert.equal(readdirSync(repositoryPath).includes('.ai'), false);
+      assert.deepEqual(planWorkspace({ root, manifestPath, manifest, expectedRemote: () => remote }).operations, []);
+    } finally {
+      removeFixtureRoot(remoteRoot);
+      removeFixtureRoot(root);
+    }
+  });
+
   test('one apply invocation clones a missing read-only repository without writing contracts', () => {
     const root = makeFixtureRoot();
     const remoteRoot = makeFixtureRoot();

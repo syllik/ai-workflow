@@ -12,7 +12,7 @@ const headSha = 'c'.repeat(40);
 const dependencySha = 'd'.repeat(40);
 
 function canonicalSources(targetRecord = {}) {
-  const { access = 'managed', status = 'active' } = targetRecord;
+  const { access = 'managed', status = 'active', contextPath } = targetRecord;
   return [
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'AI.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# entry\n' },
     { kind: 'policy', repository: 'syllik/ai-workflow', path: 'FLOW.md', revisionSha: policySha, expectedRevisionSha: policySha, content: '# flow\n' },
@@ -24,6 +24,7 @@ function canonicalSources(targetRecord = {}) {
       '    repository: ChipIn-one/chipin-frontend',
       `    access: ${access}`,
       `    status: ${status}`,
+      ...(contextPath === undefined ? [] : [`    contextPath: ${contextPath}`]),
       '    contextDependencies:',
       '      - repository: ChipIn-one/chipin-knowledge-base',
       '        integrationBranch: master',
@@ -369,6 +370,26 @@ test('requires one selected role and one coherent target instruction pair', () =
   const targetResult = build(mixedTarget);
   assert.equal(targetResult.passed, false);
   assert.equal(targetResult.findings.some(({ code }) => code === 'CONTEXT_TARGET_SOURCE_SET_MISMATCH'), true);
+});
+
+function withoutTargetContext(value) {
+  value.sources = value.sources.filter(({ path }) => path !== '.ai/context.md');
+  value.expectedSources = value.expectedSources.filter(({ path }) => path !== '.ai/context.md');
+  return value;
+}
+
+test('accepts a target without .ai/context.md when its workspace record declares no contextPath', () => {
+  const result = build(withoutTargetContext(input()));
+  assert.equal(result.passed, true, JSON.stringify(result.findings));
+});
+
+test('requires .ai/context.md when the target workspace record declares contextPath', () => {
+  const declared = { targetRecord: { contextPath: '.ai/context.md' } };
+  assert.equal(build(input(declared)).passed, true);
+  const result = build(withoutTargetContext(input(declared)));
+  assert.equal(result.passed, false);
+  assert.equal(result.findings.some(({ code, path }) =>
+    code === 'CONTEXT_CANONICAL_SOURCE_UNAVAILABLE' && path === 'canonical.target..ai/context.md'), true);
 });
 
 test('binds both target instruction sources to the handoff head SHA', () => {

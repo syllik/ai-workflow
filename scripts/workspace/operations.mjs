@@ -456,8 +456,10 @@ export function planWorkspace(options = {}) {
       }
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'AGENTS.md'), 'agents-routing', renderAgentsBlock(manifest), repository);
       addManagedFileOperation(root, operations, findings, path.posix.join(project.localPath, 'CLAUDE.md'), 'claude-routing', renderClaudeBlock(), repository);
-      addContextOperation(root, operations, findings, project);
-      addDecisionsOperation(root, operations, findings, project);
+      if (project.contextPath !== undefined) {
+        addContextOperation(root, operations, findings, project);
+        addDecisionsOperation(root, operations, findings, project);
+      }
     }
   }
 
@@ -677,7 +679,8 @@ export function validateManagedTarget(repositoryRoot, project, manifest, outerFi
   const agentsFindingPath = path.posix.join(project.localPath, 'AGENTS.md');
   validateManagedAgents(repositoryRoot, agentsFindingPath, manifest, findings, options.checkedAgents ?? null);
   validateManagedClaude(repositoryRoot, path.posix.join(project.localPath, 'CLAUDE.md'), findings, options.checkedAgents ?? null);
-  validateManagedDecisions(repositoryRoot, project.localPath, findings);
+  const hasContextFiles = project.contextPath !== undefined;
+  if (hasContextFiles) validateManagedDecisions(repositoryRoot, project.localPath, findings);
 
   if (options.validateTaskArtifacts === true) {
     const taskArtifactFindings = [];
@@ -705,12 +708,14 @@ export function validateManagedTarget(repositoryRoot, project, manifest, outerFi
     }
   }
 
-  const contextPath = resolveInside(repositoryRoot, project.contextPath);
-  const contextFindingPath = path.posix.join(project.localPath, project.contextPath);
-  if (!contextPath) {
-    addUniqueFinding(findings, 'UNSAFE_PATH', contextFindingPath);
-  } else if (!isRegularFile(contextPath)) {
-    findings.push(finding('GENERATED_DRIFT', contextFindingPath));
+  if (hasContextFiles) {
+    const contextPath = resolveInside(repositoryRoot, project.contextPath);
+    const contextFindingPath = path.posix.join(project.localPath, project.contextPath);
+    if (!contextPath) {
+      addUniqueFinding(findings, 'UNSAFE_PATH', contextFindingPath);
+    } else if (!isRegularFile(contextPath)) {
+      findings.push(finding('GENERATED_DRIFT', contextFindingPath));
+    }
   }
 
   outerFindings.push(...findings);

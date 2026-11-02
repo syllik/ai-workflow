@@ -24,6 +24,9 @@ describe('renderers', () => {
     backend.contextDependencies = [{ repository: 'ChipIn-one/chipin-knowledge-base', integrationBranch: 'main', access: 'read-only' }];
     const withDependency = renderProjectIndex(manifest);
     assert.equal(withDependency.includes('[ChipIn-one/chipin-knowledge-base](https://github.com/ChipIn-one/chipin-knowledge-base/tree/main)'), true);
+    const contextless = fixtureManifest();
+    delete contextless.projects.find(({ repository }) => repository === 'ChipIn-one/chipin-frontend').contextPath;
+    assert.equal(renderProjectIndex(contextless).includes('| ChipIn-one/chipin-frontend | products/chipin | managed | active | dev | [AGENTS.md](https://github.com/ChipIn-one/chipin-frontend/blob/dev/AGENTS.md) | — |'), true);
     assert.equal(first.includes('chipin-backend/.ai/context.md'), false);
     assert.equal(first.includes('/blob/HEAD/.ai/context.md'), false);
     assert.equal(first.includes('../../../'), false);
@@ -98,6 +101,10 @@ describe('renderers', () => {
     assert.match(output, /integrationBranch/);
     assert.match(output, /GitHub Issue\/PR entry never bypasses this route/iu);
     assert.doesNotMatch(output, /contextDependencies/u);
+    assert.match(output, /then `\.ai\/context\.md` if present\./u);
+    assert.match(output, /`\.ai\/decisions\.md` \(if present\)/u);
+    assert.doesNotMatch(output, /Canonical root/u);
+    assert.equal(output.includes(manifest.canonicalRoot), false);
     assert.doesNotMatch(output, /(?:^|[ `(])(?:FLOW\.md|workspace\.yaml|projects\/index\.md|global\/workflow\.md)(?:[` )]|$)/mu);
 
     manifest.projects[2].contextDependencies = [{

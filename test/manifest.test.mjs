@@ -317,7 +317,7 @@ describe('manifest', () => {
     ]);
   });
 
-  test('rejects invalid access/status/context combinations', () => {
+  test('rejects invalid access/status/context combinations and allows a managed target without contextPath', () => {
     const manifest = fixtureManifest();
     manifest.projects[0].contextPath = undefined;
     delete manifest.projects[0].contextPath;
@@ -326,8 +326,7 @@ describe('manifest', () => {
     manifest.projects[1].contextPath = '.ai/context.md';
     manifest.projects[2].status = 'onboarding';
     const result = validateManifest(manifest);
-    assert.deepEqual(result.findings.filter(({ code }) => ['MANAGED_CONTEXT_REQUIRED', 'READ_ONLY_CONTEXT_FORBIDDEN', 'INVALID_COMBINATION'].includes(code)).map(({ code, path }) => ({ code, path })), [
-      { code: 'MANAGED_CONTEXT_REQUIRED', path: 'manifest.projects[0].contextPath' },
+    assert.deepEqual(result.findings.filter(({ code, path }) => ['MANAGED_CONTEXT_PATH_INVALID', 'READ_ONLY_CONTEXT_FORBIDDEN', 'INVALID_COMBINATION'].includes(code) || path === 'manifest.projects[0].contextPath').map(({ code, path }) => ({ code, path })), [
       { code: 'READ_ONLY_CONTEXT_FORBIDDEN', path: 'manifest.projects[1].contextPath' },
       { code: 'INVALID_COMBINATION', path: 'manifest.projects[2].status' }
     ]);

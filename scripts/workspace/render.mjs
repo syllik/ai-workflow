@@ -37,7 +37,8 @@ export function renderProjectIndex(manifest) {
       const repositoryUrl = `https://github.com/${project.repository}`;
       let link;
       if (project.access === 'managed' && project.status === 'active') {
-        link = `[${project.contextPath}](${repositoryUrl}/blob/${project.integrationBranch}/${project.contextPath})`;
+        const contextFile = project.contextPath ?? 'AGENTS.md';
+        link = `[${contextFile}](${repositoryUrl}/blob/${project.integrationBranch}/${contextFile})`;
       } else if (project.status === 'onboarding') {
         link = `[onboarding source](${repositoryUrl}/tree/${project.integrationBranch})`;
       } else {
@@ -119,18 +120,17 @@ export function renderProfileNavigation(manifest) {
 export function renderAgentsBlock(manifest) {
   const hasContextDependencies = manifest.projects.some((project) => (project.contextDependencies ?? []).length > 0);
   const finalRoute = hasContextDependencies
-    ? '5. Read relevant `.ai/decisions.md`, task files, and required declared `contextDependencies`; block if required dependency context is unavailable.'
-    : '5. Read only relevant `.ai/decisions.md` and task files.';
+    ? '5. Read relevant `.ai/decisions.md` (if present), task files, and required declared `contextDependencies`; block if required dependency context is unavailable.'
+    : '5. Read only relevant `.ai/decisions.md` (if present) and task files.';
   const body = [
     'Canonical AI routing:',
     `1. Read the canonical workflow: ${canonicalWorkflowFile('FLOW.md')}.`,
     `2. Select one GitHub record from ${canonicalWorkflowFile('workspace.yaml')} / ${canonicalWorkflowFile('projects/index.md')}.`,
     `3. Read the role index ${canonicalWorkflowFile('global/workflow.md')}, then only the selected role file.`,
-    '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.',
+    '4. On that record\'s `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md` if present.',
     finalRoute,
     '',
-    'GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.',
-    `Canonical root: ${manifest.canonicalRoot}`
+    'GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.'
   ].join('\n');
   const rendered = renderManagedBlock('agents-routing', body);
   return rendered;

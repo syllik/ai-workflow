@@ -9,8 +9,8 @@ storage. Before working, read:
 2. `FLOW.md`;
 3. one record from `workspace.yaml` and `projects/index.md`;
 4. `global/workflow.md`, then only the selected role file;
-5. `AGENTS.md` and `.ai/context.md` in the target repository;
-6. only relevant `.ai/decisions.md`, task files, and explicit `contextDependencies` required by the target/task.
+5. `AGENTS.md` and, if present, `.ai/context.md` in the target repository;
+6. only relevant `.ai/decisions.md` (if present), task files, and explicit `contextDependencies` required by the target/task.
 
 For a persisted task, also use its `prompt.md` and current `state.md`. The
 human-only `plan.md` is reviewed by the user; Executor never reads it. Do not reread
@@ -58,9 +58,8 @@ Canonical AI routing:
 1. Read the canonical workflow: https://github.com/syllik/ai-workflow/blob/HEAD/FLOW.md.
 2. Select one GitHub record from https://github.com/syllik/ai-workflow/blob/HEAD/workspace.yaml / https://github.com/syllik/ai-workflow/blob/HEAD/projects/index.md.
 3. Read the role index https://github.com/syllik/ai-workflow/blob/HEAD/global/workflow.md, then only the selected role file.
-4. On that record's `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md`.
-5. Read relevant `.ai/decisions.md`, task files, and required declared `contextDependencies`; block if required dependency context is unavailable.
+4. On that record's `integrationBranch`, read target `AGENTS.md`, then `.ai/context.md` if present.
+5. Read relevant `.ai/decisions.md` (if present), task files, and required declared `contextDependencies`; block if required dependency context is unavailable.
 
 GitHub Issue/PR entry never bypasses this route; use GitHub records only, no auto-discovery; legacy contexts are migration-only.
-Canonical root: ~/Desktop/WORK
 <!-- ai-workflow:agents-routing:end -->

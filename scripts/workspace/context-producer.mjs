@@ -219,20 +219,25 @@ function validateCanonicalExpectedSources(expectedSources, policySha, headSha, r
   if (targetAgents.length !== 1) {
     findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target.AGENTS.md', { actualCount: targetAgents.length }));
   }
-  if (targetContexts.length !== 1) {
+  // `.ai/context.md` is optional here; whether the target record requires it is
+  // checked against the policy workspace registry in validateRequiredContextDependencies.
+  if (targetContexts.length > 1) {
     findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target..ai/context.md', { actualCount: targetContexts.length }));
   }
-  if (targetAgents.length === 1 && targetContexts.length === 1) {
+  if (targetAgents.length === 1 && targetContexts.length <= 1) {
     const targetRepository = normalizeRepository(targetAgents[0].repository);
+    const targetContext = targetContexts[0] ?? null;
     if (
-      targetRepository !== normalizeRepository(targetContexts[0].repository)
-      || targetAgents[0].revisionSha !== headSha
-      || targetContexts[0].revisionSha !== headSha
+      targetAgents[0].revisionSha !== headSha
+      || (targetContext !== null && (
+        targetRepository !== normalizeRepository(targetContext.repository)
+        || targetContext.revisionSha !== headSha
+      ))
     ) {
       findings.push(finding('CONTEXT_TARGET_SOURCE_SET_MISMATCH', 'canonical.target', {
         expectedRevisionSha: headSha,
         agentsRevisionSha: targetAgents[0].revisionSha,
-        contextRevisionSha: targetContexts[0].revisionSha
+        contextRevisionSha: targetContext?.revisionSha ?? null
       }));
     }
 
@@ -276,7 +281,7 @@ function validateRequiredContextDependencies(sources, dependencies, policySha, i
   );
   const targetAgents = sources.find((source) => source.kind === 'target' && source.path === 'AGENTS.md');
   const targetContext = sources.find((source) => source.kind === 'target' && source.path === '.ai/context.md');
-  if (!workspaceSource || !targetAgents || !targetContext) return;
+  if (!workspaceSource || !targetAgents) return;
 
   let workspace;
   try {
@@ -306,6 +311,11 @@ function validateRequiredContextDependencies(sources, dependencies, policySha, i
       access: targetRecord.access ?? null,
       status: targetRecord.status ?? null
     }));
+    return;
+  }
+
+  if (targetRecord.contextPath !== undefined && !targetContext) {
+    findings.push(finding('CONTEXT_CANONICAL_SOURCE_UNAVAILABLE', 'canonical.target..ai/context.md', { actualCount: 0 }));
     return;
   }
 

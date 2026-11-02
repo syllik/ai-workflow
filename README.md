@@ -54,7 +54,7 @@ apply after normal safety checks; canonical apply was not executed in Phase 1A.
 ## Что читает Planner / Architect
 
 Planner или Architect читает `AI.md`, `FLOW.md`, одну запись `workspace.yaml` / `projects/index.md`,
-релевантный role file, затем `AGENTS.md` и `.ai/context.md` target repository
+релевантный role file, затем `AGENTS.md` и (если есть) `.ai/context.md` target repository
 на указанной в записи `integrationBranch`.
 `.ai/decisions.md` и task files читаются только при релевантности. Legacy
 central project contexts сохраняются для migration, но не являются active path.
@@ -113,7 +113,7 @@ publication или merge. Отдельный Trusted Publisher публикуе�
 3. Для greenfield repository создайте выбранный `LICENSE` или rights notice одновременно с project bootstrap/template до первого commit. Для fork/derivative сохраните upstream license, copyright, attribution и другие обязательные notices; не перелицензируйте несовместимый upstream code.
 4. Добавьте или проверьте запись в `workspace.yaml`. Если repository входит в lifecycle-audit scope, добавьте/обновите его `gitLifecycle` record с deployment profile и фактическим branch state; не помечайте legacy branch canonical и не переименовывайте branch в рамках onboarding-policy change.
 5. Создайте или обновите связанный change в `syllik/syllik`: `docs/workspace.md` и `docs/repositories.md`. PR с изменением `workspace.yaml` не считается готовым к human merge, пока синхронизирующий workspace-documentation change не существует и не соответствует ему. Profile `README.md` содержит стабильную ссылку на `docs/workspace.md` и не дублирует список проектов; исключение из workspace documentation требует явного решения человека.
-6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision.
+6. Создайте `.ai/context.md` в target repository из [`templates/project.md`](templates/project.md) и зафиксируйте license/reuse decision. Если весь project context живёт в target `AGENTS.md`, не указывайте `contextPath` в записи `workspace.yaml`: тогда `apply` не создаёт `.ai/context.md` и `.ai/decisions.md`, а `check` не требует их.
 7. Убедитесь, что в target repository есть `AGENTS.md` с managed-блоком `agents-routing` и `CLAUDE.md` с managed-блоком `claude-routing` (`@AGENTS.md`), чтобы Claude Code агенты получали тот же `AGENTS.md` routing, что и все остальные агенты. `CLAUDE.md` должен быть обычным файлом, а не symlink на `AGENTS.md`: symlink отклоняется как `UNSAFE_PATH`. `node scripts/workspace/cli.mjs apply` создаёт оба файла для managed projects, а `check` считает их отсутствие drift.
 8. Заполните только устойчивые сведения и при необходимости создайте `.ai/decisions.md`.
 

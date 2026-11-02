@@ -82,7 +82,6 @@ projects:
     access: managed
     status: active
     integrationBranch: master
-    contextPath: .ai/context.md
     contextDependencies:
       - repository: ChipIn-one/chipin-knowledge-base
         integrationBranch: master

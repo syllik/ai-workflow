@@ -87,8 +87,7 @@ function resolveCoverage(policy, manifest, findings = []) {
       || project.access !== 'managed'
       || typeof project.integrationBranch !== 'string'
       || project.integrationBranch.length === 0
-      || typeof project.contextPath !== 'string'
-      || project.contextPath.length === 0
+      || (project.contextPath !== undefined && (typeof project.contextPath !== 'string' || project.contextPath.length === 0))
     ) {
       findings.push(finding('ROLLOUT_ROOT_RECORD_INVALID', `rollout.roots.${repository}`));
       continue;
