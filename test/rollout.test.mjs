@@ -9,6 +9,12 @@ import { fixtureManifest, git, initFixtureRepo, makeFixtureRoot, removeFixtureRo
 
 const POLICY_SHA = 'a'.repeat(40);
 
+// Mechanism fixture: exercises managed roots with a derived read-only dependency.
+// It is not the live personal rollout policy, which no longer manages ChipIn.
+function dependencyFixturePolicy() {
+  return { ...loadRolloutPolicy(), roots: ['syllik/syllik', 'ChipIn-one/.github', 'ChipIn-one/chipin-frontend'] };
+}
+
 function pilotManifest() {
   const base = fixtureManifest();
   const central = base.projects.find(({ repository }) => repository === 'syllik/ai-workflow');
@@ -69,16 +75,20 @@ function materializeRolloutTarget(root, project, manifest, { staleAgents = false
   return { repositoryRoot, targetSha, agentsPath };
 }
 
-test('rollout policy covers managed consumers plus the required read-only KB dependency', () => {
+test('rollout policy covers only the personal managed consumers', () => {
   const manifest = pilotManifest();
   const policy = loadRolloutPolicy();
   assert.deepEqual(validateRolloutPolicy(policy, manifest), []);
-  assert.deepEqual(policy.roots, [
-    'syllik/syllik',
-    'ChipIn-one/.github',
-    'ChipIn-one/chipin-frontend'
-  ]);
+  assert.deepEqual(policy.roots, ['syllik/syllik']);
   assert.deepEqual(policy.authentication.permissions, { contents: 'read' });
+});
+
+test('personal rollout policy no longer manages ChipIn repositories', () => {
+  const manifest = pilotManifest();
+  const policy = loadRolloutPolicy();
+  assert.deepEqual(policy.roots.filter((root) => root.startsWith('ChipIn-one/')), []);
+  const projects = resolveRolloutProjects(policy, manifest);
+  assert.deepEqual(projects.filter(({ repository }) => repository.startsWith('ChipIn-one/')).map(({ repository }) => repository), []);
 });
 
 test('rollout workflow mints private-repository tokens only for trusted master runs', () => {
@@ -113,7 +123,7 @@ test('GitHub App installation tokens use x-access-token HTTP Basic auth for Git'
 
 test('rollout policy treats roots as declarative managed consumers', () => {
   const manifest = pilotManifest();
-  const policy = loadRolloutPolicy();
+  const policy = dependencyFixturePolicy();
   const expanded = { ...policy, roots: [...policy.roots, 'ChipIn-one/chipin-knowledge-base'] };
   const findings = validateRolloutPolicy(expanded, manifest);
   assert.equal(findings.some(({ code }) => code === 'ROLLOUT_ROOT_RECORD_INVALID'), true);
@@ -121,7 +131,7 @@ test('rollout policy treats roots as declarative managed consumers', () => {
 
 test('read-only rollout coverage is derived from the managed root dependency declaration', () => {
   const manifest = pilotManifest();
-  const policy = loadRolloutPolicy();
+  const policy = dependencyFixturePolicy();
   const projects = resolveRolloutProjects(policy, manifest);
   const knowledgeBase = projects.find(({ repository }) => repository === 'ChipIn-one/chipin-knowledge-base');
   assert.equal(knowledgeBase.access, 'read-only');
@@ -137,7 +147,7 @@ test('aligned pilot targets produce exact-revision receipts and retries are idem
   const root = makeFixtureRoot();
   try {
     const manifest = pilotManifest();
-    const policy = loadRolloutPolicy();
+    const policy = dependencyFixturePolicy();
     const materialized = new Map();
     for (const project of resolveRolloutProjects(policy, manifest)) {
       materialized.set(project.repository, materializeRolloutTarget(root, project, manifest));
@@ -231,7 +241,7 @@ test('absent required target is an explicit incomplete receipt', () => {
 
 test('private-inaccessible required target fails closed without leaking a credential', () => {
   const manifest = pilotManifest();
-  const policy = loadRolloutPolicy();
+  const policy = dependencyFixturePolicy();
   const result = evaluatePilotRollout({
     manifest,
     policy,
