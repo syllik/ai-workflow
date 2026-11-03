@@ -8,7 +8,7 @@ Use `FLOW.md` for the lifecycle and `global/core.md` for shared invariants. Load
 - `global/reviewer.md` — one independent current-SHA review; no branch mutation.
 - `global/auditor.md` — evidence, policy, risk, and cost audit; read-only.
 - `global/publisher.md` — trusted publication boundary; not an AI role grant.
-- `global/models.md` — capability tiers (`deep`, `standard`, `fast`) and provider mapping.
+- `global/models.md` — capability tiers (`frontier`, `deep`, `standard`, `routine`, `fast`), effort, and provider mapping.
 
 After the selected role file and before target `AGENTS.md`, read `global/documentation.md`.
 
