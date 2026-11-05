@@ -38,6 +38,11 @@ gitLifecycle:
       branchState: canonical
       defaultBranch: master
       integrationBranch: master
+    - repository: syllik/deep-dark-factory
+      deploymentProfile: none
+      branchState: canonical
+      defaultBranch: master
+      integrationBranch: master
     - repository: ChipIn-one/.github
       deploymentProfile: none
       branchState: canonical

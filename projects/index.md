@@ -29,5 +29,6 @@ Only repositories listed below were audited for this policy task. Other workspac
 | ChipIn-one/chipin-frontend | production | canonical | master | master | — | — |
 | ChipIn-one/chipin-knowledge-base | none | canonical | master | master | — | — |
 | syllik/ai-workflow | none | canonical | master | master | — | — |
+| syllik/deep-dark-factory | none | canonical | master | master | — | — |
 | syllik/syllik | none | canonical | master | master | — | — |
 | syllik/Zero-Touch-DCA | none | canonical | master | master | — | — |
