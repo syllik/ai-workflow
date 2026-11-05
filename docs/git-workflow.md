@@ -1,6 +1,8 @@
 # Git lifecycle and branch migration
 
-Baseline refreshed: 2026-10-04 UTC for the completed canonical settings and organization cleanup receipts. The six-repository migration inventory remains bounded to `syllik/ai-workflow#23`; BE migration state is not re-audited by this receipt, and this document does not claim global completion. The FE cutover to canonical `master` was completed and recorded separately on 2026-10-22 (see the FE cutover receipt below).
+Baseline refreshed: 2026-10-04 UTC (plus the additional inventories below) for the completed canonical settings and organization cleanup receipts. The six-repository migration inventory remains bounded to `syllik/ai-workflow#23`; BE migration state is not re-audited by this receipt, and this document does not claim global completion. The FE cutover to canonical `master` was completed and recorded separately on 2026-10-22 (see the FE cutover receipt below).
+
+**Additional inventory (2026-11-05):** `syllik/deep-dark-factory` is audited as a public repository with `master` as its single canonical branch; its canonical merge settings and `master protect` ruleset were verified live on 2026-11-05, and releases are tags on an exact `master` commit. This is separate from the original six-repository migration inventory on #23.
 
 **Additional inventory (2026-10-13):** `syllik/Zero-Touch-DCA` is newly audited as a documentation-stage private repository with `master` as its canonical branch. This is separate from the original six-repository migration inventory on #23. Its branch protection cannot be enforced on the current GitHub plan; all CI/review/merge rules are procedural until protection is available. Activation PR `syllik/ai-workflow#54` records central registry status as `managed / active` after the target instructions, context, and synchronized workspace documentation were merged and verified; this status takes effect on the canonical `master` only after human merge of that PR.
 
@@ -72,7 +74,7 @@ Before each migration, update every consumer of the old branch atomically with t
 - Organization coordination repo: PR `ChipIn-one/.github#21` completed the branch cutover; PR #35 later removed the temporary `main` branch filters from `DEV readiness policy tests`, leaving `pull_request` and `push` on `master` plus manual `workflow_dispatch`. The squash merge landed as `871823ba72eaa5f2871afc17164d348af57e7feb`, and post-merge `evaluate-fixtures` succeeded on that exact `master` head. The legacy `main` ref remains only as rollback state.
 - Frontend consumer: `ChipIn-one/chipin-frontend#307` merged to `dev` at `c49502d5f1c623d4df505d77b6de874b19dcd40b`; read-only KB references now use `master`. The FE `dev -> main` production topology was not migrated by that cutover; it was later replaced by the 2026-10-22 frontend cutover below.
 - Backend remains owner-owned on `develop`; no backend code, CI, deployment, PR, or branch state was mutated by this cutover.
-- Central PR #44 records the resulting registry state. PR #31 is a separate Deep Dark Factory change and its registration is not copied into this cutover receipt.
+- Central PR #44 records the resulting registry state.
 
 ## 2026-10-22 frontend cutover receipt
 
@@ -103,4 +105,4 @@ Deep Dark Factory is registered as `managed / active`. On 2026-11-05 its canonic
 
 Bounded follow-ups are: migrate BE deploy/PR filters from `develop` only with deploy verification and owner coordination; apply its canonical merge-setting delta only when that migration is safe; and activate/verify KB branch protection if the organization plan later supports enforcement for private repositories. The supported canonical settings for `syllik/syllik`, `syllik/ai-workflow`, `ChipIn-one/.github`, `ChipIn-one/chipin-frontend`, and the KB repository-level merge options are complete; the FE exact-commit promotion replacement and branch migration were completed on 2026-10-22; KB protection remains the documented plan-limited exception.
 
-The original six-repository migration inventory remains limited to `syllik/ai-workflow#23`. This onboarding change separately audits only `syllik/Zero-Touch-DCA`'s documented canonical branch and merge settings; its private-repository branch protection remains unenforceable on the current plan. `syllik/codex-local-runner` and every other repository outside those two explicitly scoped inventories remain intentionally unverified.
+The original six-repository migration inventory remains limited to `syllik/ai-workflow#23`. Two later changes separately audit only `syllik/Zero-Touch-DCA`'s documented canonical branch and merge settings (its private-repository branch protection remains unenforceable on the current plan) and `syllik/deep-dark-factory`'s canonical merge settings and `master protect` ruleset (verified live 2026-11-05). `syllik/codex-local-runner` and every other repository outside those explicitly scoped inventories remain intentionally unverified.
