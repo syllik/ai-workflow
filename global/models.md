@@ -8,7 +8,7 @@ Roles reference capability tiers, not model names. A model name never grants a r
 - `routine` — orchestrator of an approved plan, reports, docs and copy edits, mechanical edits from an exact spec. Tiers grant no authority: GitHub/Issues/Projects mutations stay with the roles and task authority defined in `global/core.md` and `global/publisher.md`, never with a subagent.
 - `fast` — search, reading, running tests, summarizing logs; never writes code.
 
-Session defaults: a new session starts on `standard`. The orchestrator is `routine` once the plan is approved, `standard` otherwise, never `deep` or `frontier`; the switch happens through a handoff to a new session, not mid-session. Architecture review the orchestrator needs goes to a read-only `deep` subagent or a separate session. A `frontier` session ends with a handoff to a `routine` or `standard` orchestrator.
+Session defaults: a new session starts on `standard`. The orchestrator is `routine` once the plan is approved, `standard` otherwise, never `deep` or `frontier`; the switch happens through a handoff to a new session, not mid-session. Architecture review the orchestrator needs goes to a read-only `deep` subagent or a separate session. A `frontier` session ends with a handoff to a `routine` or `standard` orchestrator. Session rotation by context size is triggered by the DDF context-budget rule ([`docs/orchestrator/handoff.md#context-budget`](https://github.com/syllik/deep-dark-factory/blob/HEAD/docs/orchestrator/handoff.md#context-budget)): at the soft limit hand off at the next checkpoint, at the hard limit finish the current step, hand off and stop.
 
 Effort: `medium` by default; `high` only for `deep`; `low` for `fast`; higher levels only on the owner's request.
 
