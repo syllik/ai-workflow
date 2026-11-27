@@ -66,7 +66,7 @@ gitLifecycle:
 projects:
   - id: syllik/syllik
     repository: syllik/syllik
-    localPath: profile/syllik
+    localPath: syllik/syllik
     group: profile
     access: managed
     status: active
@@ -74,7 +74,7 @@ projects:
     contextPath: .ai/context.md
   - id: syllik/life-ops
     repository: syllik/life-ops
-    localPath: personal/life-ops
+    localPath: syllik/life-ops
     group: personal
     access: managed
     status: active
@@ -118,7 +118,7 @@ projects:
     integrationBranch: master
   - id: syllik/youtube-metadata-translator
     repository: syllik/youtube-metadata-translator
-    localPath: tools/content/youtube-metadata-translator
+    localPath: syllik/youtube-metadata-translator
     group: tools/content
     access: managed
     status: active
@@ -134,7 +134,7 @@ projects:
     contextPath: .ai/context.md
   - id: syllik/ai-workflow
     repository: syllik/ai-workflow
-    localPath: workflows/ai/ai-workflow
+    localPath: syllik/ai-workflow
     group: workflows/ai
     access: managed
     status: active
@@ -142,7 +142,7 @@ projects:
     contextPath: .ai/context.md
   - id: syllik/gpg-signed-commits
     repository: syllik/gpg-signed-commits
-    localPath: guides/git/gpg-signed-commits
+    localPath: syllik/gpg-signed-commits
     group: guides/git
     access: managed
     status: active
@@ -150,7 +150,7 @@ projects:
     contextPath: .ai/context.md
   - id: syllik/Zero-Touch-DCA
     repository: syllik/Zero-Touch-DCA
-    localPath: products/Zero-Touch-DCA
+    localPath: syllik/Zero-Touch-DCA
     group: products
     access: managed
     status: active
